@@ -24,7 +24,7 @@ def test_exported_framework_authority_including_nested_extensions(tmp_path, monk
 
     def codesign(args, **kwargs):
         if args[1] == "-dvv":
-            signature = f"Authority={authority}: Example (NNP2B278S6)\nflags=0x10000(runtime)" if valid else "Signature=adhoc\nflags=0x20002(adhoc,linker-signed)"
+            signature = f"Authority={authority}: Example (NNP2B278S6)\nflags=0x12000(library,runtime)" if valid else "Signature=adhoc\nflags=0x20002(adhoc,linker-signed)"
             return subprocess.CompletedProcess(args, 0, b"", signature.encode())
         source = signing.ROOT / ("ios/MumlaKeyboard/MumlaKeyboard.entitlements" if Path(args[-1]).suffix == ".appex" else {
             "ios": "ios/MumlaiOS/MumlaiOS.entitlements",

@@ -2,6 +2,7 @@
 import json
 import os
 import plistlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -44,7 +45,7 @@ def main(mode, app, channel):
                 runtime = ["--options", "runtime"] if channel == "developer-id" else []
                 run("codesign", "--force", "--sign", "-", *runtime, "--entitlements", file.name, str(path))
         else:
-            if channel == "developer-id" and "(runtime)" not in subprocess.run(["codesign", "-dvv", str(path)], capture_output=True, check=True).stderr.decode():
+            if channel == "developer-id" and not re.search(r"flags=0x[0-9a-f]+\([^)]*\bruntime\b", subprocess.run(["codesign", "-dvv", str(path)], capture_output=True, check=True).stderr.decode()):
                 raise SystemExit(f"Exported {bundle} lacks the hardened runtime")
             actual = plistlib.loads(run("codesign", "-d", "--entitlements", "-", "--xml", str(path)))
             if "aps-environment" in wanted:

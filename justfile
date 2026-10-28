@@ -367,10 +367,6 @@ bootstrap-cloudkit-schema:
     MUMLA_INIT_CLOUDKIT_SCHEMA=1 \
         '/Applications/Mumla Dev.app/Contents/MacOS/Mumla Dev'
 
-# Build, notarize, and package the Developer ID macOS app as dist/Mumla-<version>.dmg.
-build-dmg: packages
-    ./scripts/build-developer-id-dmg.sh
-
 # Publish the download page, which links to the newest GitHub release's DMG.
 publish-page:
     ark push distribution/mumla-mbag

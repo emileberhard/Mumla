@@ -199,6 +199,18 @@ jobs:
           SOURCE_COMMIT: ${{ github.sha }}
         run: python3 .github/scripts/wait-for-access-service.py
 
+      - name: Wait for the Developer ID DMG
+        if: steps.build.outputs.uploaded != 'true'
+        timeout-minutes: 30
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          until conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest" \
+            --jq '[.jobs[] | select(.name == "developer-id") | .conclusion // ""] | first // ""') && [[ -n $conclusion ]]; do
+            sleep 20
+          done
+          [[ $conclusion == success ]] || { echo "::error::The Developer ID lane ended $conclusion, so nothing is uploaded."; exit 1; }
+
       - name: Upload to TestFlight
         if: steps.build.outputs.uploaded != 'true'
         env:
@@ -256,7 +268,7 @@ jobs:
           security create-keychain -p "$password" "$keychain"
           security set-keychain-settings -lut 7200 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
-          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
           rm -f "$RUNNER_TEMP/developer-id.p12"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
           security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
@@ -269,18 +281,18 @@ jobs:
           DEVELOPER_ID_PROFILE: ${{ runner.temp }}/developer-id.provisionprofile
         run: scripts/build-developer-id-dmg.sh
 
+      - name: Remove credentials
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/developer-id.keychain-db" 2> /dev/null || true
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/developer-id.provisionprofile" "$RUNNER_TEMP/AuthKey.p8" Apple/Config/Local.xcconfig
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: developer-id-dmg
           path: dist/Mumla-${{ github.ref_name }}.dmg
           if-no-files-found: error
           retention-days: 30
-
-      - name: Remove credentials
-        if: always()
-        run: |
-          security delete-keychain "$RUNNER_TEMP/developer-id.keychain-db" 2> /dev/null || true
-          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/developer-id.provisionprofile" "$RUNNER_TEMP/AuthKey.p8" Apple/Config/Local.xcconfig
 
   testflight-review:
     needs: testflight-ios
@@ -372,6 +384,16 @@ jobs:
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ github.ref_name }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Wait for the ready access-service release
+        timeout-minutes: 32
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: python3 .github/scripts/wait-for-access-service.py
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: developer-id-dmg
@@ -385,16 +407,18 @@ jobs:
           dmg="$RUNNER_TEMP/Mumla.dmg"
           mv "$RUNNER_TEMP/dmg/Mumla-$VERSION.dmg" "$dmg"
           digest="sha256:$(shasum -a 256 "$dmg" | cut -d' ' -f1)"
-          if ! gh release view "$VERSION" >/dev/null 2>&1; then
+          release=$(gh api --paginate "repos/$GH_REPO/releases" --jq ".[] | select(.tag_name == \"$VERSION\")")
+          if [[ -z $release ]]; then
             gh release create "$VERSION" --draft --verify-tag --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" "$dmg"
-          fi
-          published=$(gh release view "$VERSION" --json assets --jq '[.assets[] | select(.name == "Mumla.dmg" and .state == "uploaded") | .digest] | first // ""')
-          if [[ -z $published ]]; then
+          elif [[ $(jq -r .draft <<< "$release") == true ]]; then
             gh release upload "$VERSION" "$dmg" --clobber
-          elif [[ $published != "$digest" ]]; then
-            echo "::error::$VERSION already publishes a different Mumla.dmg; ship the fix as the next patch."
-            exit 1
+          else
+            published=$(jq -r '[.assets[] | select(.name == "Mumla.dmg" and .state == "uploaded") | .digest] | first // ""' <<< "$release")
+            [[ $published == "$digest" ]] || { echo "::error::$VERSION is published without this Mumla.dmg; ship the fix as the next patch."; exit 1; }
+            exit 0
           fi
+          uploaded=$(gh api --paginate "repos/$GH_REPO/releases" --jq ".[] | select(.tag_name == \"$VERSION\") | .assets[] | select(.name == \"Mumla.dmg\" and .state == \"uploaded\") | .digest")
+          [[ $uploaded == "$digest" ]] || { echo "::error::The draft's Mumla.dmg does not match the built DMG."; exit 1; }
           newest=$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags" --jq '.[].ref | ltrimstr("refs/tags/")' \
             | grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -V | tail -1)
           latest=(--latest)

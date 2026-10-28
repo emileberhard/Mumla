@@ -41,16 +41,18 @@ the identity of the certificate it names. The export must keep every
 entitlement and the runtime flag. The job
 then signs the DMG with the same identity, a secure timestamp and its own
 identifier, notarizes only the DMG, the outermost container, and staples it.
-An always-run step deletes the keychain. The marketing version matches every
-channel; Developer ID and TestFlight build numbers may differ. GitHub release
-publication joins the iOS and Developer ID lanes and attaches the DMG as
-`Mumla.dmg`.
+An always-run step deletes the keychain before the artifact upload. The
+marketing version matches every channel; Developer ID and TestFlight build
+numbers may differ. The TestFlight upload waits for the `developer-id` job to
+succeed, so a Mac failure ships no channel and "Re-run failed jobs" resumes
+both. GitHub release publication joins the iOS and Developer ID lanes,
+rechecks the access service and attaches the DMG as `Mumla.dmg`.
 
 The release is created as a draft with the DMG, checked against the built
 digest and only then published, so the newest release never lacks its DMG. A
-failed-jobs retry reuses an uploaded asset only if its digest matches the
-attempt's artifact; a different digest means a rerun of all jobs or a changed
-build, which ships as the next patch. A version rollback is rejected because
+retry replaces the DMG only while the release is a draft; a published release
+must already carry an uploaded `Mumla.dmg` with the attempt's digest, and
+anything else ships as the next patch. A version rollback is rejected because
 only the newest version tag is marked Latest. The download page links to the
 Latest release's `Mumla.dmg` and needs no per-release publication.
 
@@ -62,9 +64,11 @@ Developer ID Application certificate (G2, created 2026-10-28, expires
 2027-11-27) that signs nothing else. It uses one of the team's five Developer
 ID Application certificates, and local signing keeps its own. A private
 signing runner was rejected: it made every release depend on one Mac, a
-cross-repository dispatch and personal access tokens. The p12 adds little to
-what the environment's Admin App Store Connect key already exposes, and only
-the `developer-id` job reads it.
+cross-repository dispatch and personal access tokens. The p12 is the one
+secret that can sign Mac code under the team's name, and its only remedy,
+revocation, breaks every DMG it signed. The tag-only environment that already
+guards the Admin App Store Connect key holds it, and only the `developer-id`
+job reads it.
 
 If the p12 or its password may have leaked, delete both environment secrets,
 then have the Account Holder ask Apple to revoke that certificate at
