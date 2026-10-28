@@ -1,0 +1,19 @@
+{
+  "name": "mumla-access",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/main.ts",
+    "check": "biome check . && tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@fastify/busboy": "3.2.4",
+    "jsonc-parser": "3.3.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.3",
+    "@types/bun": "1.4.4",
+    "typescript": "7.0.2"
+  }
+}
