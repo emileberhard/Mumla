@@ -83,9 +83,9 @@ Locked package resolution precedes builds using the same derived-data directory.
 Screenshot placement completes only at ACTIVE or a PARENT_* state; other states
 remain pending and FAILED remains an error.
 
-Cutover requires the private deployment workflow, private signing-runner
-registration, source-read and dispatch credentials, and protected environments
-before the next tag. The public repository has no self-hosted runner access.
+Every release requires the private deployment workflow, private signing-runner
+registration, source-read and dispatch credentials, and protected environments.
+The public repository has no self-hosted runner access.
 The current download origin, app identities, Production CloudKit data and
 installed-user behavior remain unchanged. Operator details live only in the
 private deployment repository.
