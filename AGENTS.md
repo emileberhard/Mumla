@@ -258,10 +258,8 @@ container `iCloud.emileberhard.WisprClone`.
 - The download URL is `https://mumla.esmadil.se/`. `distribution/mumla-mbag/`
   holds the page, published with `just publish-page`; it links to the newest
   GitHub release's `Mumla.dmg` and reads its version, size and digest from the
-  GitHub API. Never upload a DMG by hand. Keep the iOS card in its
-  non-clickable "Coming soon on TestFlight"
-  state until App Store Connect confirms the external build is available and
-  the public link accepts testers.
+  GitHub API. Never upload a DMG by hand. The iOS card links to the
+  Public Beta group's public TestFlight link.
 - The access session lives in the data-protection Keychain (`KeychainStore`,
   DP-only queries). macOS grants keychain access groups only from a
   provisioning profile (TN3137), so Debug signs with "Mumla Mac Development"

@@ -150,11 +150,6 @@
     stroke-linejoin: round;
   }
   .download-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
-  .coming-soon {
-    color: var(--text);
-    background: color-mix(in srgb, var(--text) 7%, transparent);
-    border-color: var(--border);
-  }
   .meta { color: var(--muted); font-size: 12px; text-align: center; min-height: 17px; }
   .detail-card { padding: clamp(20px, 3vh, 26px); }
   .detail-card h2 { font-size: 17px; margin: 0 0 11px; }
@@ -222,7 +217,7 @@
         </div>
       </div>
       <p class="platform-description">Hold the Globe key and dictate into any app.</p>
-      <a class="platform-action download-btn" href="https://github.com/emileberhard/Mumla/releases/latest/download/Mumla.dmg">
+      <a class="platform-action download-btn" id="mac-download" href="https://github.com/emileberhard/Mumla/releases/latest/download/Mumla.dmg">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
         <span>Download for Mac</span>
       </a>
@@ -240,11 +235,11 @@
         </div>
       </div>
       <p class="platform-description">Speak from the custom keyboard and send the transcript straight into the current text field.</p>
-      <span class="platform-action coming-soon">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l2.5 1.5"/><circle cx="12" cy="12" r="8"/></svg>
-        <span>Coming soon on TestFlight</span>
-      </span>
-      <p class="meta">iOS 26+ · Beta review pending</p>
+      <a class="platform-action download-btn" href="https://testflight.apple.com/join/sV7brtJM">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>
+        <span>Join the TestFlight beta</span>
+      </a>
+      <p class="meta">iOS 26+ · Public beta</p>
     </article>
   </section>
 
@@ -283,7 +278,7 @@
     .then((release) => {
       const dmg = release?.assets?.find((asset) => asset.name === "Mumla.dmg");
       if (!dmg) return;
-      document.querySelector(".download-btn").href = dmg.browser_download_url;
+      document.getElementById("mac-download").href = dmg.browser_download_url;
       const date = new Date(release.published_at).toLocaleDateString("en-US", {
         year: "numeric", month: "short", day: "numeric",
       });
