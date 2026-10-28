@@ -49,7 +49,7 @@ class BuildIdentityTests(unittest.TestCase):
                 [{"attributes": {"version": "12.9"}}],
                 [{"attributes": {"cfBundleVersion": "12.10", "state": {"state": "COMPLETE"}}}],
             ]) as api:
-                self.assertEqual(("12.10", True), asc.reserve_build("app", platform, "0.20.0", True))
+                self.assertEqual(("12.10", True), asc.reserve_build("app", platform, "0.20.0", "12", True))
                 self.assertEqual(platform, api.call_args_list[0].kwargs["filter[preReleaseVersion.platform]"])
                 self.assertEqual(platform, api.call_args_list[1].kwargs["filter[platform]"])
 
@@ -58,8 +58,20 @@ class BuildIdentityTests(unittest.TestCase):
              patch.object(asc.time, "monotonic", side_effect=[0, 901]), \
              patch.object(asc, "next_build_number") as allocate:
             with self.assertRaisesRegex(SystemExit, "do not upload again blindly"):
-                asc.reserve_build("app", "MAC_OS", "0.20.0", True)
+                asc.reserve_build("app", "MAC_OS", "0.20.0", "12", True)
             allocate.assert_not_called()
+
+    def test_a_first_attempt_uploads_beside_an_older_build_of_the_same_version(self):
+        with patch.object(asc, "uploaded_build_numbers", return_value=["1"]) as existing, \
+             patch.object(asc, "next_build_number", return_value=9106):
+            self.assertEqual((9107, False), asc.reserve_build("app", "IOS", "1.0.0", "9107", False))
+            existing.assert_not_called()
+
+    def test_a_retry_never_selects_an_older_build_of_the_same_version(self):
+        with patch.object(asc, "uploaded_build_numbers", return_value=["1"]), \
+             patch.object(asc.time, "monotonic", side_effect=[0, 901]):
+            with self.assertRaisesRegex(SystemExit, "do not upload again blindly"):
+                asc.reserve_build("app", "IOS", "1.0.0", "9107", True)
 
     def test_acceptance_filters_the_exact_uploaded_build(self):
         with patch.object(asc, "api", return_value=[]) as api:

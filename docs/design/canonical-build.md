@@ -95,8 +95,10 @@ profiles and must be repaired deliberately. The expensive boundaries remain
 bundle/App Group/CloudKit/KVS identities and retained user data; none changes.
 
 Release retries fence each platform's observable upload step independently.
-A failed-jobs rerun selects the exact existing version/build, including dotted
-historical build numbers, and skips another archive/export/upload. An uncertain
+A first attempt always uploads a new build at or above the run's reservation,
+beside any older build of the same version. A failed-jobs rerun after an upload
+started selects that version's build at or above the reservation, including
+dotted build numbers, and skips another archive/export/upload. An uncertain
 upload waits at most 15 minutes for App Store Connect, then stops for inspection.
 The build number selected by each TestFlight lane is authoritative downstream;
 new builds keep the global integer train above every historical leading component.
