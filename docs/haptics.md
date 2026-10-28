@@ -135,7 +135,11 @@ the player (reel speed) without changing how each event feels. The visual
 counterpart is `CassetteMotifView` (`ios/Shared/CassetteMotif.swift`): while
 recording, two identical spoked wheels set into the pill's rounded ends drive
 a dashed tape band running as an inner border — motor-style spin-up, frozen
-under Reduce Motion. The loop is state-driven: it starts when the
+under Reduce Motion. Its timer shows elapsed time, then remaining time during
+the final ten seconds of the app-published recording deadline.
+`RecordingTimeSchedule` starts with the current date and schedules that
+transition separately, including when the keyboard reopens mid-recording.
+The loop is state-driven: it starts when the
 keyboard-visible bridge phase becomes `.recording` and stops on any other
 phase, keyboard disappearance, or deactivation. The existing automatic-start
 haptic plays first (the "record button clunk"), then the reels spin.

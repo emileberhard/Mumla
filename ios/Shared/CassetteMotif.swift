@@ -113,9 +113,9 @@ private struct RecordingTimeText: View {
 
     var body: some View {
         if let deadline {
-            let countdownStart = deadline.addingTimeInterval(-CassetteMetrics.countdownLead)
-            TimelineView(.explicit([countdownStart])) { context in
-                if context.date >= countdownStart {
+            let schedule = RecordingTimeSchedule(deadline: deadline)
+            TimelineView(schedule) { context in
+                if context.date >= schedule.countdownStart {
                     Text("\u{2212}\(Text(timerInterval: min(context.date, deadline)...deadline, countsDown: true, showsHours: false))")
                 } else {
                     elapsed
@@ -154,8 +154,6 @@ private nonisolated enum CassetteMetrics {
     /// stroke) and tucks under the ring, so the lamp reads as one piece
     /// with the hub and can never show an off-center sliver.
     static let spindleDotDiameter: CGFloat = 8
-
-    static let countdownLead: TimeInterval = 10
 }
 
 /// The dashed tape loop just inside the pill border, traversed visually

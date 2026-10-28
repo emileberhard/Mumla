@@ -421,6 +421,12 @@
       ]
     },
     {
+      "path": "ios/Shared/RecordingTimeSchedule.swift",
+      "target-membership": [
+        "MumlaKeyboardTests/compile-sources"
+      ]
+    },
+    {
       "path": "ios/Shared/DictationBridge.swift",
       "target-membership": [
         "MumlaKeyboardTests/compile-sources"
