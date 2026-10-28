@@ -31,12 +31,13 @@ App Store preparation selects the exact reserved iOS build, captures new
 screenshots and stops before review with manual release.
 
 The unsandboxed Developer ID channel is the Mac's only distribution, because
-only it can create event taps and synthetic paste. Its hosted `developer-id`
-job runs in parallel with the TestFlight lane, in the same tag-limited
-environment. It archives unsigned and signs ad hoc with the Developer ID
-entitlements and the hardened runtime before any signing credential reaches
-the runner, so package manifests and build code never run beside them. It then
-imports the environment's Developer ID Application p12 into a temporary
+only it can create event taps and synthetic paste. Its hosted lane runs in
+parallel with the TestFlight lane, in the same tag-limited environment, as two
+jobs. `developer-id-archive` holds no signing credential: it archives unsigned,
+signs ad hoc with the Developer ID entitlements and the hardened runtime, and
+hands the archive over as an artifact, so package manifests and build code never
+run on a runner that holds the p12. `developer-id` resolves and builds nothing.
+It imports the environment's Developer ID Application p12 into a temporary
 keychain and exports with method `developer-id` and manual signing, using the environment's "Mumla Developer ID CI" profile and
 the identity of the certificate it names. The export must keep every
 entitlement and the runtime flag. The job
@@ -44,7 +45,7 @@ then signs the DMG with the same identity, a secure timestamp and its own
 identifier, notarizes only the DMG, the outermost container, and staples it.
 An always-run step deletes the keychain before the artifact upload. The
 marketing version matches every channel; Developer ID and TestFlight build
-numbers may differ. The TestFlight upload waits for the `developer-id` job to
+numbers may differ. The TestFlight upload waits for both jobs to
 succeed, so a Mac failure ships no channel and "Re-run failed jobs" resumes
 both. GitHub release publication joins the iOS and Developer ID lanes,
 rechecks the access service and attaches the DMG as `Mumla.dmg`.

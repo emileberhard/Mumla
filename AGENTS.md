@@ -470,9 +470,9 @@ checks signing (`scripts/sign-bundles check`) and access configuration
 (`scripts/check-access-configuration`). Its upload, the `Public Beta`
 TestFlight review and the iOS App Store version, prepared short of App Review,
 wait up to 30 minutes for the access service to report the tag's version and
-commit. In parallel the `developer-id` job archives before it holds any
-credential, then signs and notarizes the DMG; the upload waits for it, so a Mac
-failure ships no channel. The GitHub release rechecks the service and
+commit. In parallel `developer-id-archive` builds the Mac app without signing
+credentials and `developer-id` signs and notarizes its DMG; the upload waits
+for both, so a Mac failure ships no channel. The GitHub release rechecks the service and
 publishes the DMG as `Mumla.dmg`.
 
 - App Review submission and the App Store release stay with the maintainer.
