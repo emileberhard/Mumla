@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      app: ${{ steps.paths.outputs.app }}
+      access: ${{ steps.paths.outputs.access }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check affected paths
+        id: paths
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [[ $GITHUB_EVENT_NAME == push ]] || git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Eq '^(Mumla/|Shared/|Tests/|ios/|Apple/|Evaluations/|Mumla\.xcodeproj/|justfile$|scripts/(GrantKit\.revision|prepare-packages|select-xcode|sign-bundles|build-developer-id-dmg\.sh|check-build-configurations)$|\.xcode-version$|\.github/workflows/)'; then
+            echo 'app=true' >> "$GITHUB_OUTPUT"
+          fi
+          if [[ $GITHUB_EVENT_NAME == push ]] || git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Eq '^(services/access/|\.github/workflows/ci\.yml$)'; then
+            echo 'access=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  scripts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - run: uv run --with pytest python -m pytest -q scripts/tests
+
+  app:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/select-xcode
+      - run: scripts/prepare-packages
+      - name: Fetch the locked packages
+        timeout-minutes: 15
+        run: xcodebuild -resolvePackageDependencies -project Mumla.xcodeproj -scheme MumlaiOS -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -onlyUsePackageVersionsFromResolvedFile
+      - name: Verify effective build configurations
+        run: python3 scripts/check-build-configurations "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}/SourcePackages"
+      - name: Compile the iOS app and keyboard
+        run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaiOS -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
+      - name: Compile the macOS app
+        run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaMac -configuration Release -destination 'generic/platform=macOS' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
+      - name: Verify bundled third-party notices
+        env:
+          BUILD_ROOT: ${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}/Build/Products
+        run: |
+          python3 - <<'PYCODE'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["BUILD_ROOT"])
+          for bundle in (root / "Release-iphoneos/MumlaiOS.app", root / "Release/Mumla.app/Contents/Resources"):
+              assert (bundle / "THIRD_PARTY_NOTICES.md").read_bytes() == Path("THIRD_PARTY_NOTICES.md").read_bytes(), bundle
+              for license in Path("LICENSES").iterdir():
+                  assert (bundle / "LICENSES" / license.name).read_bytes() == license.read_bytes(), license.name
+          PYCODE
+      - name: Test the keyboard
+        run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaKeyboardTests -destination 'platform=macOS' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO test
+      - name: Test the shared core
+        run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaSharedTests -destination 'platform=macOS' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO test
+      - name: Remove build output
+        if: always()
+        run: rm -rf "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}"
+
+  access:
+    needs: changes
+    if: needs.changes.outputs.access == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/access
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: services/access/.bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun test --timeout 5000
+      - name: Build the Linux executable
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          bun build.ts 0.0.0 "$SOURCE_COMMIT" /tmp/mumla-access
+          /tmp/mumla-access version

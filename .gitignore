@@ -1,0 +1,21 @@
+xcuserdata/
+.DS_Store
+.claude/worktrees/
+
+# Derived output
+.local/
+dist/
+__pycache__/
+
+# Developer overrides and the debug router key
+Local.xcconfig
+InstallKey.xcconfig
+
+# Local realtime transcription evaluation outputs contain raw transcripts.
+Evaluations/RealtimeTranscription/results/
+
+# DMG payload inside the ark download-page artifact (distribution/)
+distribution/*/Mumla.dmg
+distribution/*/latest.json
+
+node_modules/

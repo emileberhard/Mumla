@@ -1,0 +1,365 @@
+name: Release
+
+on:
+  push:
+    tags: ['**']
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  admit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      actions: read
+      contents: read
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check that this is the newest version on main
+        run: |
+          [[ $VERSION =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "::error::$VERSION is not MAJOR.MINOR.PATCH."; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$VERSION is not on main."; exit 1; }
+          [[ $(git cat-file -t "refs/tags/$VERSION") == tag ]] || { echo "::error::Release tags must be annotated."; exit 1; }
+          newest=$(git tag --list | grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -V | tail -1)
+          [[ $newest == "$VERSION" ]] || { echo "::error::$newest is newer than $VERSION."; exit 1; }
+
+      - name: Wait for CI to pass on this commit
+        timeout-minutes: 35
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          started=$SECONDS
+          while :; do
+            state=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event push --commit "$GITHUB_SHA" --json status,conclusion \
+              --jq 'if any(.[]; .conclusion == "success") then "passed" elif any(.[]; .status != "completed") then "running" elif length > 0 then "failed" else "missing" end') \
+              || state=unknown
+            case $state in
+              passed) exit 0 ;;
+              failed) echo "::error::CI failed on $GITHUB_SHA."; exit 1 ;;
+              missing) (( SECONDS - started < 120 )) || { echo "::error::No CI run exists for $GITHUB_SHA; tag the commit a push to main ended on."; exit 1; } ;;
+            esac
+            sleep 10
+          done
+
+  handoff-preflight:
+    needs: admit
+    runs-on: ubuntu-24.04
+    environment: deployment-handoff
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check private deployment before allocating or uploading builds
+        env:
+          GH_TOKEN: ${{ secrets.MUMLA_DEPLOY_TOKEN }}
+        run: python3 .github/scripts/developer-id-handoff.py preflight
+
+  numbers:
+    needs: [admit, handoff-preflight]
+    runs-on: ubuntu-24.04
+    environment: testflight
+    timeout-minutes: 10
+    outputs:
+      ios: ${{ steps.numbers.outputs.ios }}
+      mac: ${{ steps.numbers.outputs.mac }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Reserve the next two global build numbers
+        id: numbers
+        env:
+          APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
+          APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+        run: |
+          umask 077
+          printf '%s' "$APP_STORE_CONNECT_KEY" > "$APP_STORE_CONNECT_KEY_PATH"
+          number=$(scripts/app-store-connect next-build-number)
+          echo "ios=$number" >> "$GITHUB_OUTPUT"
+          echo "mac=$((number + 1))" >> "$GITHUB_OUTPUT"
+
+      - name: Record the Developer ID build reservation
+        env:
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          BUILD_NUMBER: ${{ steps.numbers.outputs.mac }}
+        run: |
+          jq -n --arg repository "$GITHUB_REPOSITORY" --arg version "$VERSION" --arg commit "$COMMIT" \
+            --arg build "$BUILD_NUMBER" --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
+            '{source_repository:$repository,version:$version,commit:$commit,build:$build,source_run:$run,source_attempt:$attempt}' > "$RUNNER_TEMP/mac-reservation.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mac-reservation-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mac-reservation.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+
+  testflight-ios:
+    needs: [admit, numbers]
+    runs-on: xcode-27
+    environment: testflight
+    outputs:
+      build: ${{ steps.build.outputs.number }}
+    timeout-minutes: 80
+    permissions:
+      actions: read
+      contents: read
+    env:
+      VERSION: ${{ github.ref_name }}
+      BUILD_NUMBER: ${{ needs.numbers.outputs.ios }}
+      DEVELOPMENT_TEAM: ${{ vars.DEVELOPMENT_TEAM }}
+      APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - run: scripts/select-xcode
+
+      - name: Configure
+        env:
+          APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+          MUMLA_CLOUDKIT_API_TOKEN: ${{ secrets.MUMLA_CLOUDKIT_API_TOKEN }}
+        run: |
+          : "${DEVELOPMENT_TEAM:?Set the DEVELOPMENT_TEAM environment variable.}"
+          : "${APP_BUNDLE_ID:?Set the APP_BUNDLE_ID environment variable.}"
+          : "${MUMLA_CLOUDKIT_API_TOKEN:?Set the MUMLA_CLOUDKIT_API_TOKEN secret.}"
+          plutil -insert teamID -string "$DEVELOPMENT_TEAM" Apple/Config/ExportOptions.plist
+          umask 077
+          printf '%s' "$APP_STORE_CONNECT_KEY" > "$RUNNER_TEMP/AuthKey.p8"
+          printf 'MUMLA_CLOUDKIT_API_TOKEN = %s\n' "$MUMLA_CLOUDKIT_API_TOKEN" > Apple/Config/Local.xcconfig
+
+      - name: Check whether an earlier attempt started uploading
+        id: fence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          fenced=false
+          for ((attempt = 1; attempt < GITHUB_RUN_ATTEMPT; attempt++)); do
+            started=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$attempt/jobs?per_page=100" \
+              --jq '[.jobs[] | select(.name == "testflight-ios") | .steps[] | select(.name == "Upload to TestFlight" and .conclusion != "skipped" and .started_at != null)] | length' | awk '{n += $0} END {print n+0}')
+            (( started == 0 )) || fenced=true
+          done
+          echo "fenced=$fenced" >> "$GITHUB_OUTPUT"
+
+      - name: Select the build number, or the build an earlier attempt uploaded
+        id: build
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          FENCED: ${{ steps.fence.outputs.fenced }}
+        run: |
+          result=$(scripts/app-store-connect build-number IOS "$VERSION" "$([[ $FENCED == true ]] && echo fenced || echo open)")
+          read -r number state <<< "$result"
+          if [[ $state == new && $number -lt $BUILD_NUMBER ]]; then number=$BUILD_NUMBER; fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+          echo "uploaded=$([[ $state == uploaded ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "BUILD_NUMBER=$number" >> "$GITHUB_ENV"
+
+      - name: Fetch the locked packages
+        if: steps.build.outputs.uploaded != 'true'
+        timeout-minutes: 15
+        run: |
+          scripts/prepare-packages
+          xcodebuild -resolvePackageDependencies -project Mumla.xcodeproj -scheme MumlaiOS -onlyUsePackageVersionsFromResolvedFile
+
+      - name: Archive
+        if: steps.build.outputs.uploaded != 'true'
+        run: |
+          xcodebuild archive -quiet -project Mumla.xcodeproj -scheme MumlaiOS -configuration Release \
+            -destination generic/platform=iOS -archivePath "$RUNNER_TEMP/MumlaiOS.xcarchive" \
+            -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO
+          scripts/sign-bundles sign "$RUNNER_TEMP/MumlaiOS.xcarchive/Products/Applications/MumlaiOS.app" ios
+
+      - name: Upload the symbols to Sentry
+        if: steps.build.outputs.uploaded != 'true'
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: mumla
+        run: npx --yes @sentry/cli@3.8.2 debug-files upload --include-sources "$RUNNER_TEMP/MumlaiOS.xcarchive/dSYMs"
+
+      - name: Check the entitlements
+        if: steps.build.outputs.uploaded != 'true'
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          plutil -replace destination -string export -o "$RUNNER_TEMP/check.plist" Apple/Config/ExportOptions.plist
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/MumlaiOS.xcarchive" -exportPath "$RUNNER_TEMP/check" \
+            -exportOptionsPlist "$RUNNER_TEMP/check.plist" -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID"
+          unzip -q "$RUNNER_TEMP/check/MumlaiOS.ipa" -d "$RUNNER_TEMP/check"
+          app="$RUNNER_TEMP/check/Payload/MumlaiOS.app"
+          scripts/sign-bundles check "$app" ios
+          scripts/check-access-configuration "$app/Info.plist"
+          plutil -extract CFBundleShortVersionString raw "$app/Info.plist"
+          plutil -extract CFBundleVersion raw "$app/Info.plist"
+
+      - name: Wait for the ready access-service release
+        if: steps.build.outputs.uploaded != 'true'
+        timeout-minutes: 32
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: python3 .github/scripts/wait-for-access-service.py
+
+      - name: Upload to TestFlight
+        if: steps.build.outputs.uploaded != 'true'
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/MumlaiOS.xcarchive" -exportPath "$RUNNER_TEMP/upload" \
+            -exportOptionsPlist Apple/Config/ExportOptions.plist -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID"
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8" Apple/Config/Local.xcconfig
+
+  developer-id:
+    needs: [admit, numbers]
+    runs-on: ubuntu-24.04
+    environment: deployment-handoff
+    timeout-minutes: 100
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Hand off the admitted release and verify the public DMG receipt
+        env:
+          GH_TOKEN: ${{ secrets.MUMLA_DEPLOY_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+          SOURCE_COMMIT: ${{ github.sha }}
+          BUILD_NUMBER: ${{ needs.numbers.outputs.mac }}
+        run: python3 .github/scripts/developer-id-handoff.py
+
+  testflight-review:
+    needs: testflight-ios
+    runs-on: ubuntu-24.04
+    environment: testflight
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ github.ref_name }}
+      IOS_BUILD: ${{ needs.testflight-ios.outputs.build }}
+      APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Wait for the ready access-service release
+        timeout-minutes: 32
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: python3 .github/scripts/wait-for-access-service.py
+
+      - name: Set What to Test and submit the iOS build for TestFlight review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+        run: |
+          umask 077
+          printf '%s' "$APP_STORE_CONNECT_KEY" > "$APP_STORE_CONNECT_KEY_PATH"
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" --jq .object.sha)
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag" --jq .message > "$RUNNER_TEMP/notes.md"
+          scripts/app-store-connect testflight IOS "$VERSION" "$IOS_BUILD" "$RUNNER_TEMP/notes.md"
+
+  app-store:
+    needs: testflight-ios
+    runs-on: xcode-27
+    environment: testflight
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ github.ref_name }}
+      BUILD_NUMBER: ${{ needs.testflight-ios.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - run: scripts/select-xcode
+
+      - name: Capture the screenshots
+        run: |
+          umask 077
+          scripts/prepare-packages
+          Apple/AppStore/capture
+
+      - name: Wait for the ready access-service release
+        timeout-minutes: 32
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: python3 .github/scripts/wait-for-access-service.py
+
+      - name: Prepare the App Store version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
+          APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+        run: |
+          umask 077
+          printf '%s' "$APP_STORE_CONNECT_KEY" > "$APP_STORE_CONNECT_KEY_PATH"
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" --jq .object.sha)
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag" --jq .message > "$RUNNER_TEMP/notes.md"
+          scripts/app-store-connect app-store IOS "$VERSION" "$BUILD_NUMBER" .local/screenshots "$RUNNER_TEMP/notes.md"
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+
+  github-release:
+    needs: [admit, testflight-ios, developer-id]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - name: Publish the tag message as the release notes
+        shell: bash
+        run: |
+          tag=$(gh api "repos/$GH_REPO/git/ref/tags/$VERSION" --jq .object.sha)
+          gh api "repos/$GH_REPO/git/tags/$tag" --jq .message > "$RUNNER_TEMP/notes.md"
+          [[ -s $RUNNER_TEMP/notes.md ]] || { echo "::error::The $VERSION tag has no message to publish."; exit 1; }
+          newest=$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags" --jq '.[].ref | ltrimstr("refs/tags/")' \
+            | grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -V | tail -1)
+          latest=()
+          [[ $VERSION == "$newest" ]] || latest=(--latest=false)
+          gh release create "$VERSION" --verify-tag --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" "${latest[@]}"

@@ -1,0 +1,15 @@
+# Onboarding
+
+Both wizards end when a dictated transcript newly appears in the wizard's own field. `TryItLanding` records the published transcript and requires a new occurrence of it, so typing or a transcript delivered elsewhere cannot complete setup. iCloud and the allowance appear only when they block dictation, and the free minutes appear at most once, from `MumlaAccess`. Phases derive from persistent state because macOS relaunches after an Input Monitoring grant and iOS kills the app when a permission flips in Settings.
+
+## macOS
+
+`Onboarding.swift` shows until the permissions are granted and the try-it has been reached once (`onboardingWelcomeSeen`). One screen grants every permission with live rows and one guide at a time. When the event tap fails, Restart is offered only if Input Monitoring was granted after launch, the case a relaunch fixes; otherwise Continue finishes setup, so a sandboxed build or a wrong reading costs at most one restart and never loops.
+
+## iOS
+
+`MumlaiOSApp` blocks on the wizard until `DictationCoordinator.setupComplete` (microphone, keyboard used once with Full Access) and, once started, until the try-it lands or is skipped (`onboardingTryItPending`). The keyboard connects through its App Group stamp from the in-screen field, and the microphone is requested once it has. The idle audio session that lets the keyboard start dictation begins on activation only once that stamp exists (`IdleSessionPolicy`), so earlier steps never show the microphone indicator. Debug-only `mumla://debug/onboarding` resets both.
+
+A keyboard without Full Access cannot write the stamp, so a missing stamp is the only signal, and a slow extension launch looks the same. `KeyboardConnectionCheck` therefore reports an unconfirmed connection, never a denial. It reads the first responder's input mode, because `currentInputModeDidChangeNotification` carries no mode, and infers Mumla only when Mumla is the sole active input mode reporting the extension's `PrimaryLanguage`; another keyboard with the same language disables the inference. It evaluates on input-mode changes, `keyboardDidShow`, field focus and return from Settings, so an already selected keyboard is covered. The state lives in memory, clears when a late stamp lands or another keyboard takes over, and never dismisses the keyboard; one field spans the connect, unconfirmed and dictate phases so a phase change keeps it focused. Once a stamp or a successful dictation confirms the connection, the check stops for the rest of the process: iOS terminates the app when Full Access changes. `activeInputModes` is declared under reason 54BD.1 in the app's `PrivacyInfo.xcprivacy`, which forbids sending active-keyboard information off-device, so the check reports nothing to diagnostics.
+
+The 1.5 s deadline is about four times the slowest measured cold switch: on an iPhone 14 Plus, eight cold extension launches, including a globe-menu switch, stamped 201–387 ms after the keyboard appeared. Remeasure on the slowest supported device before shortening it.
