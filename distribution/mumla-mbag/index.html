@@ -261,10 +261,9 @@
     <article class="card detail-card">
       <h2>Your dictation data</h2>
       <ul>
-        <li>Choose among the supported transcription models.</li>
-        <li>Audio is processed by the selected provider through llm-router.</li>
+        <li>Speech is transcribed by Microsoft's MAI-Transcribe-2 through Mumla's access service, which stores no audio or text.</li>
         <li>History, dictionary entries, and original audio sync through your private iCloud database.</li>
-        <li>Optional Mac screen context is sent for text cleanup. Crash diagnostics go to Sentry.</li>
+        <li>Mumla never captures your screen. Crash diagnostics go to Sentry.</li>
       </ul>
     </article>
   </section>
@@ -284,6 +283,7 @@
     .then((release) => {
       const dmg = release?.assets?.find((asset) => asset.name === "Mumla.dmg");
       if (!dmg) return;
+      document.querySelector(".download-btn").href = dmg.browser_download_url;
       const date = new Date(release.published_at).toLocaleDateString("en-US", {
         year: "numeric", month: "short", day: "numeric",
       });

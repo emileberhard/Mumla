@@ -264,8 +264,8 @@ container `iCloud.emileberhard.WisprClone`.
   the public link accepts testers.
 - The access session lives in the data-protection Keychain (`KeychainStore`,
   DP-only queries). macOS grants keychain access groups only from a
-  provisioning profile (TN3137), so Debug and Developer ID builds sign with the
-  "Mumla Mac Development" and "Mumla Mac Developer ID" profiles, which share
+  provisioning profile (TN3137), so Debug signs with "Mumla Mac Development"
+  and the release's Developer ID build with "Mumla Developer ID CI", which share
   bundle ID `emileberhard.WisprClone` and one access group. Both apps delete
   retired provider-key items at launch. The `security` CLI cannot see these
   items; `--delete-credentials` removes them.
@@ -483,8 +483,8 @@ channels finish, so it also follows the service gate.
   digest a retry must match. Re-running all jobs builds a different DMG that
   the published one rejects; a mismatch or a fix ships as the next patch.
 - The `testflight` environment (App Store Connect, Developer ID, Sentry,
-  CloudKit token) is limited to version tags, so `main` and version tags stay
-  maintainer-only.
+  CloudKit token) admits only version tags, and only the maintainer may
+  create tags, so only maintainer tags reach its secrets.
 - Cloud signing needs the App Group on every App ID; capability edits
   invalidate profiles, including the `testflight` Developer ID profile secret.
 - iOS and the sandboxed Mac target share `emileberhard.WisprClone.ios` (one App
