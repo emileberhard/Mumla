@@ -1,0 +1,979 @@
+#!/usr/bin/env -S uv run --quiet --script
+# /// script
+# requires-python = ">=3.14"
+# dependencies = []
+# ///
+import argparse
+import contextlib
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+import re
+import shutil
+import stat
+import sys
+import unicodedata
+import uuid
+from collections.abc import Generator, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import NoReturn
+from zoneinfo import ZoneInfo
+
+FORMAT = 1
+SOURCE_FORMAT = 1
+MARKER = ".mumla-dictation-backup.json"
+MARKER_KIND = "mumla-dictation-backup"
+LOCK = "lock"
+MANIFEST = "manifest.json"
+SNAPSHOT_FILE = "snapshot.json"
+LATEST_FILE = "latest.json"
+CHUNK = 4 * 1024 * 1024
+BLOCK = 4096
+MAX_DEPTH = 32
+MAX_PATH = 1024
+MAX_JSON = 512 * 1024 * 1024
+DEFAULT_EXPORTS_ROOT = Path.home() / "Library/Application Support/WisprClone/CombinedDictationExports"
+DEFAULT_BUDGET = 96 * 2**30
+DEFAULT_KEEP_DAILY = 14
+STOCKHOLM = ZoneInfo("Europe/Stockholm")
+NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:+=-]{0,127}")
+SHA_RE = re.compile(r"[0-9a-f]{64}")
+EXIT = {
+    "io": 1,
+    "usage": 2,
+    "capacity": 3,
+    "source": 4,
+    "integrity": 5,
+    "destination": 6,
+    "busy": 7,
+    "target": 8,
+    "incomplete": 9,
+}
+
+
+class Failure(Exception):
+    def __init__(self, kind: str, message: str, **detail: object) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+        self.detail = detail
+
+    def as_json(self) -> dict[str, object]:
+        return {"kind": self.kind, "message": self.message, **self.detail}
+
+
+@dataclass(frozen=True)
+class SourceFile:
+    rel: str
+    size: int
+    mtime_ns: int
+    ino: int
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    account: str
+    id: str
+    created: dt.datetime
+    files: list[dict]
+
+    @property
+    def total_bytes(self) -> int:
+        return sum(f["size"] for f in self.files)
+
+    @property
+    def manifest_sha256(self) -> str:
+        return next(f["sha256"] for f in self.files if f["path"] == MANIFEST)
+
+
+@dataclass(frozen=True)
+class Destination:
+    root: Path
+    budget: int
+    keep_daily: int
+
+    @property
+    def blobs(self) -> Path:
+        return self.root / "blobs"
+
+    @property
+    def accounts(self) -> Path:
+        return self.root / "accounts"
+
+    @property
+    def staging(self) -> Path:
+        return self.root / "staging"
+
+    def blob(self, sha: str) -> Path:
+        return self.blobs / sha[:2] / sha
+
+    def snapshot_dir(self, account: str, snapshot: str) -> Path:
+        return self.accounts / account / "snapshots" / snapshot
+
+    def latest_file(self, account: str) -> Path:
+        return self.accounts / account / LATEST_FILE
+
+
+def utcnow() -> dt.datetime:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0)
+
+
+def name_ok(name: str) -> bool:
+    return NAME_RE.fullmatch(name) is not None
+
+
+def valid_relpath(rel: object) -> bool:
+    if not isinstance(rel, str) or not rel or len(rel) > MAX_PATH:
+        return False
+    parts = rel.split("/")
+    if len(parts) > MAX_DEPTH:
+        return False
+    try:
+        return all(
+            part not in ("", ".", "..") and "\0" not in part and len(part.encode("utf-8")) <= 255 for part in parts
+        )
+    except UnicodeEncodeError:
+        return False
+
+
+def alloc(size: int) -> int:
+    return -(-size // BLOCK) * BLOCK
+
+
+def canonical(value: object) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def sync_fd(fd: int) -> None:
+    full = getattr(fcntl, "F_FULLFSYNC", None)
+    if full is not None:
+        try:
+            fcntl.fcntl(fd, full)
+            return
+        except OSError:
+            pass
+    os.fsync(fd)
+
+
+def sync_dir(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        sync_fd(fd)
+    finally:
+        os.close(fd)
+
+
+def bypass_cache(fd: int) -> None:
+    with contextlib.suppress(OSError):
+        fcntl.fcntl(fd, getattr(fcntl, "F_NOCACHE", 48), 1)
+
+
+def read_digest(path: Path) -> tuple[str, int] | None:
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+    with os.fdopen(fd, "rb", buffering=0) as fh:
+        if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+            return None
+        bypass_cache(fh.fileno())
+        digest = hashlib.sha256()
+        size = 0
+        while chunk := fh.read(CHUNK):
+            digest.update(chunk)
+            size += len(chunk)
+        return digest.hexdigest(), size
+
+
+def write_atomic(dest: Destination, path: Path, data: bytes) -> None:
+    tmp = dest.staging / f"write-{uuid.uuid4().hex}"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            sync_fd(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            tmp.unlink()
+        raise
+    sync_dir(path.parent)
+
+
+def used_bytes(dest: Destination) -> int:
+    total = 0
+    for name in (MARKER, LOCK, "blobs", "accounts", "staging"):
+        top = dest.root / name
+        try:
+            st = os.lstat(top)
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISDIR(st.st_mode):
+            total += st.st_blocks * 512
+            continue
+        for directory, _, names in os.walk(top):
+            for entry in names:
+                total += os.lstat(os.path.join(directory, entry)).st_blocks * 512
+    return total
+
+
+def walk_export(root: Path) -> list[SourceFile]:
+    top = os.lstat(root)
+    if not stat.S_ISDIR(top.st_mode):
+        raise Failure("source", "export is not a directory")
+    files: list[SourceFile] = []
+    seen: set[str] = set()
+    stack = [(root, "", 1)]
+    while stack:
+        directory, prefix, depth = stack.pop()
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                rel = prefix + entry.name
+                if not valid_relpath(rel):
+                    raise Failure("source", "export contains an invalid path")
+                st = entry.stat(follow_symlinks=False)
+                if stat.S_ISDIR(st.st_mode):
+                    if depth >= MAX_DEPTH:
+                        raise Failure("source", "export is nested too deeply")
+                    stack.append((Path(entry.path), rel + "/", depth + 1))
+                elif stat.S_ISREG(st.st_mode):
+                    folded = unicodedata.normalize("NFC", rel).casefold()
+                    if folded in seen:
+                        raise Failure("source", "export contains paths that collide on case-insensitive volumes")
+                    seen.add(folded)
+                    files.append(SourceFile(rel, st.st_size, st.st_mtime_ns, st.st_ino))
+                else:
+                    raise Failure("source", "export contains a symlink or special file")
+    files.sort(key=lambda f: f.rel)
+    return files
+
+
+def source_changed() -> Failure:
+    return Failure("source", "export changed while it was being backed up")
+
+
+def open_source(root: Path, file: SourceFile) -> tuple[int, os.stat_result]:
+    fd = os.open(root / file.rel, os.O_RDONLY | os.O_NOFOLLOW)
+    st = os.fstat(fd)
+    if (st.st_size, st.st_mtime_ns, st.st_ino) != (file.size, file.mtime_ns, file.ino):
+        os.close(fd)
+        raise source_changed()
+    return fd, st
+
+
+def hash_source(root: Path, file: SourceFile) -> str:
+    fd, before = open_source(root, file)
+    with os.fdopen(fd, "rb", buffering=0) as fh:
+        digest = hashlib.file_digest(fh, "sha256").hexdigest()
+        after = os.fstat(fh.fileno())
+    if (after.st_size, after.st_mtime_ns) != (before.st_size, before.st_mtime_ns):
+        raise source_changed()
+    return digest
+
+
+def stage_blob(root: Path, file: SourceFile, sha: str, stage: Path) -> Path:
+    tmp = stage / f"blob-{uuid.uuid4().hex}"
+    fd, before = open_source(root, file)
+    digest = hashlib.sha256()
+    with os.fdopen(fd, "rb", buffering=0) as src:
+        out = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(out, "wb") as dst:
+            while chunk := src.read(CHUNK):
+                digest.update(chunk)
+                dst.write(chunk)
+            dst.flush()
+            sync_fd(dst.fileno())
+        after = os.fstat(src.fileno())
+    if digest.hexdigest() != sha or (after.st_size, after.st_mtime_ns) != (before.st_size, before.st_mtime_ns):
+        tmp.unlink()
+        raise source_changed()
+    tmp.chmod(0o444)
+    return tmp
+
+
+def commit_blob(dest: Destination, tmp: Path, sha: str, touched: set[Path]) -> None:
+    target = dest.blob(sha)
+    target.parent.mkdir(exist_ok=True)
+    os.replace(tmp, target)
+    touched.add(target.parent)
+
+
+def parse_time(value: object) -> dt.datetime:
+    try:
+        parsed = dt.datetime.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        parsed = None
+    if parsed is None or parsed.tzinfo is None:
+        raise Failure("integrity", "snapshot index is invalid")
+    return parsed
+
+
+def check_file_records(files: object) -> list[dict]:
+    if not isinstance(files, list):
+        raise Failure("integrity", "snapshot index is invalid")
+    paths: set[str] = set()
+    for record in files:
+        if (
+            not isinstance(record, dict)
+            or set(record) != {"path", "size", "sha256"}
+            or not valid_relpath(record["path"])
+            or type(record["size"]) is not int
+            or record["size"] < 0
+            or not isinstance(record["sha256"], str)
+            or SHA_RE.fullmatch(record["sha256"]) is None
+            or record["path"] in paths
+        ):
+            raise Failure("integrity", "snapshot index is invalid")
+        paths.add(record["path"])
+    if MANIFEST not in paths:
+        raise Failure("integrity", "snapshot index is invalid")
+    return sorted(files, key=lambda f: f["path"])
+
+
+def parse_snapshot(raw: bytes, account: str, snapshot: str) -> Snapshot:
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        raise Failure("integrity", "snapshot index is invalid") from None
+    if isinstance(data, dict) and data.get("format") != FORMAT and "format" in data:
+        raise Failure("destination", "snapshot index has an unsupported format version", found=data["format"])
+    if (
+        not isinstance(data, dict)
+        or set(data) != {"format", "account", "snapshot", "created_at", "files"}
+        or data["account"] != account
+        or data["snapshot"] != snapshot
+    ):
+        raise Failure("integrity", "snapshot index is invalid")
+    return Snapshot(account, snapshot, parse_time(data["created_at"]), check_file_records(data["files"]))
+
+
+def read_bounded(path: Path) -> bytes:
+    with open(path, "rb") as fh:
+        raw = fh.read(MAX_JSON + 1)
+    if len(raw) > MAX_JSON:
+        raise Failure("integrity", "index file is too large")
+    return raw
+
+
+def child_dirs(parent: Path) -> list[str]:
+    try:
+        entries = sorted(os.scandir(parent), key=lambda e: e.name)
+    except FileNotFoundError:
+        return []
+    for entry in entries:
+        if not name_ok(entry.name) or not entry.is_dir(follow_symlinks=False):
+            raise Failure("integrity", "destination contains an unexpected entry", location=parent.name)
+    return [e.name for e in entries]
+
+
+def load_account(dest: Destination, account: str) -> dict[str, Snapshot]:
+    base = dest.accounts / account / "snapshots"
+    return {sid: parse_snapshot(read_bounded(base / sid / SNAPSHOT_FILE), account, sid) for sid in child_dirs(base)}
+
+
+def load_all(dest: Destination) -> list[Snapshot]:
+    return [s for account in child_dirs(dest.accounts) for s in load_account(dest, account).values()]
+
+
+def read_latest(dest: Destination, account: str, snapshots: dict[str, Snapshot]) -> dict | None:
+    try:
+        raw = read_bounded(dest.latest_file(account))
+    except FileNotFoundError:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        raise Failure("integrity", "latest receipt is invalid", account=account) from None
+    keys = {"format", "account", "snapshot", "created_at", "verified_at", "files", "bytes", "manifest_sha256", "source"}
+    if not isinstance(data, dict) or set(data) != keys or data["account"] != account or data["format"] != FORMAT:
+        raise Failure("integrity", "latest receipt is invalid", account=account)
+    return data if data["snapshot"] in snapshots else None
+
+
+def retained(created: dict[str, dt.datetime], latest: str | None, keep_daily: int) -> set[str]:
+    by_day: dict[dt.date, str] = {}
+    for sid, when in sorted(created.items(), key=lambda kv: (kv[1], kv[0])):
+        by_day[when.astimezone(STOCKHOLM).date()] = sid
+    keep = {by_day[day] for day in sorted(by_day, reverse=True)[:keep_daily]}
+    if latest is not None:
+        keep.add(latest)
+    return keep
+
+
+def prune_account(dest: Destination, account: str, keep: set[str], snapshots: dict[str, Snapshot]) -> int:
+    doomed = [sid for sid in snapshots if sid not in keep]
+    for sid in doomed:
+        shutil.rmtree(dest.snapshot_dir(account, sid))
+    return len(doomed)
+
+
+def collect_garbage(dest: Destination) -> None:
+    referenced = {f["sha256"] for s in load_all(dest) for f in s.files}
+    for shard in os.scandir(dest.blobs):
+        if not shard.is_dir(follow_symlinks=False):
+            os.unlink(shard.path)
+            continue
+        for entry in os.scandir(shard.path):
+            if entry.name not in referenced:
+                os.unlink(entry.path)
+
+
+def clear_staging(dest: Destination) -> None:
+    for entry in os.scandir(dest.staging):
+        if entry.is_dir(follow_symlinks=False):
+            shutil.rmtree(entry.path)
+        else:
+            os.unlink(entry.path)
+
+
+def readback(dest: Destination, wanted: dict[str, int]) -> list[str]:
+    bad = []
+    for sha, size in wanted.items():
+        found = read_digest(dest.blob(sha))
+        if found != (sha, size):
+            bad.append(sha)
+    return bad
+
+
+def wanted_blobs(files: Sequence[dict]) -> dict[str, int]:
+    wanted: dict[str, int] = {}
+    for f in files:
+        if wanted.setdefault(f["sha256"], f["size"]) != f["size"]:
+            raise Failure("integrity", "snapshot index lists one checksum with different sizes")
+    return wanted
+
+
+def blob_origins(files: list[dict], entries: list[SourceFile]) -> dict[str, SourceFile]:
+    origin: dict[str, SourceFile] = {}
+    for f, entry in zip(files, entries, strict=True):
+        origin.setdefault(f["sha256"], entry)
+    return origin
+
+
+def verify_and_heal(
+    dest: Destination,
+    export_dir: Path,
+    origin: dict[str, SourceFile],
+    wanted: dict[str, int],
+    stage: Path,
+    touched: set[Path],
+) -> int:
+    bad = readback(dest, wanted)
+    for sha in bad:
+        commit_blob(dest, stage_blob(export_dir, origin[sha], sha, stage), sha, touched)
+    if bad and readback(dest, {sha: wanted[sha] for sha in bad}):
+        raise Failure("integrity", "destination blobs failed readback verification", bad_blobs=len(bad))
+    for directory in touched:
+        sync_dir(directory)
+    return len(bad)
+
+
+def check_unchanged(export_dir: Path, entries: list[SourceFile]) -> None:
+    if walk_export(export_dir) != entries:
+        raise source_changed()
+
+
+def publish_snapshot(
+    dest: Destination,
+    export_dir: Path,
+    entries: list[SourceFile],
+    files: list[dict],
+    account: str,
+    sid: str,
+    now: dt.datetime,
+    existing: dict[str, Snapshot],
+    stage: Path,
+) -> dict[str, int]:
+    index = canonical(
+        {"format": FORMAT, "account": account, "snapshot": sid, "created_at": now.isoformat(), "files": files}
+    )
+    wanted = wanted_blobs(files)
+
+    def missing() -> dict[str, int]:
+        found = {}
+        for sha, size in wanted.items():
+            try:
+                st = os.lstat(dest.blob(sha))
+            except FileNotFoundError:
+                found[sha] = size
+                continue
+            if not stat.S_ISREG(st.st_mode) or st.st_size != size:
+                found[sha] = size
+        return found
+
+    def needed(absent: dict[str, int]) -> int:
+        return sum(alloc(size) for size in absent.values()) + alloc(len(index))
+
+    absent = missing()
+    used = used_bytes(dest)
+    if used + needed(absent) > dest.budget:
+        created = {k: v.created for k, v in existing.items()} | {sid: now}
+        latest = read_latest(dest, account, existing)
+        newest = sid if latest is None or latest["snapshot"] <= sid else latest["snapshot"]
+        keep = retained(created, newest, dest.keep_daily)
+        if latest is not None:
+            keep.add(latest["snapshot"])
+        prune_account(dest, account, keep, existing)
+        collect_garbage(dest)
+        absent = missing()
+        used = used_bytes(dest)
+        if used + needed(absent) > dest.budget:
+            raise Failure(
+                "capacity",
+                "backup cap cannot be met; nothing was published and the latest recovery point is preserved",
+                used_bytes=used,
+                needed_bytes=needed(absent),
+                budget_bytes=dest.budget,
+            )
+    free = shutil.disk_usage(dest.root).free
+    if needed(absent) > free:
+        raise Failure("capacity", "destination volume is full", needed_bytes=needed(absent), free_bytes=free)
+
+    touched: set[Path] = set()
+    origin = blob_origins(files, entries)
+    for sha in absent:
+        commit_blob(dest, stage_blob(export_dir, origin[sha], sha, stage), sha, touched)
+    repaired = verify_and_heal(dest, export_dir, origin, wanted, stage, touched)
+    check_unchanged(export_dir, entries)
+    for directory in touched:
+        sync_dir(directory)
+    sync_dir(dest.blobs)
+    snap_stage = stage / "snapshot"
+    snap_stage.mkdir()
+    fd = os.open(snap_stage / SNAPSHOT_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(index)
+        fh.flush()
+        sync_fd(fh.fileno())
+    target = dest.snapshot_dir(account, sid)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    os.rename(snap_stage, target)
+    sync_dir(target.parent)
+    return {"new_blob_bytes": sum(absent.values()), "new_blobs": len(absent), "repaired_blobs": repaired}
+
+
+def summarize(section: dict) -> dict:
+    return {
+        key: len(value) if isinstance(value, list) else value
+        for key, value in section.items()
+        if isinstance(value, list | str | int | float | bool) or value is None
+    }
+
+
+def read_source_manifest(export_dir: Path, files: list[dict], account: str) -> dict:
+    record = next(f for f in files if f["path"] == MANIFEST)
+    if record["size"] > MAX_JSON:
+        raise Failure("source", "export manifest.json is too large")
+    raw = (export_dir / MANIFEST).read_bytes()
+    if hashlib.sha256(raw).hexdigest() != record["sha256"]:
+        raise source_changed()
+    try:
+        manifest = json.loads(raw)
+    except ValueError:
+        manifest = None
+    if not isinstance(manifest, dict):
+        raise Failure("source", "export manifest.json is not a JSON object")
+    if manifest.get("formatVersion") != SOURCE_FORMAT:
+        raise Failure("source", "export has an unsupported format version", found=manifest.get("formatVersion"))
+    owner, freshness, completeness = manifest.get("account"), manifest.get("freshness"), manifest.get("completeness")
+    declared = manifest.get("files")
+    if (
+        not isinstance(owner, dict)
+        or owner.get("hash") != account
+        or type(manifest.get("complete")) is not bool
+        or type(manifest.get("createdAt")) not in (int, float)
+        or not isinstance(freshness, dict)
+        or not isinstance(completeness, dict)
+        or not isinstance(declared, list)
+    ):
+        raise Failure("source", "export manifest.json does not match the export contract")
+    listed = sorted((d.get("path"), d.get("byteCount"), d.get("sha256")) for d in declared if isinstance(d, dict))
+    actual = sorted((f["path"], f["size"], f["sha256"]) for f in files if f["path"] != MANIFEST)
+    if len(listed) != len(declared) or listed != actual:
+        raise Failure("source", "export files do not match its manifest.json")
+    return {
+        "complete": manifest["complete"],
+        "created_at": manifest["createdAt"],
+        "freshness": summarize(freshness),
+        "completeness": summarize(completeness),
+    }
+
+
+def backup_export(dest: Destination, export_dir: Path) -> dict:
+    account, sid = export_dir.parent.name, export_dir.name
+    if not (name_ok(account) and name_ok(sid)):
+        raise Failure("source", "export location names are invalid")
+    entries = walk_export(export_dir)
+    if not any(e.rel == MANIFEST for e in entries):
+        raise Failure("source", "export has no manifest.json; it is not sealed")
+    files = [{"path": e.rel, "size": e.size, "sha256": hash_source(export_dir, e)} for e in entries]
+    source = read_source_manifest(export_dir, files, account)
+    if not source["complete"]:
+        raise Failure(
+            "incomplete", "export is marked incomplete; the last-good recovery point was left unchanged", source=source
+        )
+
+    existing = load_account(dest, account)
+    now = utcnow()
+    stage = dest.staging / uuid.uuid4().hex
+    stage.mkdir()
+    try:
+        if sid in existing:
+            snapshot = existing[sid]
+            if snapshot.files != files:
+                raise Failure("source", "a sealed export with this id was already backed up with different content")
+            check_unchanged(export_dir, entries)
+            repaired = verify_and_heal(
+                dest, export_dir, blob_origins(files, entries), wanted_blobs(files), stage, set()
+            )
+            status, stats = "unchanged", {"new_blob_bytes": 0, "new_blobs": 0, "repaired_blobs": repaired}
+            created = snapshot.created
+        else:
+            stats = publish_snapshot(dest, export_dir, entries, files, account, sid, now, existing, stage)
+            status, created = "created", now
+            existing = load_account(dest, account)
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+    verified_at = utcnow()
+    snapshot = existing[sid]
+    current = read_latest(dest, account, existing)
+    is_latest = current is None or current["snapshot"] <= sid
+    if is_latest:
+        write_atomic(
+            dest,
+            dest.latest_file(account),
+            canonical(
+                {
+                    "format": FORMAT,
+                    "account": account,
+                    "snapshot": sid,
+                    "created_at": created.isoformat(),
+                    "verified_at": verified_at.isoformat(),
+                    "files": len(files),
+                    "bytes": snapshot.total_bytes,
+                    "manifest_sha256": snapshot.manifest_sha256,
+                    "source": source,
+                }
+            ),
+        )
+    latest_id = sid if is_latest else current["snapshot"]
+    pruned = prune_account(
+        dest,
+        account,
+        retained({k: v.created for k, v in existing.items()}, latest_id, dest.keep_daily),
+        existing,
+    )
+    collect_garbage(dest)
+    return {
+        "account": account,
+        "snapshot": sid,
+        "status": status,
+        "created_at": created.isoformat(),
+        "verified_at": verified_at.isoformat(),
+        "files": len(files),
+        "bytes": snapshot.total_bytes,
+        "source_manifest_sha256": snapshot.manifest_sha256,
+        "source": source,
+        "is_latest": is_latest,
+        "pruned_snapshots": pruned,
+        **stats,
+    }
+
+
+def sealed_exports(root: Path) -> list[Path]:
+    exports = []
+    for account in sorted(os.scandir(root), key=lambda e: e.name):
+        if not name_ok(account.name) or not account.is_dir(follow_symlinks=False):
+            continue
+        sealed = [
+            Path(e.path)
+            for e in os.scandir(account.path)
+            if name_ok(e.name)
+            and e.is_dir(follow_symlinks=False)
+            and os.path.isfile(os.path.join(e.path, MANIFEST))
+            and not os.path.islink(os.path.join(e.path, MANIFEST))
+        ]
+        if sealed:
+            exports.append(max(sealed, key=lambda p: p.name))
+    if not exports:
+        raise Failure("source", "no sealed exports found")
+    return exports
+
+
+@contextlib.contextmanager
+def locked_destination(dest: Destination, create: bool) -> Generator[None]:
+    root = dest.root
+    marker = root / MARKER
+    if not marker.exists():
+        if not create:
+            raise Failure("destination", "not an owned backup destination")
+        if root.is_symlink() or (root.exists() and not root.is_dir()):
+            raise Failure("destination", "destination is not a directory")
+        root.mkdir(parents=True, exist_ok=True)
+        if set(os.listdir(root)) - {LOCK}:
+            raise Failure("destination", "destination is not empty and not an owned backup destination")
+    fd = os.open(root / LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Failure("busy", "another backup process owns the destination") from None
+        if marker.exists():
+            try:
+                data = json.loads(marker.read_bytes())
+            except ValueError:
+                raise Failure("destination", "destination marker is invalid") from None
+            if not isinstance(data, dict) or data.get("kind") != MARKER_KIND:
+                raise Failure("destination", "destination marker is invalid")
+            if data.get("format") != FORMAT:
+                raise Failure("destination", "destination has an unsupported format version", found=data.get("format"))
+        else:
+            mfd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+            with os.fdopen(mfd, "wb") as fh:
+                fh.write(canonical({"format": FORMAT, "kind": MARKER_KIND, "id": str(uuid.uuid4())}))
+                fh.flush()
+                sync_fd(fh.fileno())
+        for sub in (dest.blobs, dest.accounts, dest.staging):
+            if sub.is_symlink():
+                raise Failure("destination", "destination contains a symlinked directory")
+            sub.mkdir(exist_ok=True)
+        yield
+    finally:
+        os.close(fd)
+
+
+def destination_usage(dest: Destination) -> dict[str, int]:
+    return {"used_bytes": used_bytes(dest), "budget_bytes": dest.budget}
+
+
+def run_backup(args: argparse.Namespace) -> tuple[dict, int]:
+    dest = Destination(args.dest, args.budget_bytes, args.keep_daily)
+    exports = [args.export.resolve()] if args.export else sealed_exports(args.exports_root)
+    results: list[dict] = []
+    code = 0
+    with locked_destination(dest, create=True):
+        clear_staging(dest)
+        collect_garbage(dest)
+        for export in exports:
+            try:
+                results.append({"ok": True, **backup_export(dest, export)})
+            except Failure as failure:
+                results.append(
+                    {"ok": False, "account": export.parent.name, "snapshot": export.name, "error": failure.as_json()}
+                )
+                code = code or EXIT[failure.kind]
+        return {"ok": code == 0, "destination": destination_usage(dest), "results": results}, code
+
+
+def run_verify(args: argparse.Namespace) -> tuple[dict, int]:
+    dest = Destination(args.dest, args.budget_bytes, DEFAULT_KEEP_DAILY)
+    with locked_destination(dest, create=False):
+        snapshots = load_all(dest)
+        wanted: dict[str, int] = {}
+        for s in snapshots:
+            for sha, size in wanted_blobs(s.files).items():
+                if wanted.setdefault(sha, size) != size:
+                    raise Failure("integrity", "snapshot indexes list one checksum with different sizes")
+        bad = set(readback(dest, wanted))
+        report = []
+        latest_problems = 0
+        for account in child_dirs(dest.accounts):
+            account_snaps = load_account(dest, account)
+            if account_snaps and read_latest(dest, account, account_snaps) is None:
+                latest_problems += 1
+            for s in account_snaps.values():
+                report.append(
+                    {
+                        "account": account,
+                        "snapshot": s.id,
+                        "files": len(s.files),
+                        "bytes": s.total_bytes,
+                        "ok": not any(f["sha256"] in bad for f in s.files),
+                    }
+                )
+        orphans = 0
+        referenced = set(wanted)
+        for shard in os.scandir(dest.blobs):
+            orphans += sum(1 for e in os.scandir(shard.path) if e.name not in referenced)
+        usage = destination_usage(dest)
+        result = {
+            "ok": not bad and not latest_problems,
+            "destination": usage,
+            "snapshots": report,
+            "unique_blobs": len(wanted),
+            "bad_blobs": sorted(bad),
+            "accounts_without_valid_latest": latest_problems,
+            "orphan_blobs": orphans,
+        }
+        if bad or latest_problems:
+            return result, EXIT["integrity"]
+        if usage["used_bytes"] > dest.budget:
+            result["ok"] = False
+            return result, EXIT["capacity"]
+        return result, 0
+
+
+def run_status(args: argparse.Namespace) -> tuple[dict, int]:
+    dest = Destination(args.dest, args.budget_bytes, DEFAULT_KEEP_DAILY)
+    with locked_destination(dest, create=False):
+        accounts = []
+        for account in child_dirs(dest.accounts):
+            snapshots = load_account(dest, account)
+            accounts.append(
+                {
+                    "account": account,
+                    "snapshots": len(snapshots),
+                    "latest": read_latest(dest, account, snapshots),
+                }
+            )
+        usage = destination_usage(dest)
+        return {"ok": usage["used_bytes"] <= dest.budget, "destination": usage, "accounts": accounts}, (
+            0 if usage["used_bytes"] <= dest.budget else EXIT["capacity"]
+        )
+
+
+def copy_verified(blob: Path, out_path: Path, sha: str, size: int) -> None:
+    try:
+        src_fd = os.open(blob, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        raise Failure("integrity", "destination blob is missing", sha256=sha) from None
+    digest = hashlib.sha256()
+    copied = 0
+    with os.fdopen(src_fd, "rb", buffering=0) as src:
+        out = os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        with os.fdopen(out, "wb") as dst:
+            while chunk := src.read(CHUNK):
+                digest.update(chunk)
+                copied += len(chunk)
+                dst.write(chunk)
+            dst.flush()
+            sync_fd(dst.fileno())
+    if (digest.hexdigest(), copied) != (sha, size):
+        raise Failure("integrity", "destination blob failed verification", sha256=sha)
+
+
+def run_restore(args: argparse.Namespace) -> tuple[dict, int]:
+    dest = Destination(args.dest, DEFAULT_BUDGET, DEFAULT_KEEP_DAILY)
+    target: Path = args.target.absolute()
+    if not name_ok(args.account) or (args.snapshot is not None and not name_ok(args.snapshot)):
+        raise Failure("usage", "account or snapshot name is invalid")
+    if target.is_symlink() or (target.exists() and (not target.is_dir() or any(target.iterdir()))):
+        raise Failure("target", "restore target must be a new or empty directory")
+    if target.resolve().is_relative_to(dest.root.resolve()):
+        raise Failure("target", "restore target must be outside the backup destination")
+    with locked_destination(dest, create=False):
+        snapshots = load_account(dest, args.account)
+        if args.snapshot is None:
+            latest = read_latest(dest, args.account, snapshots)
+            if latest is None:
+                raise Failure("integrity", "account has no valid latest recovery point")
+            snapshot_id = latest["snapshot"]
+        else:
+            snapshot_id = args.snapshot
+        if snapshot_id not in snapshots:
+            raise Failure("target", "recovery point does not exist")
+        snapshot = snapshots[snapshot_id]
+        created_target = not target.exists()
+        if created_target:
+            target.mkdir(parents=True)
+        made_dirs: list[Path] = []
+        made_files: list[Path] = []
+        try:
+            for f in snapshot.files:
+                parts = f["path"].split("/")
+                for depth in range(1, len(parts)):
+                    folder = target.joinpath(*parts[:depth])
+                    if folder not in made_dirs:
+                        folder.mkdir()
+                        made_dirs.append(folder)
+                out_path = target.joinpath(*parts)
+                made_files.append(out_path)
+                copy_verified(dest.blob(f["sha256"]), out_path, f["sha256"], f["size"])
+            for folder in {p.parent for p in made_files}:
+                sync_dir(folder)
+        except BaseException:
+            for path in made_files:
+                with contextlib.suppress(FileNotFoundError):
+                    path.unlink()
+            for folder in reversed(made_dirs):
+                with contextlib.suppress(OSError):
+                    folder.rmdir()
+            if created_target:
+                with contextlib.suppress(OSError):
+                    target.rmdir()
+            raise
+        return {
+            "ok": True,
+            "account": args.account,
+            "snapshot": snapshot_id,
+            "files": len(snapshot.files),
+            "bytes": snapshot.total_bytes,
+            "target": str(target),
+        }, 0
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> NoReturn:
+        emit({"ok": False, "error": {"kind": "usage", "message": message}})
+        sys.exit(EXIT["usage"])
+
+
+def emit(payload: dict) -> None:
+    print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = Parser(prog="dictation-library-backup")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    def common(sub: argparse.ArgumentParser) -> None:
+        sub.add_argument("--dest", type=Path, required=True)
+
+    def budgeted(sub: argparse.ArgumentParser) -> None:
+        common(sub)
+        sub.add_argument("--budget-bytes", type=int, default=DEFAULT_BUDGET)
+
+    backup = commands.add_parser("backup")
+    budgeted(backup)
+    backup.add_argument("--keep-daily", type=int, default=DEFAULT_KEEP_DAILY)
+    source = backup.add_mutually_exclusive_group()
+    source.add_argument("--export", type=Path)
+    source.add_argument("--exports-root", type=Path, default=DEFAULT_EXPORTS_ROOT)
+    budgeted(commands.add_parser("verify"))
+    budgeted(commands.add_parser("status"))
+    restore = commands.add_parser("restore")
+    common(restore)
+    restore.add_argument("--account", required=True)
+    restore.add_argument("--snapshot")
+    restore.add_argument("--target", type=Path, required=True)
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    runner = {"backup": run_backup, "verify": run_verify, "status": run_status, "restore": run_restore}[args.command]
+    try:
+        payload, code = runner(args)
+    except Failure as failure:
+        emit({"ok": False, "command": args.command, "error": failure.as_json()})
+        return EXIT[failure.kind]
+    except OSError as error:
+        emit(
+            {
+                "ok": False,
+                "command": args.command,
+                "error": {"kind": "io", "message": error.strerror or "I/O error", "errno": error.errno},
+            }
+        )
+        return EXIT["io"]
+    emit({"command": args.command, "format": FORMAT, **payload})
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

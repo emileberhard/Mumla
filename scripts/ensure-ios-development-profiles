@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+"$HOME/configs/skills/apple-devops/scripts/ensure-signing-keychain"
+source "$HOME/configs/shared-env.sh"
+
+apple_devops="$HOME/configs/skills/apple-devops/scripts/asc_api.py"
+while IFS='|' read -r profile_name bundle_id; do
+    uv run "$apple_devops" ensure-profile \
+        --name "$profile_name" \
+        --type IOS_APP_DEVELOPMENT \
+        --bundle-id "$bundle_id"
+done <<'PROFILES'
+Mumla iOS Development|emileberhard.WisprClone.ios
+Mumla Keyboard Development|emileberhard.WisprClone.ios.keyboard
+PROFILES

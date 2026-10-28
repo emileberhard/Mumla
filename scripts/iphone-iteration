@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+build_only=false
+app_path=""
+device=""
+delivery=auto
+replace_version=()
+while (($#)); do
+    case "$1" in
+        --build-only) build_only=true; shift ;;
+        --app-path) app_path="${2:?app path required}"; shift 2 ;;
+        --device) device="${2-}"; shift 2 ;;
+        --delivery) delivery="${2:?delivery required}"; shift 2 ;;
+        --replace-version) replace_version=(--replace-version); shift ;;
+        -h|--help)
+            echo 'Usage: iphone-iteration [--build-only | --app-path APP] [--device UDID] [--delivery auto|direct|mdm] [--replace-version]'
+            exit 0 ;;
+        *) echo "Unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
+case "$delivery" in auto|direct|mdm) ;; *) echo "Unsupported delivery: $delivery" >&2; exit 2 ;; esac
+[[ "$build_only" = false || -z "$app_path" ]] || { echo '--build-only cannot use --app-path' >&2; exit 2; }
+devops="$HOME/configs/skills/apple-devops/scripts"
+common_root="$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
+if [[ -z "$app_path" ]]; then
+    version=0.0.0
+    mkdir -p .local
+    build_lock=.local/iphone-build.lock
+    mkdir "$build_lock" || { echo "Another iPhone build owns $build_lock; inspect it before removing a stale lock" >&2; exit 1; }
+    trap 'rmdir "$build_lock"' EXIT
+    ./scripts/ensure-ios-development-profiles
+    just packages >&2
+    build_number="$("$devops/ios-next-build-number" --bundle-id emileberhard.WisprClone.ios)"
+    output="$common_root/.local/iphone-builds/$build_number"
+    mkdir -p "$(dirname "$output")"
+    build_json="$("$HOME/configs/skills/swift-development/scripts/ios-install-device" \
+        --project Mumla.xcodeproj --scheme MumlaiOS --build-only --json \
+        --artifact-output "$output" \
+        -- MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$build_number" DEBUG_INFORMATION_FORMAT=dwarf-with-dsym)"
+    app_path="$(python3 -c 'import json,sys; v=json.load(sys.stdin); assert v["status"] == "built"; print(v["appPath"])' <<< "$build_json")"
+    python3 - "$app_path" "$version" "$build_number" "$build_json" <<'PY'
+import json, pathlib, plistlib, subprocess, sys
+app = pathlib.Path(sys.argv[1])
+for info in [app / 'Info.plist', *app.glob('PlugIns/*.appex/Info.plist')]:
+    value = plistlib.loads(info.read_bytes())
+    if (value['CFBundleShortVersionString'], value['CFBundleVersion']) != tuple(sys.argv[2:4]):
+        raise SystemExit(f'Unexpected build identity: {info}')
+receipt = json.loads(sys.argv[4]) | {'schemaVersion': 1, 'sourceCommit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(), 'sourceDirty': bool(subprocess.check_output(['git', 'status', '--porcelain']))}
+(app.parent / 'build.json').write_text(json.dumps(receipt, indent=2) + '\n')
+print(json.dumps(receipt))
+PY
+fi
+if [[ "$build_only" = false ]]; then
+    mkdir -p "$common_root/.local/iphone-deliveries"
+    receipt="$common_root/.local/iphone-deliveries/$(uuidgen).json"
+    device_args=()
+    [[ -z "$device" ]] || device_args=(--device "$device")
+    expected="$(python3 - "$app_path" <<'PY'
+import json, pathlib, sys
+app = pathlib.Path(sys.argv[1]).resolve()
+value = json.loads((app.parent / 'artifact.json').read_text())
+if pathlib.Path(value['appPath']).resolve() != app or value['bundleIdentifier'] != 'emileberhard.WisprClone.ios':
+    raise SystemExit('Expected a retained Mumla iPhone checkpoint')
+print(value['appSHA256'])
+PY
+    )"
+    "$devops/ios-deliver-app" --app-path "$app_path" "${device_args[@]}" \
+        --expected-app-sha256 "$expected" \
+        --delivery "$delivery" --launch --prepare-mdm "$PWD/scripts/prepare-iphone-mdm" \
+        --receipt "$receipt" "${replace_version[@]}"
+fi

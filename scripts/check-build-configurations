@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+def main():
+    root = Path(__file__).resolve().parent.parent
+    project = json.loads((root / "Mumla.xcodeproj/project.xcproj").read_text())
+    targets = project["targets"]
+    for target in targets:
+        if "configurations" in target:
+            raise ValueError(f"{target['name']}: use specialized-configurations at target level")
+    configurations = {item["name"]: item.get("file") for item in project["configurations"]}
+    overrides = {
+        target["name"]: {
+            item["name"]: item["file"]
+            for item in target.get("specialized-configurations", [])
+            if isinstance(item, dict) and "file" in item
+        }
+        for target in targets
+    }
+    files = {path for path in configurations.values() if path}
+    files.update(path for values in overrides.values() for path in values.values())
+    markers = {path: f"MUMLA_XCCONFIG_CHECK_{index}" for index, path in enumerate(sorted(files))}
+    with tempfile.TemporaryDirectory(prefix="mumla-configurations-") as directory:
+        probe = Path(directory)
+        shutil.copytree(root / "Mumla.xcodeproj", probe / "Mumla.xcodeproj", ignore=shutil.ignore_patterns("xcuserdata"))
+        for path, marker in markers.items():
+            destination = probe / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text((root / path).read_text() + f"\n{marker} = loaded\n")
+        (probe / ".local").mkdir()
+        (probe / ".local/GrantKit").symlink_to((root / ".local/GrantKit").resolve(strict=True))
+        for configuration, shared_file in configurations.items():
+            result = subprocess.run(
+                [
+                    "xcodebuild", "-project", str(probe / "Mumla.xcodeproj"),
+                    "-alltargets", "-configuration", configuration,
+                    "-showBuildSettings", "-json", "-disableAutomaticPackageResolution",
+                    "-onlyUsePackageVersionsFromResolvedFile", "-skipPackageUpdates",
+                    "-clonedSourcePackagesDirPath", str(Path(sys.argv[1]).resolve()),
+                ],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode:
+                raise RuntimeError(f"{configuration}: xcodebuild settings probe failed ({result.returncode})")
+            settings = json.loads(result.stdout)
+            if {item["target"] for item in settings} != set(overrides):
+                raise ValueError(f"{configuration}: settings probe did not return every target")
+            for item in settings:
+                target = item["target"]
+                expected = [shared_file, overrides[target].get(configuration)]
+                for path in filter(None, expected):
+                    if item["buildSettings"].get(markers[path]) != "loaded":
+                        raise ValueError(f"{target} {configuration}: ignored xcconfig {path}")
+            print(f"{configuration}: verified xcconfig loading for {len(overrides)} targets")
+
+
+if __name__ == "__main__":
+    try:
+        if len(sys.argv) != 2:
+            raise ValueError("Usage: check-build-configurations <resolved SourcePackages directory>")
+        main()
+    except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+plist="${1:?Usage: scripts/check-access-configuration <Info.plist>}"
+origin=$(plutil -extract MumlaAccessOrigin raw "$plist")
+[[ $origin =~ ^https://[a-z0-9.-]+$ ]] || { echo "error: MumlaAccessOrigin is not an HTTPS origin" >&2; exit 1; }
+token=$(plutil -extract MumlaCloudKitAPIToken raw "$plist" 2>/dev/null || true)
+[[ $token =~ ^[0-9a-f]{64}$ ]] || { echo "error: MumlaCloudKitAPIToken is missing; set MUMLA_CLOUDKIT_API_TOKEN" >&2; exit 1; }
+echo "Access configuration: $origin with a CloudKit API token"

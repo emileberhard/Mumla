@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+
+version=$(<"$(dirname "$0")/../.xcode-version")
+if [[ -n ${DEVELOPER_DIR:-} ]]; then
+  candidates=("$DEVELOPER_DIR")
+else
+  candidates=(/Applications/Xcode*.app/Contents/Developer)
+fi
+for developer in "${candidates[@]}"; do
+  if [[ $(plutil -extract CFBundleShortVersionString raw "$developer/../Info.plist" 2>/dev/null) == "$version" ]]; then
+    if [[ -n ${GITHUB_ENV:-} ]]; then
+      echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"
+    fi
+    echo "$developer"
+    exit 0
+  fi
+done
+echo "Xcode $version from .xcode-version is not available in the selected developer directory." >&2
+exit 1

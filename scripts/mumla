@@ -1,0 +1,310 @@
+#!/usr/bin/env -S uv run --quiet --script
+# /// script
+# requires-python = ">=3.14"
+# dependencies = []
+# ///
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+from pathlib import Path
+
+BUNDLE = "emileberhard.WisprClone.ios"
+RELATIVE_ROOT = "Library/Application Support/WisprClone/AgentCommands"
+
+
+class Failure(Exception):
+    def __init__(self, code, message, request_id=None):
+        self.code = code
+        self.request_id = request_id
+        super().__init__(message)
+
+
+def command(args):
+    result = subprocess.run(
+        args, capture_output=True, text=True, timeout=30, check=False
+    )
+    if result.returncode:
+        raise Failure(
+            "transport",
+            f"{args[0]} failed ({result.returncode}). Check device trust, connectivity and the installed Mumla build.",
+        )
+
+
+def device_command(device, args):
+    with tempfile.TemporaryDirectory(prefix="mumla-device-") as name:
+        receipt = Path(name) / "receipt.json"
+        result = subprocess.run(
+            [
+                "xcrun",
+                "devicectl",
+                "--quiet",
+                "--timeout",
+                "25",
+                "--json-output",
+                str(receipt),
+                "device",
+                *args[:2],
+                "--device",
+                device,
+                *args[2:],
+            ],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        if result.returncode:
+            error = (
+                json.loads(receipt.read_text()).get("error", {})
+                if receipt.exists()
+                else {}
+            )
+            missing = (
+                error.get("domain") == "com.apple.dt.CoreDeviceError"
+                and error.get("code") == 7000
+            )
+            raise Failure(
+                "missingFile" if missing else "transport",
+                f"CoreDevice {' '.join(args[:2])} failed ({error.get('domain', 'unknown')} {error.get('code', 'unknown')}). Check device trust, connectivity and the installed Mumla build.",
+            )
+
+
+def copy_from_device(device, source, destination):
+    device_command(
+        device,
+        [
+            "copy",
+            "from",
+            "--domain-type",
+            "appDataContainer",
+            "--domain-identifier",
+            BUNDLE,
+            "--source",
+            source,
+            "--destination",
+            str(destination),
+        ],
+    )
+
+
+def wake(args, identifier):
+    url = f"mumla://agent/{identifier}"
+    if args.device:
+        device_command(
+            args.device,
+            ["process", "launch", "--payload-url", url, BUNDLE],
+        )
+    else:
+        command(["open", "-g", "-a", str(args.app), url])
+
+
+def read_response(args, identifier, temporary):
+    if args.device:
+        response = temporary / "response.json"
+        response.unlink(missing_ok=True)
+        try:
+            copy_from_device(
+                args.device, f"{RELATIVE_ROOT}/{identifier}/response.json", response
+            )
+        except Failure as error:
+            if error.code != "missingFile":
+                raise
+            return None
+    else:
+        response = Path.home() / RELATIVE_ROOT / identifier / "response.json"
+        if not response.exists():
+            return None
+    if response.stat().st_size > 9 * 1024 * 1024:
+        raise Failure("response", "The app response exceeds the supported budget.")
+    result = json.loads(response.read_text())
+    if (
+        result.get("formatVersion") != 1
+        or result.get("requestID") != identifier
+        or not isinstance(result.get("ok"), bool)
+    ):
+        raise Failure("response", "The app response does not match this request.")
+    return result
+
+
+def dispatch_and_wait(args, identifier, temporary):
+    try:
+        wake(args, identifier)
+        deadline = time.monotonic() + args.timeout
+        while time.monotonic() < deadline:
+            result = read_response(args, identifier, temporary)
+            if result is not None:
+                return result
+            time.sleep(1 if args.device else 0.2)
+        return None
+    except (Failure, OSError, ValueError, subprocess.TimeoutExpired) as error:
+        raise Failure(
+            "outcomeUncertain",
+            f"The command may have started. Use result with this request ID before retrying. {error}",
+            identifier,
+        ) from error
+
+
+def export_audio(args, result, temporary):
+    data = result["data"]
+    output = args.output.expanduser().absolute()
+    if output.exists():
+        raise Failure("output", "The output already exists. Choose a new path.")
+    source = temporary / "original"
+    if args.device:
+        relative = Path(data["containerRelativePath"])
+        if relative.is_absolute() or ".." in relative.parts:
+            raise Failure("response", "The original path is invalid.")
+        copy_from_device(args.device, str(relative), source)
+    else:
+        shutil.copyfile(data["path"], source)
+    with source.open("rb") as original:
+        digest = hashlib.file_digest(original, "sha256").hexdigest()
+    if source.stat().st_size != data["byteCount"] or digest != data["sha256"]:
+        raise Failure(
+            "integrity", "The exported original failed checksum verification."
+        )
+    with tempfile.NamedTemporaryFile(
+        dir=output.parent, prefix=".mumla-audio-"
+    ) as destination:
+        with source.open("rb") as original:
+            shutil.copyfileobj(original, destination)
+        destination.flush()
+        os.fsync(destination.fileno())
+        os.link(destination.name, output)
+    data.pop("containerRelativePath", None)
+    data["path"] = str(output)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Read and manage Mumla dictations through the signed app. Output is JSON."
+    )
+    parser.add_argument(
+        "--device",
+        help="Exact trusted iPhone/iPad hardware UDID; otherwise use this Mac",
+    )
+    parser.add_argument(
+        "--app", type=Path, default=Path("/Applications/Mumla Dev.app")
+    )
+    parser.add_argument("--timeout", type=float, default=120)
+    operations = parser.add_subparsers(dest="operation", required=True)
+    operations.add_parser("status")
+    operations.add_parser(
+        "export", help="Seal a complete account export on the archival Mac"
+    )
+    for operation in ("list", "search"):
+        sub = operations.add_parser(operation)
+        if operation == "search":
+            sub.add_argument("text")
+        sub.add_argument("--limit", type=int, default=50)
+        sub.add_argument("--offset", type=int, default=0)
+    audio = operations.add_parser("audio")
+    audio.add_argument(
+        "--id",
+        type=uuid.UUID,
+        required=True,
+        help="Original recording/capture UUID, from a history entry",
+    )
+    audio.add_argument("--output", type=Path, required=True)
+    legacy = operations.add_parser("legacy").add_subparsers(
+        dest="legacy_operation", required=True
+    )
+    legacy.add_parser("inspect")
+    reconcile = legacy.add_parser("reconcile")
+    reconcile.add_argument(
+        "--account", required=True, help="Account hash returned by legacy inspect"
+    )
+    receipt = operations.add_parser("result")
+    receipt.add_argument("id", type=uuid.UUID)
+    args = parser.parse_args(argv)
+    if not 0 < args.timeout <= 600:
+        raise Failure("arguments", "Timeout must be between 0 and 600 seconds.")
+    if args.operation == "audio" and args.output.expanduser().exists():
+        raise Failure("output", "The output already exists. Choose a new path.")
+    with tempfile.TemporaryDirectory(prefix="mumla-command-") as name:
+        temporary = Path(name)
+        if args.operation == "result":
+            identifier = str(args.id).upper()
+            result = read_response(args, identifier, temporary)
+        else:
+            identifier = str(uuid.uuid4()).upper()
+            operation = (
+                f"legacy-{args.legacy_operation}"
+                if args.operation == "legacy"
+                else args.operation
+            )
+            request = {
+                "formatVersion": 1,
+                "createdAt": time.time(),
+                "operation": operation,
+            }
+            for flag in ("limit", "offset", "text", "id"):
+                if hasattr(args, flag):
+                    value = getattr(args, flag)
+                    request[flag] = str(value).upper() if flag == "id" else value
+            if operation == "legacy-reconcile":
+                request["accountHash"] = args.account
+            source = temporary / "request.json"
+            source.write_text(json.dumps(request))
+            os.chmod(source, 0o600)
+            if args.device:
+                device_command(
+                    args.device,
+                    [
+                        "copy",
+                        "to",
+                        "--domain-type",
+                        "appDataContainer",
+                        "--domain-identifier",
+                        BUNDLE,
+                        "--source",
+                        str(source),
+                        "--destination",
+                        f"{RELATIVE_ROOT}/{identifier}/request.json",
+                    ],
+                )
+            else:
+                folder = Path.home() / RELATIVE_ROOT / identifier
+                folder.mkdir(parents=True, mode=0o700)
+                os.chmod(folder.parent, 0o700)
+                shutil.copyfile(source, folder / "request.json")
+                os.chmod(folder / "request.json", 0o600)
+            result = dispatch_and_wait(args, identifier, temporary)
+        if result is None:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "requestID": identifier,
+                        "error": {
+                            "code": "pending",
+                            "message": "No completion receipt yet. Use result with this request ID; do not resend a reconciliation blindly.",
+                        },
+                    }
+                )
+            )
+            return 3
+        if args.operation == "audio" and result["ok"]:
+            export_audio(args, result, temporary)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0 if result["ok"] else 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (Failure, OSError, ValueError, subprocess.TimeoutExpired) as error:
+        payload = {
+            "ok": False,
+            "error": {"code": getattr(error, "code", "io"), "message": str(error)},
+        }
+        if isinstance(error, Failure) and error.request_id:
+            payload["requestID"] = error.request_id
+        print(json.dumps(payload))
+        sys.exit(2)

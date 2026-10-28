@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+import json
+import os
+import shutil
+import signal
+import subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+DISPLAYS = {
+    "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE": "iPhone 18 Pro",
+}
+
+
+def run(*args):
+    return subprocess.run([str(arg) for arg in args], check=True, text=True, capture_output=True).stdout.strip()
+
+
+def cancel(signum, frame):
+    raise SystemExit(128 + signum)
+
+
+def main():
+    runtimes = json.loads(run("xcrun", "simctl", "list", "runtimes", "--json"))["runtimes"]
+    supported = [r for r in runtimes if r["isAvailable"] and r["platform"] == "iOS"
+                 and all(any(t["name"] == device for t in r["supportedDeviceTypes"]) for device in DISPLAYS.values())]
+    if not supported:
+        raise SystemExit(f"Install an iOS simulator runtime supporting {', '.join(DISPLAYS.values())}.")
+    runtime = max(supported, key=lambda r: tuple(int(p) for p in r["version"].split(".")))
+    build = ROOT / ".local" / "screenshot-build"
+    run("xcodebuild", "-resolvePackageDependencies", "-project", ROOT / "Mumla.xcodeproj", "-scheme", "MumlaiOS",
+        "-derivedDataPath", build, "-onlyUsePackageVersionsFromResolvedFile")
+    run("xcodebuild", "-quiet", "-project", ROOT / "Mumla.xcodeproj", "-scheme", "MumlaiOS",
+        "-configuration", "Debug", "-destination", "generic/platform=iOS Simulator", "-derivedDataPath", build,
+        "-disableAutomaticPackageResolution", "-onlyUsePackageVersionsFromResolvedFile", "-skipPackageUpdates",
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) MUMLA_SCREENSHOTS", "LLM_ROUTER_INSTALL_KEY=",
+        "CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=NO", "build")
+    app = build / "Build/Products/Debug-iphonesimulator/MumlaiOS.app"
+    bundle = run("plutil", "-extract", "CFBundleIdentifier", "raw", app / "Info.plist")
+    for display, device in DISPLAYS.items():
+        udid = run("xcrun", "simctl", "create", "Mumla Screenshots", device, runtime["identifier"])
+        try:
+            run("xcrun", "simctl", "bootstatus", udid, "-b")
+            run("xcrun", "simctl", "install", udid, app)
+            output = ROOT / ".local/screenshots" / display
+            shutil.rmtree(output, ignore_errors=True)
+            output.mkdir(parents=True)
+            try:
+                launch = subprocess.run(["xcrun", "simctl", "launch", "--console-pty", udid, bundle], text=True, capture_output=True,
+                                        timeout=300, env={**os.environ, "SIMCTL_CHILD_MUMLA_CAPTURE": str(output)})
+                console = f"{launch.stdout}{launch.stderr}"
+            except subprocess.TimeoutExpired:
+                console = "The app was still running after five minutes."
+            if not (output / "01.png").exists():
+                raise SystemExit(f"The app did not capture {display}:\n{console}")
+            print(output / "01.png", flush=True)
+        finally:
+            subprocess.run(["xcrun", "simctl", "shutdown", udid], capture_output=True)
+            deletion = subprocess.run(["xcrun", "simctl", "delete", udid], capture_output=True)
+            if deletion.returncode:
+                raise RuntimeError(f"Could not delete screenshot simulator {udid}: {deletion.stderr.decode()}")
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, cancel)
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(f"{error.cmd[0]} failed:\n{error.stdout}\n{error.stderr}")

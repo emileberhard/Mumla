@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -ne 2 ]]; then
+    echo "Usage: $0 <simulator-udid> <preview-url>" >&2
+    exit 2
+fi
+
+device="$1"
+url="$2"
+
+xcrun simctl openurl "$device" "$url"
+
+# iOS 27 asks for confirmation before opening a custom URL, including URLs
+# opened through simctl. Accept it when present; earlier runtimes go straight
+# to the preview host.
+if prompt_json="$(
+    xcodebuildmcp ui-automation wait-for-ui \
+        --simulator-id "$device" \
+        --predicate exists \
+        --label "Open" \
+        --role button \
+        --timeout-ms 1500 \
+        --poll-interval-ms 100 \
+        --output json 2>/dev/null
+)"; then
+    open_ref="$(jq -r '.data.waitMatch.matches[0]? // "" | split("|")[0]' <<<"$prompt_json")"
+    if [[ -n "$open_ref" ]]; then
+        xcodebuildmcp ui-automation tap \
+            --simulator-id "$device" \
+            --element-ref "$open_ref" >/dev/null
+    fi
+fi
+
+xcodebuildmcp ui-automation wait-for-ui \
+    --simulator-id "$device" \
+    --predicate exists \
+    --identifier "keyboard-host-test" \
+    --timeout-ms 5000 \
+    --poll-interval-ms 200 >/dev/null
+xcodebuildmcp ui-automation wait-for-ui \
+    --simulator-id "$device" \
+    --predicate settled \
+    --settled-duration-ms 250 \
+    --timeout-ms 1000 >/dev/null || true

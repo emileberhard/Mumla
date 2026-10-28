@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+revision=$(<scripts/GrantKit.revision)
+package=.local/GrantKit
+repository=https://github.com/emileberhard/GrantKit.git
+if [[ -L $package ]]; then
+  exit 0
+fi
+if [[ ! -d $package ]]; then
+  mkdir -p .local
+  git clone --no-checkout "$repository" "$package"
+elif [[ -n $(git -C "$package" status --porcelain) ]]; then
+  echo "GrantKit has local edits; preserve them before selecting $revision." >&2
+  exit 1
+fi
+git -C "$package" fetch "$repository" "$revision"
+git -C "$package" checkout --detach "$revision"
