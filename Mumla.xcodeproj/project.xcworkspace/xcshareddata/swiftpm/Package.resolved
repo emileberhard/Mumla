@@ -1,0 +1,24 @@
+{
+  "originHash" : "2b34b52a5674a38874e519a2ae7c135f94558cc6dd9b3791b842acf9ef4d1837",
+  "pins" : [
+    {
+      "identity" : "sentry-cocoa",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/getsentry/sentry-cocoa.git",
+      "state" : {
+        "revision" : "2c420d31d0c31b525fa9e7c552ef0fc9d924befc",
+        "version" : "9.17.1"
+      }
+    },
+    {
+      "identity" : "speechkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/emileberhard/SpeechKit.git",
+      "state" : {
+        "revision" : "de8b611d27df9d040f3d34e78af71da4d7e9d458",
+        "version" : "0.2.0"
+      }
+    }
+  ],
+  "version" : 3
+}

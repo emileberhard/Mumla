@@ -1,0 +1,4 @@
+{
+  ".": "ios/MumlaiOS/MumlaiOS.entitlements",
+  "PlugIns/MumlaKeyboard.appex": "ios/MumlaKeyboard/MumlaKeyboard.entitlements"
+}

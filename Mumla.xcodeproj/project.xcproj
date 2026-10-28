@@ -1,0 +1,908 @@
+{
+  "default-configuration": "Release",
+  "configurations": [
+    {
+      "name": "Debug",
+      "file": "Apple/Config/Mumla.xcconfig"
+    },
+    {
+      "name": "Release",
+      "file": "Apple/Config/Mumla.xcconfig"
+    }
+  ],
+  "localizations": {
+    "development": "en",
+    "supported": [
+      "Base"
+    ]
+  },
+  "packages": [
+    {
+      "kind": "remote",
+      "repository": "https://github.com/emileberhard/SpeechKit.git",
+      "version": {
+        "version": "0.2.0"
+      }
+    },
+    {
+      "kind": "remote",
+      "repository": "https://github.com/getsentry/sentry-cocoa.git",
+      "version": {
+        "up-to-next-major-version": "9.8.0"
+      }
+    },
+    {
+      "kind": "local",
+      "path": ".local/GrantKit"
+    }
+  ],
+  "files": [
+    {
+      "kind": "group",
+      "name": "Products",
+      "children": [
+        {
+          "path": "<PRODUCTS>/MumlaiOS.app",
+          "id": "TEMP_260EAD19-C189-4B57-B25C-49CE6790CF3D",
+          "type": "wrapper.application",
+          "index": false
+        },
+        {
+          "path": "<PRODUCTS>/MumlaKeyboard.appex",
+          "id": "TEMP_AEC98871-367C-402E-9D43-F748198EA16F",
+          "type": "wrapper.app-extension",
+          "index": false,
+          "target-membership": [
+            {
+              "build-phase": "MumlaiOS/copy/Embed Foundation Extensions",
+              "header-preservation": "remove-on-copy"
+            }
+          ]
+        },
+        {
+          "path": "<PRODUCTS>/MumlaKeyboardTests.xctest",
+          "id": "TEMP_E40E96CA-9DA5-42C9-886A-439540A5287A",
+          "type": "wrapper.cfbundle",
+          "index": false
+        },
+        {
+          "path": "<PRODUCTS>/MumlaMac.app",
+          "id": "TEMP_EB77370D-501B-4A1D-B5C9-D5057E1471DE",
+          "type": "wrapper.application",
+          "index": false
+        },
+        {
+          "path": "<PRODUCTS>/MumlaSharedTests.xctest",
+          "id": "TEMP_4402BD6A-E036-4652-9275-99C14733A62A",
+          "type": "wrapper.cfbundle",
+          "index": false
+        }
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "Mumla",
+      "target-membership": [
+        "MumlaMac"
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "Shared/Core",
+      "target-membership": [
+        "MumlaMac",
+        "MumlaiOS",
+        "MumlaSharedTests"
+      ]
+    },
+    {
+      "path": "Shared/AppIcon.icon",
+      "target-membership": [
+        "MumlaMac/resources",
+        "MumlaiOS/resources"
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "ios/MumlaiOS/Sources",
+      "target-membership": [
+        "MumlaiOS"
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "ios/MumlaiOS/Resources",
+      "target-membership": [
+        "MumlaiOS"
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "ios/MumlaKeyboard/Sources",
+      "target-membership": [
+        "MumlaKeyboard"
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "ios/MumlaKeyboard/Resources",
+      "target-membership": [
+        "MumlaKeyboard"
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "ios/Shared",
+      "target-membership": [
+        "MumlaiOS",
+        "MumlaKeyboard"
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "Tests/KeyboardBridge",
+      "target-membership": [
+        "MumlaKeyboardTests"
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "Tests/SharedCore",
+      "target-membership": [
+        "MumlaSharedTests"
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "Tests/Keyboard",
+      "target-membership": [
+        "MumlaSharedTests"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-developer-message.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-family-trip-planning.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-grocery-list.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-landlord-email.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-breathless.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-clipped.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-code-mixed.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-distant.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-fast.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-hesitant.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-long-rushed.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-mumbled.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-pocket-muffled.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-sleepy.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-technical.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-tiny-agreement.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-short-whispered.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/en-teen-note.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-developer-message.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-family-reunion-planning.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-grocery-list.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-landlord-email.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-breathless.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-clipped.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-code-mixed.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-distant.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-fast.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-hesitant.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-long-rushed.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-mumbled.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-pocket-muffled.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-sleepy.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-technical.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-tiny-agreement.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-short-whispered.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "Evaluations/RealtimeTranscription/fixtures/sv-teen-note.wav",
+      "target-membership": [
+        "MumlaSharedTests/resources"
+      ]
+    },
+    {
+      "path": "ios/MumlaKeyboard/Sources/DictaphoneAccents.swift",
+      "target-membership": [
+        "MumlaiOS/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/MumlaKeyboard/Sources/DictaphoneTexture.swift",
+      "target-membership": [
+        "MumlaiOS/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/MumlaKeyboard/Sources/KeyboardBridgeClient.swift",
+      "target-membership": [
+        "MumlaiOS/compile-sources",
+        "MumlaKeyboardTests/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/MumlaKeyboard/Sources/KeyboardFeedback.swift",
+      "target-membership": [
+        "MumlaiOS/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/MumlaKeyboard/Sources/KeyboardRootView.swift",
+      "target-membership": [
+        "MumlaiOS/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/MumlaKeyboard/Sources/KeyboardSymbolLayout.swift",
+      "target-membership": [
+        "MumlaiOS/compile-sources",
+        "MumlaSharedTests/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/Shared/CrashReporting.swift",
+      "target-membership": [
+        "MumlaKeyboardTests/compile-sources",
+        "MumlaSharedTests/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/Shared/DictationBridge.swift",
+      "target-membership": [
+        "MumlaKeyboardTests/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/Shared/DarwinNotifications.swift",
+      "target-membership": [
+        "MumlaKeyboardTests/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/Shared/KeyboardHostRecord.swift",
+      "target-membership": [
+        "MumlaKeyboardTests/compile-sources",
+        "MumlaSharedTests/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/MumlaiOS/Sources/HostApplicationReturnRoutes.swift",
+      "target-membership": [
+        "MumlaSharedTests/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/MumlaiOS/Sources/RemoteChangePollingPolicy.swift",
+      "target-membership": [
+        "MumlaSharedTests/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/MumlaiOS/Sources/Services/IdleSessionPolicy.swift",
+      "target-membership": [
+        "MumlaSharedTests/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/MumlaiOS/Sources/Services/DictationInterruptionPolicy.swift",
+      "target-membership": [
+        "MumlaSharedTests/compile-sources"
+      ]
+    },
+    {
+      "path": "ios/MumlaiOS/Sources/Services/AudioRouteValidationPolicy.swift",
+      "target-membership": [
+        "MumlaSharedTests/compile-sources"
+      ]
+    },
+    {
+      "kind": "group",
+      "path": "Apple",
+      "children": [
+        {
+          "kind": "group",
+          "path": "Config",
+          "children": [
+            {
+              "path": "MumlaSharedTests-Info.plist"
+            },
+            {
+              "path": "MumlaKeyboardTests-Info.plist"
+            },
+            {
+              "path": "MumlaMac-Info.plist"
+            },
+            {
+              "path": "ExportOptions.plist"
+            },
+            {
+              "path": "MumlaKeyboard-Info.plist"
+            },
+            {
+              "path": "MumlaiOS-Info.plist"
+            },
+            {
+              "path": "Mumla.xcconfig"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "Shared/Diagnostics",
+      "target-membership": [
+        "MumlaMac",
+        "MumlaiOS",
+        "MumlaKeyboard",
+        "MumlaSharedTests",
+        "MumlaKeyboardTests"
+      ]
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "target-membership": [
+        "MumlaMac/resources",
+        "MumlaiOS/resources"
+      ]
+    },
+    {
+      "path": "LICENSES",
+      "type": "folder",
+      "target-membership": [
+        "MumlaMac/resources",
+        "MumlaiOS/resources"
+      ]
+    },
+    {
+      "path": "Mumla/Services/AppDiagnostics.swift",
+      "target-membership": [
+        "MumlaSharedTests/compile-sources"
+      ]
+    },
+    {
+      "path": "Mumla/Services/NetworkPathDiagnostics.swift",
+      "target-membership": [
+        "MumlaSharedTests/compile-sources"
+      ]
+    }
+  ],
+  "targets": [
+    {
+      "name": "MumlaKeyboard",
+      "id": "TEMP_B9F7446F-076C-41C6-A5ED-FD314C37E627",
+      "product": "Products/MumlaKeyboard.appex",
+      "product-type": "app-extension",
+      "build-phases": [
+        "compile-sources",
+        "resources",
+        "frameworks",
+        {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory"
+        }
+      ],
+      "package-product-members": [
+        {
+          "product-name": "Sentry",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        }
+      ],
+      "build-settings": {
+        "CODE_SIGN_ENTITLEMENTS": "ios/MumlaKeyboard/MumlaKeyboard.entitlements",
+        "CODE_SIGN_IDENTITY[config=Debug]": "Apple Development",
+        "INFOPLIST_FILE": "Apple/Config/MumlaKeyboard-Info.plist",
+        "IPHONEOS_DEPLOYMENT_TARGET": "26.0",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/Frameworks",
+          "@executable_path/../../Frameworks"
+        ],
+        "OTHER_LDFLAGS": [
+          "$(inherited)",
+          "-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)"
+        ],
+        "PRODUCT_BUNDLE_IDENTIFIER": "emileberhard.WisprClone.ios.keyboard",
+        "PRODUCT_NAME": "MumlaKeyboard",
+        "PROVISIONING_PROFILE_SPECIFIER[config=Debug]": "Mumla Keyboard Development",
+        "SDKROOT": "iphoneos",
+        "SUPPORTS_MACCATALYST": "NO",
+        "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+        "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
+        "SWIFT_OBJC_BRIDGING_HEADER": "ios/MumlaKeyboard/Sources/InputContextBridge.h",
+        "TARGETED_DEVICE_FAMILY": "1",
+        "CODE_SIGN_STYLE[config=Release]": "Automatic",
+        "CODE_SIGN_STYLE[config=Debug]": "Manual",
+        "GENERATE_INFOPLIST_FILE": "NO"
+      }
+    },
+    {
+      "name": "MumlaKeyboardTests",
+      "id": "TEMP_1DC79244-29DF-4D87-8739-B4C9098D2EB0",
+      "product": "Products/MumlaKeyboardTests.xctest",
+      "product-type": "bundle.unit-test",
+      "build-phases": [
+        "compile-sources",
+        "resources",
+        "frameworks",
+        {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory"
+        }
+      ],
+      "package-product-members": [
+        {
+          "product-name": "Sentry",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        }
+      ],
+      "build-settings": {
+        "CODE_SIGN_IDENTITY": "-",
+        "INFOPLIST_FILE": "Apple/Config/MumlaKeyboardTests-Info.plist",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/../Frameworks",
+          "@loader_path/../Frameworks"
+        ],
+        "MACOSX_DEPLOYMENT_TARGET": "26.0",
+        "OTHER_LDFLAGS": [
+          "$(inherited)",
+          "-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)"
+        ],
+        "PRODUCT_BUNDLE_IDENTIFIER": "emileberhard.WisprClone.KeyboardTests",
+        "PRODUCT_NAME": "MumlaKeyboardTests",
+        "SDKROOT": "macosx",
+        "GENERATE_INFOPLIST_FILE": "NO"
+      }
+    },
+    {
+      "name": "MumlaMac",
+      "id": "TEMP_EAFBD1FE-95B3-4B66-9361-36482DBD1207",
+      "product": "Products/MumlaMac.app",
+      "product-type": "application",
+      "build-phases": [
+        "compile-sources",
+        "resources",
+        "frameworks",
+        {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory"
+        }
+      ],
+      "package-product-members": [
+        {
+          "product-name": "DictationLibrary",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        },
+        {
+          "product-name": "GrantKit",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        },
+        {
+          "product-name": "Sentry",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        },
+        {
+          "product-name": "SpeechKit",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        }
+      ],
+      "build-settings": {
+        "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+        "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+        "CODE_SIGN_ENTITLEMENTS[config=Debug]": "Mumla/MumlaDev.entitlements",
+        "CODE_SIGN_ENTITLEMENTS[config=Release]": "Mumla/Mumla.entitlements",
+        "CODE_SIGN_IDENTITY[config=Debug]": "Apple Development",
+        "COMBINE_HIDPI_IMAGES": "YES",
+        "ENABLE_APP_SANDBOX[config=Debug]": "NO",
+        "ENABLE_APP_SANDBOX[config=Release]": "YES",
+        "ENABLE_HARDENED_RUNTIME": "YES",
+        "ENABLE_PREVIEWS": "YES",
+        "ENABLE_RESOURCE_ACCESS_AUDIO_INPUT": "YES",
+        "ENABLE_USER_SELECTED_FILES": "readonly",
+        "INFOPLIST_FILE": "Apple/Config/MumlaMac-Info.plist",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/../Frameworks"
+        ],
+        "MACOSX_DEPLOYMENT_TARGET": "26.0",
+        "OTHER_LDFLAGS": [
+          "$(inherited)",
+          "-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)"
+        ],
+        "PRODUCT_BUNDLE_IDENTIFIER[config=Debug]": "emileberhard.WisprClone",
+        "PRODUCT_BUNDLE_IDENTIFIER[config=Release]": "emileberhard.WisprClone.ios",
+        "PRODUCT_NAME[config=Debug]": "Mumla Dev",
+        "PRODUCT_NAME[config=Release]": "Mumla",
+        "PROVISIONING_PROFILE_SPECIFIER[config=Debug]": "Mumla Mac Development",
+        "SDKROOT": "macosx",
+        "CODE_SIGN_STYLE[config=Release]": "Automatic",
+        "CODE_SIGN_STYLE[config=Debug]": "Manual",
+        "GENERATE_INFOPLIST_FILE": "NO",
+        "EXCLUDED_SOURCE_FILE_NAMES": "$(inherited) *.entitlements"
+      }
+    },
+    {
+      "name": "MumlaSharedTests",
+      "id": "TEMP_3D4B415B-DA86-4E03-952E-26EF495CE6FF",
+      "product": "Products/MumlaSharedTests.xctest",
+      "product-type": "bundle.unit-test",
+      "build-phases": [
+        "compile-sources",
+        "resources",
+        "frameworks",
+        {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory"
+        }
+      ],
+      "package-product-members": [
+        {
+          "product-name": "DictationLibrary",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        },
+        {
+          "product-name": "SpeechKit",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        },
+        {
+          "product-name": "Sentry",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        }
+      ],
+      "build-settings": {
+        "CODE_SIGN_IDENTITY": "-",
+        "INFOPLIST_FILE": "Apple/Config/MumlaSharedTests-Info.plist",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/../Frameworks",
+          "@loader_path/../Frameworks"
+        ],
+        "MACOSX_DEPLOYMENT_TARGET": "26.0",
+        "OTHER_LDFLAGS": [
+          "$(inherited)",
+          "-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)"
+        ],
+        "PRODUCT_BUNDLE_IDENTIFIER": "emileberhard.WisprClone.SharedTests",
+        "PRODUCT_NAME": "MumlaSharedTests",
+        "SDKROOT": "macosx",
+        "GENERATE_INFOPLIST_FILE": "NO"
+      }
+    },
+    {
+      "name": "MumlaiOS",
+      "id": "TEMP_2EB2633D-B266-4711-9A90-9EE2120C8232",
+      "product": "Products/MumlaiOS.app",
+      "product-type": "application",
+      "dependencies": [
+        "MumlaKeyboard"
+      ],
+      "build-phases": [
+        "compile-sources",
+        "resources",
+        {
+          "kind": "copy",
+          "name": "Embed Foundation Extensions",
+          "bundle-base-path": "plugins-directory"
+        },
+        "frameworks",
+        {
+          "kind": "copy",
+          "name": "Embed Frameworks",
+          "bundle-base-path": "frameworks-directory"
+        }
+      ],
+      "package-product-members": [
+        {
+          "product-name": "DictationLibrary",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        },
+        {
+          "product-name": "GrantKit",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        },
+        {
+          "product-name": "Sentry",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        },
+        {
+          "product-name": "SpeechKit",
+          "build-phase": {
+            "build-phase": "frameworks"
+          }
+        }
+      ],
+      "build-settings": {
+        "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+        "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+        "CODE_SIGN_ENTITLEMENTS[config=Debug]": "ios/MumlaiOS/MumlaiOSDev.entitlements",
+        "CODE_SIGN_ENTITLEMENTS[config=Release]": "ios/MumlaiOS/MumlaiOS.entitlements",
+        "CODE_SIGN_IDENTITY[config=Debug]": "Apple Development",
+        "ENABLE_PREVIEWS": "YES",
+        "INFOPLIST_FILE": "Apple/Config/MumlaiOS-Info.plist",
+        "IPHONEOS_DEPLOYMENT_TARGET": "26.0",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/Frameworks"
+        ],
+        "LLM_ROUTER_INSTALL_KEY[config=Release]": "",
+        "OTHER_LDFLAGS": [
+          "$(inherited)",
+          "-L$(DT_TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)"
+        ],
+        "PRODUCT_BUNDLE_IDENTIFIER": "emileberhard.WisprClone.ios",
+        "PRODUCT_NAME": "MumlaiOS",
+        "PROVISIONING_PROFILE_SPECIFIER[config=Debug]": "Mumla iOS Development",
+        "SDKROOT": "iphoneos",
+        "SUPPORTS_MACCATALYST": "NO",
+        "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+        "SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD": "NO",
+        "TARGETED_DEVICE_FAMILY": "1",
+        "CODE_SIGN_STYLE[config=Release]": "Automatic",
+        "CODE_SIGN_STYLE[config=Debug]": "Manual",
+        "GENERATE_INFOPLIST_FILE": "NO"
+      }
+    }
+  ],
+  "build-settings": {
+    "ALWAYS_SEARCH_USER_PATHS": "NO",
+    "CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED": "YES",
+    "CLANG_ANALYZER_NONNULL": "YES",
+    "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+    "CLANG_CXX_LANGUAGE_STANDARD": "gnu++14",
+    "CLANG_CXX_LIBRARY": "libc++",
+    "CLANG_ENABLE_MODULES": "YES",
+    "CLANG_ENABLE_OBJC_ARC": "YES",
+    "CLANG_ENABLE_OBJC_WEAK": "YES",
+    "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+    "CLANG_WARN_BOOL_CONVERSION": "YES",
+    "CLANG_WARN_COMMA": "YES",
+    "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+    "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+    "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+    "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+    "CLANG_WARN_EMPTY_BODY": "YES",
+    "CLANG_WARN_ENUM_CONVERSION": "YES",
+    "CLANG_WARN_INFINITE_RECURSION": "YES",
+    "CLANG_WARN_INT_CONVERSION": "YES",
+    "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+    "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+    "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+    "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+    "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+    "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+    "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+    "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+    "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+    "CLANG_WARN_UNREACHABLE_CODE": "YES",
+    "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+    "COPY_PHASE_STRIP": "NO",
+    "DEAD_CODE_STRIPPING": "YES",
+    "DEBUG_INFORMATION_FORMAT[config=Debug]": "dwarf",
+    "DEBUG_INFORMATION_FORMAT[config=Release]": "dwarf-with-dsym",
+    "ENABLE_NS_ASSERTIONS[config=Release]": "NO",
+    "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+    "ENABLE_TESTABILITY[config=Debug]": "YES",
+    "GCC_C_LANGUAGE_STANDARD": "gnu11",
+    "GCC_DYNAMIC_NO_PIC[config=Debug]": "NO",
+    "GCC_NO_COMMON_BLOCKS": "YES",
+    "GCC_OPTIMIZATION_LEVEL[config=Debug]": "0",
+    "GCC_PREPROCESSOR_DEFINITIONS[config=Debug]": [
+      "DEBUG=1",
+      "$(inherited)"
+    ],
+    "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+    "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+    "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+    "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+    "GCC_WARN_UNUSED_FUNCTION": "YES",
+    "GCC_WARN_UNUSED_VARIABLE": "YES",
+    "MTL_ENABLE_DEBUG_INFO[config=Debug]": "YES",
+    "MTL_ENABLE_DEBUG_INFO[config=Release]": "NO",
+    "ONLY_ACTIVE_ARCH[config=Debug]": "YES",
+    "PRODUCT_NAME": "$(TARGET_NAME)",
+    "VALIDATE_PRODUCT[config=Release]": "YES"
+  }
+}
