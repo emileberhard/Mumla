@@ -495,7 +495,8 @@ dependency notices and Apple targets on relevant changes. Service notices live
 under `services/access/`, outside the app-bundled notices and licenses. The repository's annotated plain version tag remains
 the only release trigger and version for apps and service. Build one immutable
 service artifact. Following the existing gateway deployment pattern, the VPS
-polls admitted tags and deploys itself; public CI has no deploy credentials.
+polls admitted tags anonymously and deploys itself; public CI has no deploy
+credentials.
 The release waits for the actual HTTPS `/healthz` to report the exact tag and
 commit before uploading app artifacts. Private deploy configuration owns the
 repository access, ingress, secrets, backups and rollback mechanism.

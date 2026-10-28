@@ -45,7 +45,7 @@ belong in ignored local files, not in committed defaults.
 | `Mumla/*.entitlements`, `ios/*/*.entitlements` | Entitlement values; every containing-app build uses the same CloudKit container and KVS identifier, Debug pins CloudKit to Production, and the keyboard has no iCloud |
 | `.local/GrantKit`, `scripts/prepare-packages`, `scripts/GrantKit.revision` | GrantKit, checked out by `just packages` at one revision; replace it with a symlink to your checkout for GrantKit work |
 | `Evaluations/RealtimeTranscription/` | Live-provider transcription evaluation corpus and tooling; its fixture manifest is canonical |
-| `scripts/sign-bundles`, `scripts/app-store-connect`, `.github/` | Release signing checks, App Store Connect automation, CI, release and the Developer ID handoff |
+| `scripts/sign-bundles`, `scripts/app-store-connect`, `.github/` | Release signing checks, App Store Connect automation, CI and release |
 | `distribution/mumla-mbag/` | The download page source and metadata |
 | `.agents/skills/mumla-local-install/` | Replacing the locally installed macOS dev app |
 | `.xcode-version`, `scripts/select-xcode` | The Xcode that CI, the release and local `just` commands build with |
@@ -251,14 +251,15 @@ container `iCloud.emileberhard.WisprClone`.
   channel ships it, and the Mac ships only as the Developer ID download.
 - The Developer ID build (`scripts/build-developer-id-dmg.sh`) is an
   unsandboxed hardened-runtime Release build with bundle ID
-  `emileberhard.WisprClone`, notarized and stapled with its DMG. Its signing key
-  stays on the maintainer's Mac, so only the private deployment repository's
-  runner builds it; no public workflow reaches that runner.
+  `emileberhard.WisprClone`, archived unsigned and exported with the CI-only
+  Developer ID certificate from the `testflight` environment, whose leak
+  response is in [Canonical build](docs/design/canonical-build.md). Its DMG
+  is signed, notarized and stapled as the outermost container.
 - The download URL is `https://mumla.esmadil.se/`. `distribution/mumla-mbag/`
-  holds the page. A release publishes it from the admitted commit with the DMG
-  and `latest.json` (version, commit, build, SHA-256); page-only edits publish
-  with `just publish-page`, which preserves both. Never push the artifact by
-  hand. Keep the iOS card in its non-clickable "Coming soon on TestFlight"
+  holds the page, published with `just publish-page`; it links to the newest
+  GitHub release's `Mumla.dmg` and reads its version, size and digest from the
+  GitHub API. Never upload a DMG by hand. Keep the iOS card in its
+  non-clickable "Coming soon on TestFlight"
   state until App Store Connect confirms the external build is available and
   the public link accepts testers.
 - The access session lives in the data-protection Keychain (`KeychainStore`,
@@ -469,27 +470,23 @@ checks signing (`scripts/sign-bundles check`) and access configuration
 (`scripts/check-access-configuration`). Its upload, the `Public Beta`
 TestFlight review and the iOS App Store version, prepared short of App Review,
 wait up to 30 minutes for the access service to report the tag's version and
-commit. In parallel the private deployment workflow re-admits the tag, CI and
-the reservation receipt, builds with its own token, signs, notarizes and
-publishes the DMG after the same service gate; the public job verifies it
-against `latest.json`. The GitHub release waits for both channels.
+commit. In parallel the `developer-id` job builds the notarized DMG on the
+same environment; the GitHub release publishes it as `Mumla.dmg` once both
+channels finish, so it also follows the service gate.
 
 - App Review submission and the App Store release stay with the maintainer.
 - Every channel carries the tag's version; Developer ID and TestFlight build
   numbers may differ. A published version is immutable: its DMG is never
   replaced, and the download never rolls back to an older version.
 - Retry with "Re-run failed jobs" in the tag's own run while that tag is the
-  newest. Retries reuse the reservation, uploaded builds and published DMG.
-  Re-running all jobs reserves new numbers that the published DMG rejects; a
-  mismatch or a fix ships as the next patch.
-- `testflight` (App Store Connect, Sentry, CloudKit token) and
-  `deployment-handoff` (the private dispatch) are separate environments
-  limited to version tags. Signing material lives only in the private
-  repository. Its runner builds the admitted commit's code, so `main` and
-  version tags stay maintainer-only. A missing private workflow or credential
-  stops the release before any upload.
+  newest. Retries reuse the uploaded builds and the published DMG, whose
+  digest a retry must match. Re-running all jobs builds a different DMG that
+  the published one rejects; a mismatch or a fix ships as the next patch.
+- The `testflight` environment (App Store Connect, Developer ID, Sentry,
+  CloudKit token) is limited to version tags, so `main` and version tags stay
+  maintainer-only.
 - Cloud signing needs the App Group on every App ID; capability edits
-  invalidate profiles.
+  invalidate profiles, including the `testflight` Developer ID profile secret.
 - iOS and the sandboxed Mac target share `emileberhard.WisprClone.ios` (one App
   Store Connect record), plus `.keyboard` for the keyboard; Developer ID uses
   `emileberhard.WisprClone`. Team `NNP2B278S6`, App Store Connect

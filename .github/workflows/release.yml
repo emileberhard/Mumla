@@ -56,22 +56,8 @@ jobs:
             sleep 10
           done
 
-  handoff-preflight:
-    needs: admit
-    runs-on: ubuntu-24.04
-    environment: deployment-handoff
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Check private deployment before allocating or uploading builds
-        env:
-          GH_TOKEN: ${{ secrets.MUMLA_DEPLOY_TOKEN }}
-        run: python3 .github/scripts/developer-id-handoff.py preflight
-
   numbers:
-    needs: [admit, handoff-preflight]
+    needs: admit
     runs-on: ubuntu-24.04
     environment: testflight
     timeout-minutes: 10
@@ -97,22 +83,6 @@ jobs:
           number=$(scripts/app-store-connect next-build-number)
           echo "ios=$number" >> "$GITHUB_OUTPUT"
           echo "mac=$((number + 1))" >> "$GITHUB_OUTPUT"
-
-      - name: Record the Developer ID build reservation
-        env:
-          VERSION: ${{ github.ref_name }}
-          COMMIT: ${{ github.sha }}
-          BUILD_NUMBER: ${{ steps.numbers.outputs.mac }}
-        run: |
-          jq -n --arg repository "$GITHUB_REPOSITORY" --arg version "$VERSION" --arg commit "$COMMIT" \
-            --arg build "$BUILD_NUMBER" --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
-            '{source_repository:$repository,version:$version,commit:$commit,build:$build,source_run:$run,source_attempt:$attempt}' > "$RUNNER_TEMP/mac-reservation.json"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: mac-reservation-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/mac-reservation.json
-          if-no-files-found: error
-          retention-days: 90
 
       - name: Remove credentials
         if: always()
@@ -245,22 +215,72 @@ jobs:
 
   developer-id:
     needs: [admit, numbers]
-    runs-on: ubuntu-24.04
-    environment: deployment-handoff
+    runs-on: xcode-27
+    environment: testflight
     timeout-minutes: 100
-    permissions:
-      contents: read
+    env:
+      VERSION: ${{ github.ref_name }}
+      BUILD_NUMBER: ${{ needs.numbers.outputs.mac }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Hand off the admitted release and verify the public DMG receipt
+
+      - run: scripts/select-xcode
+
+      - name: Configure
         env:
-          GH_TOKEN: ${{ secrets.MUMLA_DEPLOY_TOKEN }}
-          VERSION: ${{ github.ref_name }}
-          SOURCE_COMMIT: ${{ github.sha }}
-          BUILD_NUMBER: ${{ needs.numbers.outputs.mac }}
-        run: python3 .github/scripts/developer-id-handoff.py
+          APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+          MUMLA_CLOUDKIT_API_TOKEN: ${{ secrets.MUMLA_CLOUDKIT_API_TOKEN }}
+        run: |
+          : "${MUMLA_CLOUDKIT_API_TOKEN:?Set the MUMLA_CLOUDKIT_API_TOKEN secret.}"
+          umask 077
+          printf '%s' "$APP_STORE_CONNECT_KEY" > "$RUNNER_TEMP/AuthKey.p8"
+          printf 'MUMLA_CLOUDKIT_API_TOKEN = %s\n' "$MUMLA_CLOUDKIT_API_TOKEN" > Apple/Config/Local.xcconfig
+          scripts/prepare-packages
+
+      - name: Install the Developer ID identity
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          DEVELOPER_ID_PROFILE: ${{ secrets.DEVELOPER_ID_PROFILE }}
+        run: |
+          : "${DEVELOPER_ID_P12:?Set the DEVELOPER_ID_P12 secret.}"
+          : "${DEVELOPER_ID_P12_PASSWORD:?Set the DEVELOPER_ID_P12_PASSWORD secret.}"
+          : "${DEVELOPER_ID_PROFILE:?Set the DEVELOPER_ID_PROFILE secret.}"
+          umask 077
+          printf '%s' "$DEVELOPER_ID_PROFILE" | base64 --decode > "$RUNNER_TEMP/developer-id.provisionprofile"
+          keychain="$RUNNER_TEMP/developer-id.keychain-db"
+          password="$(openssl rand -hex 32)"
+          printf '%s' "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 7200 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -f pkcs12 -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+
+      - name: Build, notarize and package
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          DEVELOPER_ID_PROFILE: ${{ runner.temp }}/developer-id.provisionprofile
+        run: scripts/build-developer-id-dmg.sh
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: developer-id-dmg
+          path: dist/Mumla-${{ github.ref_name }}.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove credentials
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/developer-id.keychain-db" 2> /dev/null || true
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/developer-id.provisionprofile" "$RUNNER_TEMP/AuthKey.p8" Apple/Config/Local.xcconfig
 
   testflight-review:
     needs: testflight-ios
@@ -352,14 +372,31 @@ jobs:
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ github.ref_name }}
     steps:
-      - name: Publish the tag message as the release notes
-        shell: bash
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: developer-id-dmg
+          path: ${{ runner.temp }}/dmg
+
+      - name: Publish the DMG with the tag message as the release notes
         run: |
           tag=$(gh api "repos/$GH_REPO/git/ref/tags/$VERSION" --jq .object.sha)
           gh api "repos/$GH_REPO/git/tags/$tag" --jq .message > "$RUNNER_TEMP/notes.md"
           [[ -s $RUNNER_TEMP/notes.md ]] || { echo "::error::The $VERSION tag has no message to publish."; exit 1; }
+          dmg="$RUNNER_TEMP/Mumla.dmg"
+          mv "$RUNNER_TEMP/dmg/Mumla-$VERSION.dmg" "$dmg"
+          digest="sha256:$(shasum -a 256 "$dmg" | cut -d' ' -f1)"
+          if ! gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release create "$VERSION" --draft --verify-tag --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" "$dmg"
+          fi
+          published=$(gh release view "$VERSION" --json assets --jq '[.assets[] | select(.name == "Mumla.dmg" and .state == "uploaded") | .digest] | first // ""')
+          if [[ -z $published ]]; then
+            gh release upload "$VERSION" "$dmg" --clobber
+          elif [[ $published != "$digest" ]]; then
+            echo "::error::$VERSION already publishes a different Mumla.dmg; ship the fix as the next patch."
+            exit 1
+          fi
           newest=$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags" --jq '.[].ref | ltrimstr("refs/tags/")' \
             | grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -V | tail -1)
-          latest=()
+          latest=(--latest)
           [[ $VERSION == "$newest" ]] || latest=(--latest=false)
-          gh release create "$VERSION" --verify-tag --title "$VERSION" --notes-file "$RUNNER_TEMP/notes.md" "${latest[@]}"
+          gh release edit "$VERSION" --draft=false "${latest[@]}"

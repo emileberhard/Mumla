@@ -31,42 +31,57 @@ App Store preparation selects the exact reserved iOS build, captures new
 screenshots and stops before review with manual release.
 
 The unsandboxed Developer ID channel is the Mac's only distribution, because
-only it can create event taps and synthetic paste. Its archive, notarization and publication run in the private
-`mumla-deploy` repository after hosted admission, in parallel with hosted
-TestFlight archives. The public release dispatches only its immutable version,
-source commit, reserved Developer ID build, and source run/attempt. An
-authenticated preflight checks private workflow availability before number
-selection or App Store uploads. Private hosted admission verifies the source
-repository, annotated newest tag on main, passing push CI, successful admission
-and number selection, and the numbers job's bounded reservation receipt. A
-failed-jobs rerun can copy successful jobs with the current attempt number, so
-job metadata is not artifact provenance. Admission lists this source run's
-artifacts and selects the highest non-expired `mac-reservation-N` with N no
-higher than the requesting attempt. That attempt must have one bounded receipt,
-whose full repository/version/commit/build/source-run identity and original
-attempt N must match. A malformed or mismatched selected receipt fails without
-falling back to an older one. The requesting current attempt is verified
-separately against the source run. Only then may the private
-signing runner check out that commit and use its existing key and profile.
-The marketing version matches every channel; Developer ID and TestFlight build
-numbers may differ. GitHub release publication joins the iOS and Developer ID lanes.
+only it can create event taps and synthetic paste. Its hosted `developer-id`
+job runs in parallel with the TestFlight lane, in the same tag-limited
+environment. It imports the environment's Developer ID Application p12 into a
+temporary keychain, archives unsigned, signs ad hoc with the Developer ID
+entitlements and the hardened runtime, and exports with method `developer-id`
+and manual signing, using the environment's "Mumla Developer ID CI" profile and
+the identity of the certificate it names. The export must keep every
+entitlement and the runtime flag. The job
+then signs the DMG with the same identity, a secure timestamp and its own
+identifier, notarizes only the DMG, the outermost container, and staples it.
+An always-run step deletes the keychain. The marketing version matches every
+channel; Developer ID and TestFlight build numbers may differ. GitHub release
+publication joins the iOS and Developer ID lanes and attaches the DMG as
+`Mumla.dmg`.
 
-The public job waits for the exact dispatched private run, verifies its bounded
-receipt, and independently hashes the DMG at the fixed download origin. Receipt
-and public manifest must agree on source commit, version, build and digest;
-the receipt also binds both runs and the source attempt. Publication checks the
-signed app's version/build. A failed-jobs retry reuses the same reservation and
-published bytes. Any existing marketing version must match the admitted
-commit and build exactly before its published bytes can be reused and verified.
-Rerunning all jobs with a different reservation requires a new patch; it cannot
-replace an existing version. A version rollback is rejected.
-A missing private repository or handoff credential blocks the release; it never falls back to public self-hosted jobs.
+The release is created as a draft with the DMG, checked against the built
+digest and only then published, so the newest release never lacks its DMG. A
+failed-jobs retry reuses an uploaded asset only if its digest matches the
+attempt's artifact; a different digest means a rerun of all jobs or a changed
+build, which ships as the next patch. A version rollback is rejected because
+only the newest version tag is marked Latest. The download page links to the
+Latest release's `Mumla.dmg` and needs no per-release publication.
+
+App Store Connect API keys cannot cloud sign Developer ID: Apple confirms it
+as a known bug, and the release's own export failed with a cloud signing
+permission error even for an Admin team key, and automatic signing tries
+the cloud certificate even with a local identity. So the job holds a dedicated
+Developer ID Application certificate (G2, created 2026-10-28, expires
+2027-11-27) that signs nothing else. It uses one of the team's five Developer
+ID Application certificates, and local signing keeps its own. A private
+signing runner was rejected: it made every release depend on one Mac, a
+cross-repository dispatch and personal access tokens. The p12 adds little to
+what the environment's Admin App Store Connect key already exposes, and only
+the `developer-id` job reads it.
+
+If the p12 or its password may have leaked, delete both environment secrets,
+then have the Account Holder ask Apple to revoke that certificate at
+`product-security@apple.com`; Developer ID certificates cannot be revoked in
+the developer account. Revocation stops installation and launch of every DMG
+it signed, so create a new certificate and ship the next patch with it
+straight away. Before the certificate expires, create its replacement and
+update both secrets and the profile; DMGs signed earlier keep working through
+their secure timestamps, and the Developer ID profile is valid for 18 years. A
+capability change invalidates the profile: recreate it for the same
+certificate and update the `DEVELOPER_ID_PROFILE` secret.
 Local macOS development keeps its existing signing identity and Production data.
 
 Keeping Tuist/Fastlane as a second release path was rejected: it duplicates
 version/signing policy and cannot prove the replacement. Moving product source
 folders or extracting a Core package adds no platform boundary here, so the
-working layout stays. Developer ID cannot use App Store cloud signing.
+working layout stays.
 
 The JSON format requires Xcode 27; .xcode-version pins the available hosted
 27.2 toolchain. A changed signing capability can invalidate local/Developer ID
@@ -83,24 +98,24 @@ Locked package resolution precedes builds using the same derived-data directory.
 Screenshot placement completes only at ACTIVE or a PARENT_* state; other states
 remain pending and FAILED remains an error.
 
-Every release requires the private deployment workflow, private signing-runner
-registration, source-read and dispatch credentials, and protected environments.
-The public repository has no self-hosted runner access.
-The current download origin, app identities, Production CloudKit data and
+Releases run only on GitHub-hosted runners with the tag-limited `testflight`
+environment. The download origin, app identities, Production CloudKit data and
 installed-user behavior remain unchanged. Operator details live only in the
 private deployment repository.
 
 ## Service-first distribution
 
 The access service shares the annotated tag's version and exact commit. Its
-private VPS poller admits the public tag/main/CI/release-admission identity,
-prepares while admission stays open, waits up to 900 seconds for idle, atomically
+private VPS poller detects new tags anonymously with `git ls-remote`, then
+spends public API reads only on a new tag to confirm the release workflow's
+`admit` job passed for that exact tag and commit; a rejected tag never deploys.
+It prepares while admission stays open, waits up to 900 seconds for idle, atomically
 fences only when idle, then switches and checks the new executable. A failed
 readiness check restores the compatible prior executable without restoring an
 old usage snapshot. Operator configuration, polling and deployment stay in the
 private deployment repository; public Actions gain no server authority.
 
-App archives, cloud-signing checks and Developer ID notarization proceed in
+App archives, signing checks and Developer ID notarization proceed in
 parallel with deployment. Before TestFlight upload, review/distribution, App
 Store preparation or DMG publication, the shared health helper waits at most
 30 minutes for HTTP 200 with the exact version and commit at the HTTPS
@@ -110,14 +125,13 @@ Every service starts fenced and reports 503 until ready and reopened, so merely
 starting the candidate cannot release apps before deployment succeeds. Health
 queries are read-only, TLS-verified, do not follow redirects, and have bounded
 body size and per-request time. A health timeout leaves app artifacts unshipped
-and requires inspecting the private deployment before retrying failed jobs.
+and requires inspecting the VPS deployment before retrying failed jobs.
 There is no service dispatch or second receipt format: public health is the
-service receipt. The Developer ID's existing artifact receipt remains separate.
+service receipt.
 
 Release apps carry the CloudKit Web Services API token, which names the
 container to CloudKit and proves no user; every shipped app exposes it, but the
-repository does not. The hosted iOS lane and the private Developer ID workflow
-write their environment's `MUMLA_CLOUDKIT_API_TOKEN` into the ignored
+repository does not. The hosted iOS and Developer ID lanes write their environment's `MUMLA_CLOUDKIT_API_TOKEN` into the ignored
 `Local.xcconfig`, and `scripts/check-access-configuration` stops a build whose
 Info.plist lacks the origin or token.
 
