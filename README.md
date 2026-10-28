@@ -85,5 +85,5 @@ icon, which stay reserved: a fork you distribute needs its own.
 includes and their licenses.
 
 Report vulnerabilities privately through
-[GitHub security advisories](https://github.com/emileberhard/mumla/security/advisories/new),
+[GitHub security advisories](https://github.com/emileberhard/Mumla/security/advisories/new),
 not in a public issue.

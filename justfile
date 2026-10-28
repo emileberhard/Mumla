@@ -367,16 +367,9 @@ bootstrap-cloudkit-schema:
     MUMLA_INIT_CLOUDKIT_SCHEMA=1 \
         '/Applications/Mumla Dev.app/Contents/MacOS/Mumla Dev'
 
-# Build, notarize, and package the Developer ID macOS app as dist/Mumla-<version>.dmg.
-build-dmg: packages
-    ./scripts/build-developer-id-dmg.sh
-
-# Publish page-only changes without uploading or deleting the current DMG and manifest.
+# Publish the download page, which links to the newest GitHub release's DMG.
 publish-page:
-    ark push \
-        --preserve Mumla.dmg \
-        --preserve latest.json \
-        distribution/mumla-mbag
+    ark push distribution/mumla-mbag
 
 # Quit every running macOS Mumla instance (prod and dev).
 kill-mac:
