@@ -386,7 +386,8 @@ container `iCloud.emileberhard.WisprClone`.
   same change and tell the maintainer, because the App Store privacy label must
   match.
 - The iOS app's and keyboard's `PrivacyInfo.xcprivacy` declare each
-  required-reason API with its reason; declare new uses in the same change.
+  required-reason API and collected data type; declare new uses in the same
+  change.
   Active-keyboard state never leaves the device.
 
 ## Build and validation
