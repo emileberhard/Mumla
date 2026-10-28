@@ -561,15 +561,11 @@ builds never embedded an install key; there is no public shared-key cohort to
 migrate. New builds neither read that old credential nor silently fall back to
 it. Do not revoke separately issued credentials as an incidental migration.
 
-The launch sequence is private-main review/merge, an isolated dev instance of
-that commit and device acceptance, then the fresh public-history cutover with
-its deploy setup, then the launch tag. That tag deploys the production service
-before uploading/distributing the app artifacts. Dev acceptance uses the same
-production router adapter with synthetic audio, without claiming the untagged
-instance is a production release. No Mumla tag is pushed before that gate. Preserve
-this work as a clean series based on the existing private release; fresh history
-contains the launch implementation, while superseded code stays in the private
-archive. No Linear issue is created while the workspace is at its issue cap.
+A change to the service is reviewed on `main`, accepted on an isolated dev
+instance of that commit and on a device, then released by a tag. The tag deploys
+the production service before uploading or distributing the app artifacts. Dev
+acceptance uses the same production router adapter with synthetic audio,
+without claiming the untagged instance is a production release.
 
 ## Later Pro integration
 
