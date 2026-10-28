@@ -144,9 +144,8 @@ jobs:
           APP_STORE_CONNECT_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
           FENCED: ${{ steps.fence.outputs.fenced }}
         run: |
-          result=$(scripts/app-store-connect build-number IOS "$VERSION" "$([[ $FENCED == true ]] && echo fenced || echo open)")
+          result=$(scripts/app-store-connect build-number IOS "$VERSION" "$BUILD_NUMBER" "$([[ $FENCED == true ]] && echo fenced || echo open)")
           read -r number state <<< "$result"
-          if [[ $state == new && $number -lt $BUILD_NUMBER ]]; then number=$BUILD_NUMBER; fi
           echo "number=$number" >> "$GITHUB_OUTPUT"
           echo "uploaded=$([[ $state == uploaded ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "BUILD_NUMBER=$number" >> "$GITHUB_ENV"
