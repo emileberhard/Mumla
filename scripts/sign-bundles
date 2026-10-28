@@ -41,8 +41,11 @@ def main(mode, app, channel):
             with tempfile.NamedTemporaryFile(suffix=".entitlements") as file:
                 file.write(plistlib.dumps(wanted))
                 file.flush()
-                run("codesign", "--force", "--sign", "-", "--entitlements", file.name, str(path))
+                runtime = ["--options", "runtime"] if channel == "developer-id" else []
+                run("codesign", "--force", "--sign", "-", *runtime, "--entitlements", file.name, str(path))
         else:
+            if channel == "developer-id" and "(runtime)" not in subprocess.run(["codesign", "-dvv", str(path)], capture_output=True, check=True).stderr.decode():
+                raise SystemExit(f"Exported {bundle} lacks the hardened runtime")
             actual = plistlib.loads(run("codesign", "-d", "--entitlements", "-", "--xml", str(path)))
             if "aps-environment" in wanted:
                 wanted["aps-environment"] = "production"

@@ -24,7 +24,7 @@ def test_exported_framework_authority_including_nested_extensions(tmp_path, monk
 
     def codesign(args, **kwargs):
         if args[1] == "-dvv":
-            signature = f"Authority={authority}: Example (NNP2B278S6)" if valid else "Signature=adhoc\nflags=0x20002(adhoc,linker-signed)"
+            signature = f"Authority={authority}: Example (NNP2B278S6)\nflags=0x10000(runtime)" if valid else "Signature=adhoc\nflags=0x20002(adhoc,linker-signed)"
             return subprocess.CompletedProcess(args, 0, b"", signature.encode())
         source = signing.ROOT / ("ios/MumlaKeyboard/MumlaKeyboard.entitlements" if Path(args[-1]).suffix == ".appex" else {
             "ios": "ios/MumlaiOS/MumlaiOS.entitlements",
@@ -40,3 +40,20 @@ def test_exported_framework_authority_including_nested_extensions(tmp_path, monk
     else:
         with pytest.raises(SystemExit, match=f"SDK.framework.*{authority}"):
             signing.main("check", app, channel)
+
+
+def test_developer_id_export_requires_the_hardened_runtime(tmp_path, monkeypatch):
+    app = tmp_path / "Mumla.app"
+    app.mkdir()
+    monkeypatch.setenv("APP_BUNDLE_ID", "emileberhard.WisprClone")
+    monkeypatch.setenv("DEVELOPMENT_TEAM", "NNP2B278S6")
+
+    def codesign(args, **kwargs):
+        if args[1] == "-dvv":
+            return subprocess.CompletedProcess(args, 0, b"", b"Authority=Developer ID Application: Example (NNP2B278S6)\nflags=0x0(none)")
+        text = (signing.ROOT / "Mumla/MumlaDeveloperID.entitlements").read_text().replace("$(TeamIdentifierPrefix)", "NNP2B278S6.")
+        return subprocess.CompletedProcess(args, 0, plistlib.dumps(plistlib.loads(text.encode())), b"")
+
+    monkeypatch.setattr(signing.subprocess, "run", codesign)
+    with pytest.raises(SystemExit, match="hardened runtime"):
+        signing.main("check", app, "developer-id")
