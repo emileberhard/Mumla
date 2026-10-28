@@ -33,10 +33,11 @@ screenshots and stops before review with manual release.
 The unsandboxed Developer ID channel is the Mac's only distribution, because
 only it can create event taps and synthetic paste. Its hosted `developer-id`
 job runs in parallel with the TestFlight lane, in the same tag-limited
-environment. It imports the environment's Developer ID Application p12 into a
-temporary keychain, archives unsigned, signs ad hoc with the Developer ID
-entitlements and the hardened runtime, and exports with method `developer-id`
-and manual signing, using the environment's "Mumla Developer ID CI" profile and
+environment. It archives unsigned and signs ad hoc with the Developer ID
+entitlements and the hardened runtime before any signing credential reaches
+the runner, so package manifests and build code never run beside them. It then
+imports the environment's Developer ID Application p12 into a temporary
+keychain and exports with method `developer-id` and manual signing, using the environment's "Mumla Developer ID CI" profile and
 the identity of the certificate it names. The export must keep every
 entitlement and the runtime flag. The job
 then signs the DMG with the same identity, a secure timestamp and its own
