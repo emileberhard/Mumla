@@ -221,8 +221,8 @@
           <h2>System-wide dictation</h2>
         </div>
       </div>
-      <p class="platform-description">Use a global hotkey to dictate into any app with your chosen transcription model.</p>
-      <a class="platform-action download-btn" href="Mumla.dmg" download>
+      <p class="platform-description">Hold the Globe key and dictate into any app.</p>
+      <a class="platform-action download-btn" href="https://github.com/emileberhard/mumla/releases/latest/download/Mumla.dmg">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
         <span>Download for Mac</span>
       </a>
@@ -277,17 +277,22 @@
   </nav>
 </main>
 <script>
-  fetch("latest.json", { cache: "no-store" })
+  fetch("https://api.github.com/repos/emileberhard/mumla/releases/latest", {
+    headers: { Accept: "application/vnd.github+json" },
+  })
     .then((response) => (response.ok ? response.json() : null))
-    .then((info) => {
-      if (!info) return;
-      const date = new Date(`${info.date}T00:00:00`).toLocaleDateString("en-US", {
+    .then((release) => {
+      const dmg = release?.assets?.find((asset) => asset.name === "Mumla.dmg");
+      if (!dmg) return;
+      const date = new Date(release.published_at).toLocaleDateString("en-US", {
         year: "numeric", month: "short", day: "numeric",
       });
+      const sizeMB = (dmg.size / 1_000_000).toFixed(1);
       document.getElementById("meta").textContent =
-        `v${info.version} · ${info.sizeMB} MB · ${date} · macOS 26+`;
+        `v${release.tag_name} · ${sizeMB} MB · ${date} · macOS 26+`;
+      if (!dmg.digest?.startsWith("sha256:")) return;
       const checksum = document.getElementById("checksum");
-      checksum.textContent = `SHA-256 ${info.sha256}`;
+      checksum.textContent = `SHA-256 ${dmg.digest.slice(7)}`;
       checksum.style.display = "block";
     })
     .catch(() => {});

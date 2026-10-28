@@ -371,12 +371,9 @@ bootstrap-cloudkit-schema:
 build-dmg: packages
     ./scripts/build-developer-id-dmg.sh
 
-# Publish page-only changes without uploading or deleting the current DMG and manifest.
+# Publish the download page, which links to the newest GitHub release's DMG.
 publish-page:
-    ark push \
-        --preserve Mumla.dmg \
-        --preserve latest.json \
-        distribution/mumla-mbag
+    ark push distribution/mumla-mbag
 
 # Quit every running macOS Mumla instance (prod and dev).
 kill-mac:

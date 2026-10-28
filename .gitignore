@@ -14,8 +14,4 @@ InstallKey.xcconfig
 # Local realtime transcription evaluation outputs contain raw transcripts.
 Evaluations/RealtimeTranscription/results/
 
-# DMG payload inside the ark download-page artifact (distribution/)
-distribution/*/Mumla.dmg
-distribution/*/latest.json
-
 node_modules/
