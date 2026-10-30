@@ -40,6 +40,7 @@ def main():
                 [
                     "xcodebuild", "-project", str(probe / "Mumla.xcodeproj"),
                     "-alltargets", "-configuration", configuration,
+                    f"-IDEDerivedDataPathOverride={probe / 'DerivedData'}",
                     "-showBuildSettings", "-json", "-disableAutomaticPackageResolution",
                     "-onlyUsePackageVersionsFromResolvedFile", "-skipPackageUpdates",
                     "-clonedSourcePackagesDirPath", str(Path(sys.argv[1]).resolve()),
