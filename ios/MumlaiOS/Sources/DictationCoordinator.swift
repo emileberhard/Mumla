@@ -96,8 +96,8 @@ final class DictationCoordinator {
     private(set) var microphoneAuthorized = AVAudioApplication.shared.recordPermission == .granted
     private(set) var showSwipeBackHint = false
     private(set) var keyboardHasBeenActive = DictationBridge.keyboardHasBeenActive
-    /// Settable: ContentView binds it to the history navigation push.
-    var showTranscriptionHistory = false
+    /// Settable: ContentView binds it to its navigation stack.
+    var navigationPath: [MainRoute] = []
 
     /// When false, the app root presents onboarding instead of the main view.
     var setupComplete: Bool {
@@ -315,7 +315,7 @@ final class DictationCoordinator {
                 category: "lifecycle",
                 metadata: diagnosticMetadata()
             )
-            showTranscriptionHistory = true
+            navigationPath = [.history]
             return
         }
         guard DictationBridge.isStartSessionURL(url) else { return }
