@@ -257,6 +257,13 @@ jobs:
         if: always()
         run: rm -f Apple/Config/Local.xcconfig
 
+      - name: Upload the symbols to Sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: mumla
+        run: npx --yes @sentry/cli@3.8.2 debug-files upload --include-sources "$RUNNER_TEMP/Mumla.xcarchive/dSYMs"
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: developer-id-archive
