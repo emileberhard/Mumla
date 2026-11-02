@@ -340,13 +340,15 @@ container `iCloud.emileberhard.WisprClone`.
 
 ### Swift and concurrency
 
-- Targets use strict concurrency and default MainActor isolation. Keep UI and
-  observable state on the main actor unless a real shared-mutable-state boundary
-  requires otherwise.
+- Targets use strict concurrency and default MainActor isolation; keep UI and
+  observable state on the main actor.
 - Closures passed to ObjC/C APIs that call back off-main, such as
   `AVAudioNode.installTap`, must be explicitly safe for that context and never
   silently inherit MainActor isolation.
 - Prefer Swift concurrency tasks over timers for async loops.
+- Navigate through a `NavigationStack` path, never
+  `navigationDestination(isPresented:)`: it rebuilds the destination on every
+  update, and a predicate `@Query` there refetches in a loop.
 - Never block the main thread on audio hardware. `AVAudioSession` and
   `AVAudioEngine` calls belong to the `SessionAudioEngine` actor, whose executor
   is its own serial dispatch queue; diagnostics read its published snapshot.
@@ -368,8 +370,9 @@ container `iCloud.emileberhard.WisprClone`.
   `CrashReporting` breadcrumb and capture is also a Sentry structured log
   (attribute `category`; `sentry.release` separates app and keyboard). Logs
   buffer up to 5 s, so a killed keyboard can lose its last entries.
-- Keep the keyboard's Sentry setup lean: crashes and explicit errors, no app-hang
-  tracking.
+- The keyboard's Sentry setup stays lean: crashes and explicit errors, no hang
+  tracking. `SystemDiagnostics` forwards MetricKit reports, the keyboard's
+  included, without Objective-C exception messages.
 - Diagnostic messages are `StaticString`. Errors reach every sink (Sentry
   events, logs and breadcrumbs, the system log, the Mac log file) only through
   `DiagnosticError` in `Shared/Diagnostics/`: reflected type, numeric code, the

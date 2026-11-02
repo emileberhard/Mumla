@@ -15,6 +15,7 @@ struct MumlaiOSApp: App {
     init() {
 #if !MUMLA_SCREENSHOTS
         CrashReporting.bootstrap(process: "app")
+        SystemDiagnostics.start()
 #endif
         DictationBridge.setAppIsBackgrounded(false)
         let launchedFromKeyboard = DictationBridge.hasFreshKeyboardLaunchIntent()
