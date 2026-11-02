@@ -4,12 +4,12 @@ import Sentry
 import Testing
 
 struct SystemDiagnosticsTests {
-    private static let appUUID = "70B89F27-1634-3580-A695-57CDB41D7743"
-    private static let uiUUID = "77A62F2E-8212-30F3-84C1-E8497440ACF8"
+    static let appUUID = "70B89F27-1634-3580-A695-57CDB41D7743"
+    static let uiUUID = "77A62F2E-8212-30F3-84C1-E8497440ACF8"
 
     @Test @available(macOS 27, *) func keyboardWatchdogBecomesSymbolicatableFatalEvent() throws {
         let sentinel = "synthetic-private-exception-message"
-        let event = try Self.event(diagnostic: """
+        let event = try #require(SystemDiagnostics.event(for: Self.report(diagnostic: """
             "crashDiagnostic": {
                 "callStackTree": {
                     "callStackPerThread": true,
@@ -27,10 +27,11 @@ struct SystemDiagnosticsTests {
                 "exceptionReason": {"composedMessage": "\(sentinel)", "formatString": "%@", "arguments": ["\(sentinel)"],
                                     "exceptionType": "NSException", "className": "SyntheticClass", "exceptionName": "SyntheticException"}
             }
-            """)
+            """)))
 
         #expect(event.level == .fatal)
         #expect(event.releaseName == "emileberhard.WisprClone.ios.keyboard@1.0.2+42")
+        #expect(event.dist == "42")
         let exception = try #require(event.exceptions?.first)
         #expect(exception.type == "MetricKitCrash")
         #expect(exception.value == "watchdog")
@@ -47,27 +48,38 @@ struct SystemDiagnosticsTests {
         #expect(context["termination_reason"] as? String == "scene-update watchdog transgression")
         #expect(context["objc_exception_name"] as? String == "SyntheticException")
         #expect(context["exception_code"] as? String == "0x8badf00d")
-        #expect(context["app_version"] as? String == "1.0.2")
+        #expect(event.context?["app"]?["app_version"] as? String == "1.0.2")
+        #expect(event.context?["os"]?["version"] as? String == "27.1")
         #expect(!String(describing: event.serialize()).contains(sentinel))
     }
 
-    @Test @available(macOS 27, *) func hangReportsItsMostSampledStack() throws {
-        let event = try Self.event(diagnostic: """
+    @Test @available(macOS 27, *) func ordinaryCrashStaysWithSentryCrash() throws {
+        let report = try Self.report(diagnostic: """
+            "crashDiagnostic": {
+                "callStackTree": {"callStackPerThread": true, "binaryInfo": [], "callStackThreads": []},
+                "terminationCategory": "badAccess", "exceptionType": 1, "signal": 11
+            }
+            """)
+        #expect(SystemDiagnostics.event(for: report) == nil)
+    }
+
+    @Test @available(macOS 27, *) func hangReportsItsMostSampledCompleteStack() throws {
+        let event = try #require(SystemDiagnostics.event(for: Self.report(diagnostic: """
             "hangDiagnostic": {
                 "callStackTree": {
                     "callStackPerThread": false,
                     "binaryInfo": [{"uuid": "\(Self.appUUID)", "name": "MumlaiOS"}, {"uuid": "\(Self.uiUUID)", "name": "UIKitCore"}],
                     "callStackThreads": [{"rootFrames": [
-                        \(Self.frame(Self.uiUUID, 0x1_9000_0100, 0x100, samples: 3, sub: Self.frame(Self.appUUID, 0x1_0000_0100, 0x100, samples: 3))),
-                        \(Self.frame(Self.uiUUID, 0x1_9000_0200, 0x200, samples: 7, sub: [
-                            Self.frame(Self.appUUID, 0x1_0000_0200, 0x200, samples: 2),
-                            Self.frame(Self.appUUID, 0x1_0000_0300, 0x300, samples: 5),
-                        ].joined(separator: ",")))
+                        \(Self.frame(Self.uiUUID, 0x1_9000_0100, 0x100, samples: 10, sub: [
+                            Self.frame(Self.appUUID, 0x1_0000_0100, 0x100, samples: 6),
+                            Self.frame(Self.appUUID, 0x1_0000_0200, 0x200, samples: 4),
+                        ].joined(separator: ","))),
+                        \(Self.frame(Self.uiUUID, 0x1_9000_0200, 0x200, samples: 8, sub: Self.frame(Self.appUUID, 0x1_0000_0300, 0x300, samples: 8)))
                     ]}]
                 },
                 "hangDuration": {"value": 2.5, "unit": "s"}
             }
-            """)
+            """)))
 
         #expect(event.level == .warning)
         let exception = try #require(event.exceptions?.first)
@@ -79,7 +91,7 @@ struct SystemDiagnosticsTests {
     }
 
     @available(macOS 27, *)
-    private static func event(diagnostic: String) throws -> Event {
+    static func report(diagnostic: String) throws -> DiagnosticReport {
         let json = """
             {
                 \(diagnostic),
@@ -93,10 +105,10 @@ struct SystemDiagnosticsTests {
                 }
             }
             """
-        return SystemDiagnostics.event(for: try JSONDecoder().decode(DiagnosticReport.self, from: Data(json.utf8)))
+        return try JSONDecoder().decode(DiagnosticReport.self, from: Data(json.utf8))
     }
 
-    private static func frame(_ uuid: String, _ address: UInt64, _ offset: UInt64, samples: Int = 1, sub: String = "") -> String {
+    static func frame(_ uuid: String, _ address: UInt64, _ offset: UInt64, samples: Int = 1, sub: String = "") -> String {
         #"{"binaryUUID": "\#(uuid)", "address": \#(address), "offsetIntoBinaryTextSegment": \#(offset), "sampleCount": \#(samples), "subFrames": [\#(sub)]}"#
     }
 }

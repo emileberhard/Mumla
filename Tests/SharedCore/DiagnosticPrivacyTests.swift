@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import MetricKit
 import OSLog
 import Sentry
 import SpeechKit
@@ -88,6 +89,39 @@ struct DiagnosticPrivacyTests {
             #expect(!payload.contains(sentinel))
         }
         #expect(capturedEvents.contains { $0.contains("429") })
+    }
+
+    @Test @available(macOS 27, *) @MainActor func metricKitReportKeepsItsOwnBuildAndNoCurrentRunState() throws {
+        let events = OSAllocatedUnfairLock(initialState: [OutgoingEvent]())
+        SentrySDK.start { options in
+            options.dsn = "https://public@localhost/1"
+            options.enableCrashHandler = false
+            options.enableAutoSessionTracking = false
+            options.enableAppHangTracking = false
+            options.enableSwizzling = false
+            options.beforeSend = { @Sendable event in
+                let outgoing = OutgoingEvent(
+                    release: event.releaseName, dist: event.dist, breadcrumbs: event.breadcrumbs?.count ?? 0,
+                    osVersion: event.context?["os"]?["version"] as? String
+                )
+                events.withLock { $0.append(outgoing) }
+                return nil
+            }
+        }
+        defer { SentrySDK.close() }
+        SentrySDK.addBreadcrumb(Breadcrumb(level: .info, category: "synthetic_current_run"))
+        let watchdog = """
+            "crashDiagnostic": {
+                "callStackTree": {"callStackPerThread": true, "binaryInfo": [], "callStackThreads": []},
+                "terminationCategory": "watchdog", "exceptionType": 10, "signal": 9
+            }
+            """
+        SystemDiagnostics.capture(try SystemDiagnosticsTests.report(diagnostic: watchdog))
+        SystemDiagnostics.capture(try SystemDiagnosticsTests.report(diagnostic: watchdog.replacingOccurrences(of: "watchdog", with: "badAccess")))
+        let captured = events.withLock { $0 }
+        #expect(captured == [OutgoingEvent(
+            release: "emileberhard.WisprClone.ios.keyboard@1.0.2+42", dist: "42", breadcrumbs: 0, osVersion: "27.1"
+        )])
     }
 
     @Test(.timeLimit(.minutes(1))) @MainActor func outgoingEnvelopesDoNotLinkInstallations() async throws {
@@ -215,6 +249,13 @@ struct DiagnosticPrivacyTests {
         #expect(event.error?.code == NSURLErrorTimedOut)
         #expect(event.error?.userInfo.isEmpty == true)
     }
+}
+
+private nonisolated struct OutgoingEvent: Equatable, Sendable {
+    let release: String?
+    let dist: String?
+    let breadcrumbs: Int
+    let osVersion: String?
 }
 
 private struct SyntheticPrivateError: Error, LocalizedError, CustomStringConvertible {

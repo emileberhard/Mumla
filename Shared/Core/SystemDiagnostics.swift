@@ -8,34 +8,49 @@ nonisolated enum SystemDiagnostics {
         let manager = MetricManager()
         Task.detached(priority: .utility) {
             for await report in manager.diagnosticReports {
-                let tree = report.result.callStackTree
-                SentrySDK.capture(event: event(for: report)) { scope in
-                    if let tree, let json = try? JSONEncoder().encode(tree) {
-                        scope.addAttachment(Attachment(data: json, filename: "call-stack-tree.json", contentType: "application/json"))
-                    }
-                }
+                capture(report)
             }
         }
     }
 
     @available(iOS 27, macOS 27, *)
-    static func event(for report: DiagnosticReport) -> Event {
-        let summary = report.result.summary
+    static func capture(_ report: DiagnosticReport) {
+        guard let event = event(for: report) else { return }
+        let scope = Scope()
+        if let tree = report.result.callStackTree, let json = try? JSONEncoder().encode(tree) {
+            scope.addAttachment(Attachment(data: json, filename: "call-stack-tree.json", contentType: "application/json"))
+        }
+        SentrySDK.capture(event: event, scope: scope)
+    }
+
+    @available(iOS 27, macOS 27, *)
+    static func event(for report: DiagnosticReport) -> Event? {
+        guard let summary = report.result.summary else { return nil }
         let environment = report.environment
         let event = Event(level: summary.terminated ? .fatal : .warning)
         event.timestamp = report.timeRange.start
         event.releaseName = "\(environment.bundleIdentifier)@\(environment.applicationVersion)+\(environment.applicationBuildVersion)"
+        event.dist = environment.applicationBuildVersion
         #if os(iOS)
         event.tags = ["process": environment.bundleIdentifier == Bundle.main.bundleIdentifier ? "app" : "keyboard"]
         #endif
-        event.context = ["metrickit": summary.context.merging([
-            "bundle_id": environment.bundleIdentifier,
-            "app_version": environment.applicationVersion,
-            "build": environment.applicationBuildVersion,
-            "os": "\(environment.osVersion.platform) \(environment.osVersion.number) (\(environment.osVersion.buildNumber))",
-            "testflight": environment.isTestFlightApp,
-            "low_power_mode": environment.lowPowerModeEnabled,
-        ]) { current, _ in current }]
+        event.context = [
+            "app": [
+                "app_identifier": environment.bundleIdentifier,
+                "app_version": environment.applicationVersion,
+                "app_build": environment.applicationBuildVersion,
+            ],
+            "os": [
+                "name": environment.osVersion.platform,
+                "version": environment.osVersion.number,
+                "build": environment.osVersion.buildNumber,
+            ],
+            "device": ["model": environment.deviceType, "arch": environment.platformArchitecture],
+            "metrickit": summary.context.merging([
+                "testflight": environment.isTestFlightApp,
+                "low_power_mode": environment.lowPowerModeEnabled,
+            ]) { current, _ in current },
+        ]
 
         let exception = Exception(value: summary.value, type: summary.type)
         let mechanism = Mechanism(type: "metrickit")
@@ -45,7 +60,7 @@ nonisolated enum SystemDiagnostics {
         if let tree = report.result.callStackTree {
             let threads = tree.callStackThreads.enumerated().map { index, thread in
                 let sentryThread = SentryThread(threadId: NSNumber(value: index))
-                let frames = heaviestStackOutermostFirst(thread.rootFrames).map { frame(for: $0, in: tree) }
+                let frames = mostSampledStackOutermostFirst(thread.rootFrames).map { frame(for: $0, in: tree) }
                 sentryThread.stacktrace = SentryStacktrace(frames: frames, registers: [:])
                 sentryThread.crashed = NSNumber(value: summary.terminated && thread.threadAttributed == true)
                 return sentryThread
@@ -60,14 +75,22 @@ nonisolated enum SystemDiagnostics {
     }
 
     @available(iOS 27, macOS 27, *)
-    private static func heaviestStackOutermostFirst(_ roots: ContiguousArray<CallStackFrame>) -> [CallStackFrame] {
-        var path: [CallStackFrame] = []
-        var level = roots
-        while let heaviest = level.max(by: { ($0.sampleCount ?? 0) < ($1.sampleCount ?? 0) }) {
-            path.append(heaviest)
-            level = heaviest.subFrames
+    private static func mostSampledStackOutermostFirst(_ roots: ContiguousArray<CallStackFrame>) -> [CallStackFrame] {
+        var best: (samples: Int, stack: [CallStackFrame])?
+        func visit(_ frame: CallStackFrame, below stack: [CallStackFrame]) {
+            let stack = stack + [frame]
+            let endingHere = (frame.sampleCount ?? 0) - frame.subFrames.reduce(0) { $0 + ($1.sampleCount ?? 0) }
+            if frame.subFrames.isEmpty || endingHere > 0, endingHere > best?.samples ?? -1 {
+                best = (endingHere, stack)
+            }
+            for caller in frame.subFrames {
+                visit(caller, below: stack)
+            }
         }
-        return path.reversed()
+        for root in roots {
+            visit(root, below: [])
+        }
+        return best?.stack.reversed() ?? []
     }
 
     @available(iOS 27, macOS 27, *)
@@ -130,9 +153,12 @@ nonisolated private struct DiagnosticSummary {
 
 @available(iOS 27, macOS 27, *)
 nonisolated private extension DiagnosticResult {
-    var summary: DiagnosticSummary {
+    var summary: DiagnosticSummary? {
         switch self {
         case .crash(let crash):
+            if let category = crash.terminationCategory, [.badAccess, .abnormal, .illegalInstruction].contains(category) {
+                return nil
+            }
             var context: [String: Any] = ["kind": "crash"]
             context["termination_category"] = crash.terminationCategory?.rawValue
             context["termination_reason"] = crash.terminationReason?.rawValue
