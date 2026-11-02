@@ -110,14 +110,16 @@ struct DiagnosticPrivacyTests {
         }
         defer { SentrySDK.close() }
         SentrySDK.addBreadcrumb(Breadcrumb(level: .info, category: "synthetic_current_run"))
-        let watchdog = """
-            "crashDiagnostic": {
-                "callStackTree": {"callStackPerThread": true, "binaryInfo": [], "callStackThreads": []},
-                "terminationCategory": "watchdog", "exceptionType": 10, "signal": 9
-            }
-            """
-        SystemDiagnostics.capture(try SystemDiagnosticsTests.report(diagnostic: watchdog))
-        SystemDiagnostics.capture(try SystemDiagnosticsTests.report(diagnostic: watchdog.replacingOccurrences(of: "watchdog", with: "badAccess")))
+        func crash(_ category: String, signal: Int) throws -> DiagnosticReport {
+            try SystemDiagnosticsTests.report(diagnostic: """
+                "crashDiagnostic": {
+                    "callStackTree": {"callStackPerThread": true, "binaryInfo": [], "callStackThreads": []},
+                    "terminationCategory": "\(category)", "exceptionType": 1, "signal": \(signal)
+                }
+                """)
+        }
+        SystemDiagnostics.capture(try crash("watchdog", signal: 9))
+        SystemDiagnostics.capture(try crash("badAccess", signal: 11))
         let captured = events.withLock { $0 }
         #expect(captured == [OutgoingEvent(
             release: "emileberhard.WisprClone.ios.keyboard@1.0.2+42", dist: "42", breadcrumbs: 0, osVersion: "27.1"
