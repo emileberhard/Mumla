@@ -17,7 +17,7 @@ nonisolated enum SystemDiagnostics {
     static func capture(_ report: DiagnosticReport) {
         guard let event = event(for: report) else { return }
         let scope = Scope()
-        if let tree = report.result.callStackTree, let json = try? JSONEncoder().encode(tree) {
+        if let tree = report.result.callStackTree, !tree.callStackPerThread, let json = try? JSONEncoder().encode(tree) {
             scope.addAttachment(Attachment(data: json, filename: "call-stack-tree.json", contentType: "application/json"))
         }
         SentrySDK.capture(event: event, scope: scope)
@@ -39,17 +39,19 @@ nonisolated enum SystemDiagnostics {
                 "app_identifier": environment.bundleIdentifier,
                 "app_version": environment.applicationVersion,
                 "app_build": environment.applicationBuildVersion,
+                "testflight": environment.isTestFlightApp,
             ],
             "os": [
                 "name": environment.osVersion.platform,
                 "version": environment.osVersion.number,
                 "build": environment.osVersion.buildNumber,
             ],
-            "device": ["model": environment.deviceType, "arch": environment.platformArchitecture],
-            "metrickit": summary.context.merging([
-                "testflight": environment.isTestFlightApp,
+            "device": [
+                "model": environment.deviceType,
+                "arch": environment.platformArchitecture,
                 "low_power_mode": environment.lowPowerModeEnabled,
-            ]) { current, _ in current },
+            ],
+            "metrickit": summary.context,
         ]
 
         let exception = Exception(value: summary.value, type: summary.type)
@@ -98,7 +100,7 @@ nonisolated enum SystemDiagnostics {
         let frame = Frame()
         let binaryName = callStackFrame.binaryName(from: tree)
         frame.package = binaryName
-        frame.inApp = binaryName.map { NSNumber(value: appExecutables.contains($0)) }
+        frame.inApp = NSNumber(value: binaryName.map(appExecutables.contains) ?? true)
         if let address = callStackFrame.address {
             frame.instructionAddress = hexAddress(address)
             frame.imageAddress = imageAddress(of: callStackFrame).map(hexAddress)
@@ -156,7 +158,8 @@ nonisolated private extension DiagnosticResult {
     var summary: DiagnosticSummary? {
         switch self {
         case .crash(let crash):
-            if let category = crash.terminationCategory, [.badAccess, .abnormal, .illegalInstruction].contains(category) {
+            if crash.signal != Int(SIGKILL), let category = crash.terminationCategory,
+               [.badAccess, .abnormal, .illegalInstruction].contains(category) {
                 return nil
             }
             var context: [String: Any] = ["kind": "crash"]

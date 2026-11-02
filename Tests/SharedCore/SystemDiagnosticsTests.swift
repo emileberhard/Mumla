@@ -53,14 +53,18 @@ struct SystemDiagnosticsTests {
         #expect(!String(describing: event.serialize()).contains(sentinel))
     }
 
-    @Test @available(macOS 27, *) func ordinaryCrashStaysWithSentryCrash() throws {
-        let report = try Self.report(diagnostic: """
-            "crashDiagnostic": {
-                "callStackTree": {"callStackPerThread": true, "binaryInfo": [], "callStackThreads": []},
-                "terminationCategory": "badAccess", "exceptionType": 1, "signal": 11
-            }
-            """)
-        #expect(SystemDiagnostics.event(for: report) == nil)
+    @Test @available(macOS 27, *) func onlyCrashesSentryCrashCannotSeeAreForwarded() throws {
+        func crash(_ category: String, signal: Int) throws -> DiagnosticReport {
+            try Self.report(diagnostic: """
+                "crashDiagnostic": {
+                    "callStackTree": {"callStackPerThread": true, "binaryInfo": [], "callStackThreads": []},
+                    "terminationCategory": "\(category)", "exceptionType": 1, "signal": \(signal)
+                }
+                """)
+        }
+        #expect(SystemDiagnostics.event(for: try crash("badAccess", signal: 11)) == nil)
+        #expect(SystemDiagnostics.event(for: try crash("abnormal", signal: 6)) == nil)
+        #expect(SystemDiagnostics.event(for: try crash("abnormal", signal: 9))?.exceptions?.first?.value == "abnormal")
     }
 
     @Test @available(macOS 27, *) func hangReportsItsMostSampledCompleteStack() throws {
