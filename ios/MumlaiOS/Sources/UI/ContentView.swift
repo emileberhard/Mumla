@@ -1,13 +1,17 @@
 import SwiftData
 import SwiftUI
 
+enum MainRoute: Hashable {
+    case history
+}
+
 struct ContentView: View {
     @Environment(DictationCoordinator.self) private var coordinator
     @State private var isShowingSettings = false
 
     var body: some View {
         @Bindable var coordinator = coordinator
-        NavigationStack {
+        NavigationStack(path: $coordinator.navigationPath) {
             VStack(alignment: .leading, spacing: 20) {
                 RecentTranscriptionsCard()
             }
@@ -37,8 +41,11 @@ struct ContentView: View {
                 .animation(.smooth, value: coordinator.access.state.isWorthNoticing)
                 .background(Color(uiColor: .systemGroupedBackground))
             }
-            .navigationDestination(isPresented: $coordinator.showTranscriptionHistory) {
-                TranscriptionHistoryView()
+            .navigationDestination(for: MainRoute.self) { route in
+                switch route {
+                case .history:
+                    TranscriptionHistoryView()
+                }
             }
             .navigationTitle("Mumla")
             .navigationBarTitleDisplayMode(.inline)
@@ -121,9 +128,7 @@ private struct RecentTranscriptionsCard: View {
     }
 
     private var seeAllRow: some View {
-        NavigationLink {
-            TranscriptionHistoryView()
-        } label: {
+        NavigationLink(value: MainRoute.history) {
             HStack {
                 Label {
                     Text("See All (\(entries.count))")

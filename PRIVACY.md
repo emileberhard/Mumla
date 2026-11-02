@@ -120,6 +120,10 @@ app's recent requests to the access service, and on iPhone the identifier of the
 the keyboard is typing in. An error is reported as a fixed description of what
 failed plus the error's type, domain and numeric code, such as an HTTP status;
 the text of error messages, including any a provider returned, is left out.
+From iOS 27 and macOS 27, the apps also forward the system's own reports of
+crashes, hangs, slow launches and terminations for exceeding memory or time
+limits, the keyboard's included: the system's termination reason, call stacks
+of code addresses, and the type of an uncaught exception, without its message.
 Diagnostics are built to leave out transcripts, dictionary terms and audio. Sentry, like any server, sees the network address a report comes
 from.
 

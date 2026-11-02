@@ -45,6 +45,7 @@ enum AppDiagnostics {
         }
 
         configureScope()
+        SystemDiagnostics.start()
         NetworkPathDiagnostics.shared.start()
         info(
             "Diagnostics bootstrapped",
