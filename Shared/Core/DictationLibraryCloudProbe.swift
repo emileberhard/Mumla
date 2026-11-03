@@ -33,6 +33,9 @@ nonisolated enum DictationLibraryCloudProbe {
         let nativeSearchVerified: Bool
         let nativeOriginalVerified: Bool
         let backupRestoreVerified: Bool
+        let reclaimedOriginal: Bool
+        let heldOriginalRetained: Bool
+        let cloudCaptureAndChunksVerified: Bool
     }
 
     static func run() async throws {
@@ -57,12 +60,17 @@ nonisolated enum DictationLibraryCloudProbe {
             let capabilities = try DictationCapabilities(models: [model], fallbackModel: model, supportsCleanup: true)
             let plan = try await store.makePlan(context: .chat, capabilities: capabilities)
             guard plan.dictionary.contains(term), plan.languages == ["sv", "en"] else { throw AudioArchiveError.invalidRecording }
+            let heldPlan = DictationPlan(unverifiedProfile: profile, context: .chat, capabilities: capabilities)
+            let heldWriter = try await store.beginCapture(plan: heldPlan)
             let writer = try await store.beginCapture(plan: plan)
             guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 44_100, channels: 1, interleaved: false),
                   let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8_820),
                   let samples = unsafe buffer.floatChannelData?[0] else { throw AudioArchiveError.invalidRecording }
             buffer.frameLength = 8_820
             unsafe samples.initialize(repeating: 0.1, count: 8_820)
+            try heldWriter.configure(format: format)
+            heldWriter.append(buffer)
+            let held = try await heldWriter.finish()
             try writer.configure(format: format)
             writer.append(buffer)
             let capture = try await writer.finish()
@@ -73,8 +81,23 @@ nonisolated enum DictationLibraryCloudProbe {
             let originalCount = try Data(contentsOf: writer.originalURL).count
             let chunks = (originalCount + 8 * 1_024 * 1_024 - 1) / (8 * 1_024 * 1_024)
             created.append(contentsOf: (0..<chunks).map { CKRecord.ID(recordName: "original-\(capture.id.uuidString)-\($0)", zoneID: HistoryCloudSchema.zoneID) })
-            try await store.publishPending()
-            guard try await store.status().pendingCaptureCount == 0 else { throw AudioArchiveError.invalidRecording }
+            let uploaded = try await store.publishPending()
+            guard uploaded.pendingCaptureCount == 0, uploaded.failures.isEmpty,
+                  FileManager.default.fileExists(atPath: writer.originalURL.path) else { throw AudioArchiveError.invalidRecording }
+            let tightStore = try DictationLibraryStore(directory: root.appendingPathComponent("producer"), source: "synthetic-development-probe", capacityBytes: uploaded.usedBytes, containerIdentifier: MumlaDataStore.cloudContainerIdentifier)
+            _ = try await tightStore.refresh()
+            let reclaimed = try await tightStore.publishPending()
+            guard reclaimed.pendingCaptureCount == 0, reclaimed.failures.isEmpty,
+                  !FileManager.default.fileExists(atPath: writer.originalURL.path),
+                  FileManager.default.fileExists(atPath: heldWriter.originalURL.path),
+                  try await tightStore.heldCaptures().contains(where: { $0.id == held.id && $0.originalURL != nil }) else { throw AudioArchiveError.invalidRecording }
+            let cloudIDs = [CKRecord.ID(recordName: "capture-\(capture.id.uuidString)", zoneID: HistoryCloudSchema.zoneID)]
+                + (0..<chunks).map { CKRecord.ID(recordName: "original-\(capture.id.uuidString)-\($0)", zoneID: HistoryCloudSchema.zoneID) }
+            let cloudRecords = try await database.records(for: cloudIDs, desiredKeys: [])
+            for id in cloudIDs {
+                guard let record = cloudRecords[id] else { throw AudioArchiveError.invalidRecording }
+                _ = try record.get()
+            }
             let library = try await MainActor.run {
                 UnifiedDictationLibrary(store: try UnifiedDictationLibrary.makeStore(rootDirectory: root.appendingPathComponent("host")),
                     rootDirectory: root.appendingPathComponent("host"), vocabulary: { [term] },
@@ -129,7 +152,7 @@ nonisolated enum DictationLibraryCloudProbe {
                 }
                 backupVerified = true
             }
-            let receipt = Receipt(passed: true, publishedCaptures: 1, publishedResults: 1, metadataInitiallyHadAudio: hadAudio, restartedCaptureCount: replay.newCaptureCount, originalByteCount: bytes.count, originalSHA256: sha, exportComplete: export.manifest.complete, nativeSearchVerified: true, nativeOriginalVerified: true, backupRestoreVerified: backupVerified)
+            let receipt = Receipt(passed: true, publishedCaptures: 1, publishedResults: 1, metadataInitiallyHadAudio: hadAudio, restartedCaptureCount: replay.newCaptureCount, originalByteCount: bytes.count, originalSHA256: sha, exportComplete: export.manifest.complete, nativeSearchVerified: true, nativeOriginalVerified: true, backupRestoreVerified: backupVerified, reclaimedOriginal: true, heldOriginalRetained: true, cloudCaptureAndChunksVerified: true)
             let path = ProcessInfo.processInfo.environment["MUMLA_LIBRARY_PROBE_RECEIPT"] ?? "/tmp/mumla-library-probe.json"
             try JSONEncoder().encode(receipt).write(to: URL(fileURLWithPath: path), options: .atomic)
         } catch {

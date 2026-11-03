@@ -30,8 +30,11 @@ it stays separate until it is inspected and explicitly reconciled; it is never
 assigned to the current account or included in that account's backup
 implicitly.
 
-Producer storage is capped at 512 MiB. Only an explicit confirmation releases
-fully uploaded originals. The optional macOS archive role retains a full
+Producer storage is capped at 512 MiB. Each publication pass releases the
+oldest fully uploaded originals whose capture and chunks still exist in CloudKit
+until the store is at most half full. Held, unacknowledged and missing-cloud
+originals stay local. Free Uploaded Local Audio releases the rest on request.
+The optional macOS archive role retains a full
 replica and composes unified and confirmed legacy exports within a 64 GiB
 budget. Sealed manifests use Unix-epoch seconds and checksummed file lists. The
 [backup CLI](dictation-library-backup.md) retains verified recovery points
