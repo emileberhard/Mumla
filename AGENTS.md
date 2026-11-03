@@ -469,14 +469,16 @@ writes the `testflight` environment's `MUMLA_CLOUDKIT_API_TOKEN` into
 `Apple/Config/entitlements-ios.json`, exports with Xcode cloud signing and
 checks signing (`scripts/sign-bundles check`) and access configuration
 (`scripts/check-access-configuration`). Its upload, the `Public Beta`
-TestFlight review and the iOS App Store version, prepared short of App Review,
+TestFlight review and the iOS App Store version, prepared and submitted for App Review,
 wait up to 30 minutes for the access service to report the tag's version and
 commit. In parallel `developer-id-archive` builds the Mac app without signing
 credentials and `developer-id` signs and notarizes its DMG; the upload waits
 for both, so a Mac failure ships no channel. The GitHub release rechecks the service and
 publishes the DMG as `Mumla.dmg`.
 
-- App Review submission and the App Store release stay with the maintainer.
+- Once the app has a release, the pipeline submits each version for App Review
+  and withdraws an older version still in review. The first submission and the
+  App Store release stay with the maintainer.
 - Every channel carries the tag's version; Developer ID and TestFlight build
   numbers may differ. A published version is immutable: its DMG is never
   replaced, and the download never rolls back to an older version.

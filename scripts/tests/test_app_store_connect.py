@@ -233,6 +233,59 @@ class ReviewPolicyTests(unittest.TestCase):
             ("PATCH", "reviewSubmissions/rejected", {"type": "reviewSubmissions", "id": "rejected", "attributes": {"submitted": True}}),
         ], writes)
 
+    def test_a_rerun_resumes_its_own_submission_instead_of_withdrawing_it(self):
+        writes = []
+
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                writes.append((method, path))
+            if path == "apps/app/appStoreVersions":
+                return [{"id": "draft", "attributes": {"appVersionState": "READY_FOR_REVIEW", "versionString": "0.14.3"}}, LIVE]
+            if path == "reviewSubmissions":
+                return [submission("resolved", "draft", "UNRESOLVED_ISSUES")]
+            if path == "reviewSubmissions/resolved/items":
+                return [item("ours", "draft", "READY_FOR_REVIEW")]
+
+        with patch.object(asc, "api", side_effect=api):
+            self.assertEqual((None, True), asc.draft_version("app", "IOS", "0.14.3"))
+        self.assertEqual([("PATCH", "reviewSubmissions/resolved")], writes)
+
+    def test_a_newer_tag_removes_its_version_from_an_unresolved_submission(self):
+        writes = []
+
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                writes.append((method, path, data))
+            if path == "reviewSubmissions":
+                return [submission("unresolved", "review", "UNRESOLVED_ISSUES")]
+            if path == "reviewSubmissions/unresolved/items":
+                return [item("event", "other", "REJECTED"), item("ours", "review", "READY_FOR_REVIEW")]
+            if path == "appStoreVersions/review":
+                return {"attributes": {"appVersionState": "DEVELOPER_REJECTED"}}
+
+        with patch.object(asc, "api", side_effect=api):
+            asc.withdraw("app", "IOS", "review", "0.10.0")
+        self.assertEqual([("PATCH", "reviewSubmissionItems/ours",
+                           {"type": "reviewSubmissionItems", "id": "ours", "attributes": {"removed": True}})], writes)
+
+    def test_an_unrelated_draft_submission_is_left_alone(self):
+        writes = []
+
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                writes.append((method, path, data))
+            if path == "reviewSubmissions" and method == "POST":
+                return {"id": "new"}
+            if path == "reviewSubmissions" and params.get("filter[state]") == "READY_FOR_REVIEW":
+                return [{"id": "event-draft"}]
+            if path == "reviewSubmissions/event-draft/items":
+                return [item("event", "other", "READY_FOR_REVIEW")]
+            return []
+
+        with patch.object(asc, "api", side_effect=api):
+            asc.submit_for_review("app", "IOS", "version", "0.14.3")
+        self.assertEqual(["reviewSubmissions", "reviewSubmissionItems", "reviewSubmissions/new"], [path for _, path, _ in writes])
+
     def test_a_new_submission_carries_the_version(self):
         writes = []
 
