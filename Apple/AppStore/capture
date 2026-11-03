@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DISPLAYS = {
     "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE": "iPhone 18 Pro",
 }
+SCREENS = ["keyboard", "dictionary", "home"]
 
 
 def run(*args):
@@ -42,18 +43,23 @@ def main():
         try:
             run("xcrun", "simctl", "bootstatus", udid, "-b")
             run("xcrun", "simctl", "install", udid, app)
+            raw = ROOT / ".local/screenshot-captures" / display
             output = ROOT / ".local/screenshots" / display
-            shutil.rmtree(output, ignore_errors=True)
-            output.mkdir(parents=True)
+            for directory in (raw, output):
+                shutil.rmtree(directory, ignore_errors=True)
+                directory.mkdir(parents=True)
             try:
-                launch = subprocess.run(["xcrun", "simctl", "launch", "--console-pty", udid, bundle], text=True, capture_output=True,
-                                        timeout=300, env={**os.environ, "SIMCTL_CHILD_MUMLA_CAPTURE": str(output)})
+                launch = subprocess.run(["xcrun", "simctl", "launch", "--console-pty", udid, bundle, "-AppleLanguages", "(en)", "-AppleLocale", "en_US"], text=True, capture_output=True,
+                                        timeout=300, env={**os.environ, "SIMCTL_CHILD_MUMLA_CAPTURE": str(raw)})
                 console = f"{launch.stdout}{launch.stderr}"
             except subprocess.TimeoutExpired:
                 console = "The app was still running after five minutes."
-            if not (output / "01.png").exists():
-                raise SystemExit(f"The app did not capture {display}:\n{console}")
-            print(output / "01.png", flush=True)
+            missing = [screen for screen in SCREENS if not (raw / f"{screen}.png").exists()]
+            if missing:
+                raise SystemExit(f"The app did not capture {', '.join(missing)} on {display}:\n{console}")
+            run("xcrun", "swift", ROOT / "Apple/AppStore/compose.swift", raw, output)
+            for slide in sorted(output.glob("*.png")):
+                print(slide, flush=True)
         finally:
             subprocess.run(["xcrun", "simctl", "shutdown", udid], capture_output=True)
             deletion = subprocess.run(["xcrun", "simctl", "delete", udid], capture_output=True)

@@ -56,6 +56,10 @@ test-access-live: packages
     cat "$receipt"
     exit "$status"
 
+# Capture the app's screens and compose the App Store slides into .local/screenshots, as the release does.
+screenshots: packages
+    Apple/AppStore/capture
+
 # Build, launch, and capture a real-host forced-state keyboard screenshot.
 keyboard-layout-preview-sim: packages
     #!/usr/bin/env bash

@@ -27,8 +27,9 @@ uploads the sandboxed Mac App Store build, which cannot create event taps or
 synthetic paste; the Mac ships only through Developer ID. One job seeds the global build numbers; each upload lane selects its exact
 new or previously uploaded build, which downstream jobs reuse. TestFlight retains the explicit assignment of the iOS build to the external
 groups and its beta review.
-App Store preparation selects the exact reserved iOS build, captures new
-screenshots and stops before review with manual release.
+App Store preparation selects the exact reserved iOS build, captures the
+app's screenshot mode on a simulator, composes the slides (`just screenshots`)
+and stops before review with manual release.
 
 The unsandboxed Developer ID channel is the Mac's only distribution, because
 only it can create event taps and synthetic paste. Its hosted lane runs in

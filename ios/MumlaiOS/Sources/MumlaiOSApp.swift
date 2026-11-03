@@ -27,10 +27,15 @@ struct MumlaiOSApp: App {
 
     var body: some Scene {
         WindowGroup {
+#if MUMLA_SCREENSHOTS
+            CaptureView(coordinator: coordinator)
+#else
             rootView
                 .modelContainer(coordinator.dataStore.container)
                 .id(coordinator.dataStore.partitionID)
+#endif
         }
+#if !MUMLA_SCREENSHOTS
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .active:
@@ -43,6 +48,7 @@ struct MumlaiOSApp: App {
                 break
             }
         }
+#endif
     }
 
     @ViewBuilder
@@ -88,9 +94,6 @@ struct MumlaiOSApp: App {
             coordinator.applicationDidBecomeActive()
         }
         .transition(.opacity)
-#if MUMLA_SCREENSHOTS
-        .task { await Capture.onboarding() }
-#endif
     }
 
     private var mainView: some View {
