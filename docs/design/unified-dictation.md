@@ -1,6 +1,6 @@
 # Unified dictation
 
-SpeechKit 0.2.0 owns the optional `DictationLibrary` product. Mumla edits the
+SpeechKit 0.2.1 owns the optional `DictationLibrary` product. Mumla edits the
 shared personal profile and dictionary and browses recordings made by itself
 and by other speech apps that use the same library, such as RemoteCoder and
 AgenTTY. Each producer publishes directly while it is active; opening Mumla on
