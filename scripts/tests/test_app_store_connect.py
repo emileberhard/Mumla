@@ -92,7 +92,7 @@ class BuildIdentityTests(unittest.TestCase):
 class DraftVersionTests(unittest.TestCase):
     def test_a_never_released_draft_is_renamed_to_the_tag_even_when_it_looks_newer(self):
         draft = {"id": "draft", "attributes": {"appVersionState": "PREPARE_FOR_SUBMISSION", "versionString": "1.0"}}
-        renamed = {"attributes": {"versionString": "0.20.0", "releaseType": "AFTER_APPROVAL"}}
+        renamed = {"attributes": {"versionString": "0.20.0", "releaseType": "MANUAL"}}
         with patch.object(asc, "api", side_effect=[[draft], renamed]) as api:
             self.assertEqual(("draft", False), asc.draft_version("app", "IOS", "0.20.0"))
             self.assertEqual("0.20.0", api.call_args_list[1].args[2]["attributes"]["versionString"])
@@ -112,14 +112,14 @@ class DraftVersionTests(unittest.TestCase):
                     (root / "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE").mkdir()
                     (root / "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE/01.png").write_bytes(b"image")
                 draft = {"id": "draft", "attributes": {"appVersionState": "PREPARE_FOR_SUBMISSION", "versionString": "1.0"}}
-                renamed = {"attributes": {"versionString": "0.19.2", "releaseType": "AFTER_APPROVAL"}}
+                renamed = {"attributes": {"versionString": "0.19.2", "releaseType": "MANUAL"}}
                 with patch.object(asc, "api", side_effect=[
                     [draft], renamed, {"id": "library"}, [],
                     [{"id": "selected", "attributes": {"processingState": "VALID"}}], None,
                 ]) as api, patch.object(asc, "upload", return_value="image"):
                     asc.app_store("app", platform, "0.19.2", number, root, "notes")
                 self.assertEqual(platform, api.call_args_list[0].kwargs["filter[platform]"])
-                self.assertEqual({"versionString": "0.19.2", "releaseType": "AFTER_APPROVAL"}, api.call_args_list[1].args[2]["attributes"])
+                self.assertEqual({"versionString": "0.19.2", "releaseType": "MANUAL"}, api.call_args_list[1].args[2]["attributes"])
                 self.assertEqual(platform, api.call_args_list[4].kwargs["filter[preReleaseVersion.platform]"])
                 self.assertEqual(number, api.call_args_list[4].kwargs["filter[version]"])
                 self.assertEqual(("PATCH", "appStoreVersions/draft/relationships/build", {"type": "builds", "id": "selected"}), api.call_args_list[5].args)

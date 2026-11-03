@@ -93,7 +93,7 @@ def draft_version(app, platform, version):
     released = len(unreleased) < len(versions)
     if not unreleased:
         return api("POST", "appStoreVersions", {"type": "appStoreVersions",
-                   "attributes": {"platform": platform, "versionString": version, "releaseType": "AFTER_APPROVAL"},
+                   "attributes": {"platform": platform, "versionString": version, "releaseType": "MANUAL"},
                    "relationships": {"app": link("apps", app)}})["id"], released
     draft = unreleased[0]
     state, name = draft["attributes"]["appVersionState"], draft["attributes"]["versionString"]
@@ -103,8 +103,8 @@ def draft_version(app, platform, version):
         print(f"::notice::App Store version {name} is {state}; preparation of {version} is pending until it is released or removed from review.", file=sys.stderr)
         return None, released
     updated = api("PATCH", f"appStoreVersions/{draft['id']}", {"type": "appStoreVersions", "id": draft["id"],
-                  "attributes": {"releaseType": "AFTER_APPROVAL"} | ({"versionString": version} if name != version else {})})
-    if (updated["attributes"]["versionString"], updated["attributes"]["releaseType"]) != (version, "AFTER_APPROVAL"):
+                  "attributes": {"releaseType": "MANUAL"} | ({"versionString": version} if name != version else {})})
+    if (updated["attributes"]["versionString"], updated["attributes"]["releaseType"]) != (version, "MANUAL"):
         sys.exit(f"App Store Connect kept {name} as {updated['attributes']['versionString']} with release type {updated['attributes']['releaseType']}.")
     return draft["id"], released
 
@@ -290,7 +290,7 @@ def app_store(app, platform, version, number, screenshots, notes):
     build = wait(f"The {platform} {version} build", lambda: processed_build(app, version, number, platform))
     api("PATCH", f"appStoreVersions/{version_id}/relationships/build", {"type": "builds", "id": build})
     wait("The screenshots", lambda: processed_screenshots(placements))
-    print(f"App Store version {version} for {platform} is prepared with build {number} and release after approval.", file=sys.stderr)
+    print(f"App Store version {version} for {platform} is prepared with build {number} and manual release.", file=sys.stderr)
 
 
 def main(command, *arguments):
