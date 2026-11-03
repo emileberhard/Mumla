@@ -52,6 +52,8 @@ private actor UploadedVocabularyCloud: LibraryCloud {
 
     func create(_ record: CKRecord) {}
 
+    func missing(_ ids: [CKRecord.ID]) -> Set<CKRecord.ID> { Set(ids) }
+
     func changes(since token: Data?, desiredKeys: [String]) -> LibraryCloudPage {
         LibraryCloudPage(records: [], deletedCount: 0, token: Data(), moreComing: false)
     }
