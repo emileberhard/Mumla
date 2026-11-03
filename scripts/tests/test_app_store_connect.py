@@ -131,6 +131,126 @@ class DraftVersionTests(unittest.TestCase):
         self.assertEqual(1, api.call_count)
 
 
+def submission(identifier, version, state):
+    return {"id": identifier, "attributes": {"state": state},
+            "relationships": {"appStoreVersionForReview": {"data": version and {"type": "appStoreVersions", "id": version}}}}
+
+
+def item(identifier, version, state):
+    return {"id": identifier, "attributes": {"state": state},
+            "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": version}}}}
+
+
+LIVE = {"id": "live", "attributes": {"appVersionState": "READY_FOR_DISTRIBUTION", "versionString": "0.9.0"}}
+
+
+class ReviewPolicyTests(unittest.TestCase):
+    def test_a_rerun_leaves_its_own_version_in_review(self):
+        with patch.object(asc, "api", return_value=[{"id": "review", "attributes": {
+            "appVersionState": "WAITING_FOR_REVIEW", "versionString": "0.14.3"
+        }}, LIVE]) as api:
+            self.assertEqual((None, True), asc.draft_version("app", "IOS", "0.14.3"))
+            self.assertEqual(["GET"], [call.args[0] for call in api.call_args_list])
+
+    def test_a_newer_tag_withdraws_only_its_versions_submission_and_keeps_manual_release(self):
+        writes = []
+
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                writes.append((method, path, data))
+            if path == "apps/app/appStoreVersions":
+                return [{"id": "review", "attributes": {"appVersionState": "IN_REVIEW", "versionString": "0.10.0"}}, LIVE]
+            if path == "reviewSubmissions":
+                return [submission("event", None, "IN_REVIEW"), submission("target", "review", "IN_REVIEW")]
+            if path == "appStoreVersions/review" and method == "GET":
+                return {"attributes": {"appVersionState": "DEVELOPER_REJECTED"}}
+            if path == "appStoreVersions/review":
+                return {"attributes": {"versionString": "0.14.3", "releaseType": "MANUAL"}}
+
+        with patch.object(asc, "api", side_effect=api):
+            self.assertEqual(("review", True), asc.draft_version("app", "IOS", "0.14.3"))
+        self.assertEqual([
+            ("PATCH", "reviewSubmissions/target", {"type": "reviewSubmissions", "id": "target", "attributes": {"canceled": True}}),
+            ("PATCH", "appStoreVersions/review", {"type": "appStoreVersions", "id": "review",
+                                                  "attributes": {"releaseType": "MANUAL", "versionString": "0.14.3"}}),
+        ], writes)
+
+    def test_a_first_release_in_review_is_left_alone(self):
+        with patch.object(asc, "api", return_value=[{"id": "review", "attributes": {
+            "appVersionState": "IN_REVIEW", "versionString": "1.0.0"
+        }}]) as api:
+            self.assertEqual((None, False), asc.draft_version("app", "IOS", "1.0.1"))
+            self.assertEqual(["GET"], [call.args[0] for call in api.call_args_list])
+
+    def test_a_newer_tag_deletes_its_versions_item_from_an_unsubmitted_draft(self):
+        writes = []
+
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                writes.append((method, path))
+            if path == "reviewSubmissions":
+                return [submission("draft", "review", "READY_FOR_REVIEW")]
+            if path == "reviewSubmissions/draft/items":
+                return [item("event", "other", "READY_FOR_REVIEW"), item("ours", "review", "READY_FOR_REVIEW")]
+            if path == "appStoreVersions/review":
+                return {"attributes": {"appVersionState": "PREPARE_FOR_SUBMISSION"}}
+
+        with patch.object(asc, "api", side_effect=api):
+            asc.withdraw("app", "IOS", "review", "0.10.0")
+        self.assertEqual([("DELETE", "reviewSubmissionItems/ours")], writes)
+
+    def test_a_rerun_waits_for_a_cancellation_already_underway(self):
+        states = iter(["IN_REVIEW", "DEVELOPER_REJECTED"])
+        writes = []
+
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                writes.append(path)
+            if path == "reviewSubmissions":
+                return [submission("target", "review", "CANCELING")]
+            if path == "appStoreVersions/review":
+                return {"attributes": {"appVersionState": next(states)}}
+
+        with patch.object(asc, "api", side_effect=api), patch.object(asc.time, "sleep"):
+            asc.withdraw("app", "IOS", "review", "0.10.0")
+        self.assertEqual([], writes)
+
+    def test_a_rejected_version_resolves_its_own_item_in_its_own_submission(self):
+        writes = []
+
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                writes.append((method, path, data))
+            if path == "reviewSubmissions":
+                return [submission("event", None, "UNRESOLVED_ISSUES"), submission("rejected", "version", "UNRESOLVED_ISSUES")]
+            if path == "reviewSubmissions/rejected/items":
+                return [item("other", "event-version", "REJECTED"), item("ours", "version", "REJECTED")]
+
+        with patch.object(asc, "api", side_effect=api):
+            asc.submit_for_review("app", "IOS", "version", "0.14.3")
+        self.assertEqual([
+            ("PATCH", "reviewSubmissionItems/ours", {"type": "reviewSubmissionItems", "id": "ours", "attributes": {"resolved": True}}),
+            ("PATCH", "reviewSubmissions/rejected", {"type": "reviewSubmissions", "id": "rejected", "attributes": {"submitted": True}}),
+        ], writes)
+
+    def test_a_new_submission_carries_the_version(self):
+        writes = []
+
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                writes.append((method, path, data))
+            if path == "reviewSubmissions" and method == "POST":
+                return {"id": "new"}
+            if method == "GET":
+                return []
+
+        with patch.object(asc, "api", side_effect=api):
+            asc.submit_for_review("app", "IOS", "version", "0.14.3")
+        self.assertEqual(["reviewSubmissions", "reviewSubmissionItems", "reviewSubmissions/new"], [path for _, path, _ in writes])
+        self.assertEqual({"reviewSubmission": {"data": {"type": "reviewSubmissions", "id": "new"}},
+                          "appStoreVersion": {"data": {"type": "appStoreVersions", "id": "version"}}}, writes[1][2]["relationships"])
+        self.assertEqual({"submitted": True}, writes[2][2]["attributes"])
+
 class UploadCleanupTests(unittest.TestCase):
     def test_a_failed_transfer_reclaims_its_reserved_image(self):
         with tempfile.TemporaryDirectory() as temporary:
