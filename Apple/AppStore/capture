@@ -34,7 +34,7 @@ def main():
     run("xcodebuild", "-quiet", "-project", ROOT / "Mumla.xcodeproj", "-scheme", "MumlaiOS",
         "-configuration", "Debug", "-destination", "generic/platform=iOS Simulator", "-derivedDataPath", build,
         "-disableAutomaticPackageResolution", "-onlyUsePackageVersionsFromResolvedFile", "-skipPackageUpdates",
-        "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) MUMLA_SCREENSHOTS", "LLM_ROUTER_INSTALL_KEY=",
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) MUMLA_SCREENSHOTS", "MUMLA_CLOUDKIT_API_TOKEN=",
         "CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=NO", "build")
     app = build / "Build/Products/Debug-iphonesimulator/MumlaiOS.app"
     bundle = run("plutil", "-extract", "CFBundleIdentifier", "raw", app / "Info.plist")
