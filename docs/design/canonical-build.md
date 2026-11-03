@@ -29,7 +29,7 @@ new or previously uploaded build, which downstream jobs reuse. TestFlight retain
 groups and its beta review.
 App Store preparation selects the exact reserved iOS build, captures the
 app's screenshot mode on a simulator, composes the slides (`just screenshots`)
-and stops before review with manual release.
+and stops before review with release after approval.
 
 The unsandboxed Developer ID channel is the Mac's only distribution, because
 only it can create event taps and synthetic paste. Its hosted lane runs in
