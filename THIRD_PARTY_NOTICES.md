@@ -9,7 +9,7 @@ do not sponsor or endorse Mumla.
 | Distribution | Component | License and notices |
 | --- | --- | --- |
 | macOS and iOS apps, keyboard extension | [Sentry Cocoa SDK 9.17.1](https://github.com/getsentry/sentry-cocoa/tree/9.17.1) | MIT; [license](LICENSES/sentry-cocoa.txt) and [Sentry's third-party notices](LICENSES/sentry-cocoa-THIRD_PARTY_NOTICES.md) for KSCrash (MIT), Yandex LLC code (MIT), fishhook (BSD-3-Clause) and Apple Original Code (APSL 2.0) |
-| macOS and iOS apps | [SpeechKit 0.2.0](https://github.com/emileberhard/SpeechKit/tree/de8b611d27df9d040f3d34e78af71da4d7e9d458), including its `DictationLibrary` product | MIT; [license](LICENSES/SpeechKit.txt) |
+| macOS and iOS apps | [SpeechKit 0.2.1](https://github.com/emileberhard/SpeechKit/tree/d9b9a5d38524d6d4a3b338590fe1c90946f30052), including its `DictationLibrary` product | MIT; [license](LICENSES/SpeechKit.txt) |
 | macOS and iOS apps | [GrantKit 0.1.1](https://github.com/emileberhard/GrantKit/tree/411a0d3df2779171185abf9d359e199aa04b98e3) | MIT; [license](LICENSES/GrantKit.txt) |
 
 ## Apple Public Source License source availability

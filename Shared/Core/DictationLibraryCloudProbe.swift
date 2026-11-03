@@ -71,6 +71,7 @@ nonisolated enum DictationLibraryCloudProbe {
             try heldWriter.configure(format: format)
             heldWriter.append(buffer)
             let held = try await heldWriter.finish()
+            let heldOriginal = try Data(contentsOf: heldWriter.originalURL)
             try writer.configure(format: format)
             writer.append(buffer)
             let capture = try await writer.finish()
@@ -87,9 +88,9 @@ nonisolated enum DictationLibraryCloudProbe {
             let tightStore = try DictationLibraryStore(directory: root.appendingPathComponent("producer"), source: "synthetic-development-probe", capacityBytes: uploaded.usedBytes, containerIdentifier: MumlaDataStore.cloudContainerIdentifier)
             _ = try await tightStore.refresh()
             let reclaimed = try await tightStore.publishPending()
-            guard reclaimed.pendingCaptureCount == 0, reclaimed.failures.isEmpty,
+            guard reclaimed.pendingCaptureCount == 0, reclaimed.failures.isEmpty, reclaimed.usedBytes < uploaded.usedBytes,
                   !FileManager.default.fileExists(atPath: writer.originalURL.path),
-                  FileManager.default.fileExists(atPath: heldWriter.originalURL.path),
+                  try Data(contentsOf: heldWriter.originalURL) == heldOriginal,
                   try await tightStore.heldCaptures().contains(where: { $0.id == held.id && $0.originalURL != nil }) else { throw AudioArchiveError.invalidRecording }
             let cloudIDs = [CKRecord.ID(recordName: "capture-\(capture.id.uuidString)", zoneID: HistoryCloudSchema.zoneID)]
                 + (0..<chunks).map { CKRecord.ID(recordName: "original-\(capture.id.uuidString)-\($0)", zoneID: HistoryCloudSchema.zoneID) }
