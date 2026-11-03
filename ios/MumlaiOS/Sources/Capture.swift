@@ -210,6 +210,7 @@ private struct Bubble: View {
 
     var body: some View {
         Text(text)
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(isOutgoing ? .white : .primary)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
