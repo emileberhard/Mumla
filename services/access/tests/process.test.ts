@@ -162,7 +162,7 @@ test("SIGKILL during a real upload releases its durable hold on process restart"
     expect((await state.open()).status).toBe(200);
     expect(
       (await (await state.call("/v1/access")).json()).allowance,
-    ).toMatchObject({ used_seconds: 0, reserved_seconds: 0 });
+    ).toMatchObject({ used_seconds: 0, in_flight_seconds: 0 });
     expect(
       (
         await state.call(
@@ -234,7 +234,7 @@ test("failed settlement COMMIT fences, exits nonzero and recovers without a stuc
     expect((await state.open()).status).toBe(200);
     expect(
       (await (await state.call("/v1/access")).json()).allowance,
-    ).toMatchObject({ used_seconds: 0, reserved_seconds: 0 });
+    ).toMatchObject({ used_seconds: 0, in_flight_seconds: 0 });
     expect(
       (
         await state.call(

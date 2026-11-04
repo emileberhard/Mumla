@@ -167,14 +167,15 @@ admission and exit nonzero after current requests finish or fail. Startup
 recovery releases dangling holds; a failed settlement cannot block process exit.
 The private poller applies the reopening policy above once readiness succeeds.
 
-A transcription reserves at most 1,800 seconds (120 on the HTTP route), expires
+A transcription may use at most 1,800 seconds (120 on the HTTP route) or the
+account's remaining minutes, shared with its other running attempt, expires
 unclaimed after 30 seconds and must finish within its audio length plus 70
 seconds of the grant. Meter actual 16 kHz samples. Charge a
 produced transcript or a client-caused failure of a claimed attempt, rounded
 up to whole seconds with a one-second minimum; a provider 400 or 422 input
 refusal costs exactly one second. Connection failures, router refusals, other
 provider 4xx and 5xx, invalid 200 responses, pre-dispatch fences and service
-crashes release the reservation. Never forward or meter
+crashes release the attempt without charge. Never forward or meter
 beyond a batch WAV's declared length or the grant limit. Incomplete uploads have
 a cumulative floor of 8,000 parser-received PCM samples per second of
 client-input waiting, after a ten-second grace. Waiting on upstream consumption

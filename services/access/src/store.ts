@@ -295,17 +295,18 @@ export class AccessStore {
           "SELECT used_samples FROM usage WHERE subject = ? AND period = ?",
         )
         .get(subject, start)?.used_samples ?? 0;
-    const reserved = this.db
+    const inFlight = this.db
       .query<{ samples: number }, [string, string]>(
         "SELECT COALESCE(SUM(limit_samples), 0) AS samples FROM grants WHERE subject = ? AND period = ?",
       )
       .get(subject, start)?.samples;
-    if (reserved === undefined) throw new Error("Missing reservation total");
+    if (inFlight === undefined) throw new Error("Missing in-flight total");
     return {
       limit_seconds:
         this.policy.subjectOverrides[subject] ?? this.policy.freeMonthlySeconds,
       used_seconds: used / sampleRate,
-      reserved_seconds: reserved / sampleRate,
+      in_flight_seconds: inFlight / sampleRate,
+      reserved_seconds: 0,
       period_start: start,
       resets_at: new Date(period.end).toISOString(),
       observed_at: new Date(now).toISOString(),
@@ -327,23 +328,18 @@ export class AccessStore {
         this.checkCapacity();
         this.prune(now);
         const allowance = this.allowance(session.subject, now);
-        if (allowance.used_seconds >= allowance.limit_seconds) {
-          throw new AccessError(402, "allowance_exhausted");
-        }
-        const available = Math.floor(
-          allowance.limit_seconds -
-            allowance.used_seconds -
-            allowance.reserved_seconds,
+        const remaining = Math.floor(
+          allowance.limit_seconds - allowance.used_seconds,
         );
+        if (remaining < 1) throw new AccessError(402, "allowance_exhausted");
         const active = this.db
           .query<{ count: number }, [string]>(
             "SELECT COUNT(*) AS count FROM grants WHERE subject = ?",
           )
           .get(session.subject)?.count;
         if (active === undefined) throw new Error("Missing grant count");
-        if (available < 1 || active >= 2)
-          throw new AccessError(409, "allowance_busy");
-        const samples = Math.min(maximumSeconds, available) * sampleRate;
+        if (active >= 2) throw new AccessError(409, "allowance_busy");
+        const samples = Math.min(maximumSeconds, remaining) * sampleRate;
         const { token: grant, hash } = credential();
         const claimExpires = now + 30_000;
         const deadline = now + (samples / sampleRate + 70) * 1000;

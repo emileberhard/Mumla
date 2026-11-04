@@ -199,7 +199,7 @@ test("a dictation streams over one socket and the service builds the provider de
   });
   expect(received?.header.readUInt32LE(40)).toBe(0xffff_ffff);
   expect(received?.pcm).toEqual(Buffer.concat([pcm(16_000, 7), pcm(8_000, 9)]));
-  expect(await used()).toMatchObject({ used_seconds: 2, reserved_seconds: 0 });
+  expect(await used()).toMatchObject({ used_seconds: 2, in_flight_seconds: 0 });
 });
 
 test("several languages leave detection to the provider", async () => {
@@ -265,7 +265,7 @@ test("fencing an undispatched stream refuses it with a retryable 503 and no char
     { type: "error", status: 503, code: "service_unavailable" },
   ]);
   await call("/internal/reopen", "POST", operatorToken);
-  expect(await used()).toMatchObject({ used_seconds: 0, reserved_seconds: 0 });
+  expect(await used()).toMatchObject({ used_seconds: 0, in_flight_seconds: 0 });
 });
 
 test("audio past the grant is refused and the forwarded part is charged", async () => {
@@ -280,7 +280,7 @@ test("audio past the grant is refused and the forwarded part is charged", async 
   expect(await closed).toEqual([
     { type: "error", status: 413, code: "audio_limit_exceeded" },
   ]);
-  expect(await used()).toMatchObject({ used_seconds: 2, reserved_seconds: 0 });
+  expect(await used()).toMatchObject({ used_seconds: 2, in_flight_seconds: 0 });
 });
 
 test("a client that disconnects after dispatch is charged for what was forwarded", async () => {
@@ -294,10 +294,10 @@ test("a client that disconnects after dispatch is charged for what was forwarded
   socket.close();
   await closed;
   for (let attempt = 0; attempt < 50; attempt++) {
-    if ((await used()).reserved_seconds === 0) break;
+    if ((await used()).in_flight_seconds === 0) break;
     await Bun.sleep(20);
   }
-  expect(await used()).toMatchObject({ used_seconds: 2, reserved_seconds: 0 });
+  expect(await used()).toMatchObject({ used_seconds: 2, in_flight_seconds: 0 });
 });
 
 test("a burst faster than the provider reads is paused, not dropped or timed out", async () => {

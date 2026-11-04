@@ -6,7 +6,7 @@ Service tests and builds do not replace the live app/device acceptance gates.
 ## Decision and scope
 
 Mumla owns one small access proxy. It verifies the iCloud account, issues
-opaque device sessions, reserves the monthly allowance, validates and meters
+opaque device sessions, admits work against the monthly allowance, validates and meters
 transcription input, and forwards admitted traffic to llm-router. The router
 keeps provider credentials and inference transport. It gains no Mumla identity,
 quota, subscription, subject-usage or delegated-token feature.
@@ -55,7 +55,7 @@ sequenceDiagram
     M-->>A: Opaque session and shared allowance
     A->>A: Begin local capture and archive immediately
     A->>M: Request one transcription grant in parallel
-    M->>M: Atomically reserve allowance
+    M->>M: Atomically admit attempt
     M-->>A: One-use grant and maximum audio duration
     A->>M: Dictation stream, authenticated by grant
     M->>R: Validated, bounded PCM upload with server credential
@@ -214,12 +214,13 @@ content is reflected into diagnostics.
 
 A grant binds subject, account period, fixed transcription contract, reservation, session
 and deadlines. Its opaque token is also 256 random bits, stored only by hash.
-An unused grant expires after 30 seconds and releases its reservation. First
+An unused grant expires after 30 seconds and frees its attempt slot. First
 claim is an atomic transition; a second upload with it fails. A dispatched grant
 is not reusable even if its client never receives the response. Do not retry an
 uncertain inference send automatically. A new, explicitly requested attempt has
-its own grant and charge. A lost grant response can temporarily reserve capacity
-until its short claim deadline; it cannot produce upstream work twice.
+its own grant and charge. A lost grant response can hold one of the account's
+two attempt slots until its short claim deadline; it cannot produce upstream
+work twice.
 
 The request/reply field contract uses snake_case JSON and ISO 8601 timestamps
 with offsets. `/v1/dictations` requires integer `maximum_audio_seconds` in 1...1800, the operation maximum. This is an enforceable upper
@@ -230,8 +231,12 @@ validated recording's rounded duration; if the returned limit is smaller, it
 does not dispatch and lets that unused grant expire. Progressive capture asks
 for the operation maximum and stops at the returned sample bound.
 
-Allowance fields are `limit_seconds`, `used_seconds`, `reserved_seconds`,
-`period_start`, `resets_at` and `observed_at`. Remaining values are derived. The
+Allowance fields are `limit_seconds`, `used_seconds`, `in_flight_seconds`,
+`reserved_seconds`, `period_start`, `resets_at` and `observed_at`. Remaining
+values are derived. `in_flight_seconds` sums the audio bounds of admitted,
+unsettled attempts; it does not reduce what another attempt may use.
+`reserved_seconds` is always 0: apps before 1.1.1 subtract it from the
+remaining minutes and would otherwise block while another device dictates. The
 session reply includes `token`, `expires_at`, `subject` and `allowance`;
 `subject` is never used as authorization. Reject unknown and contradictory
 fields and duplicate JSON keys at every nesting level. Bound session input to 16
@@ -333,7 +338,7 @@ audio arrive. A fence or closed admission refuses an undispatched claim with ret
 after dispatch, such as a failed settlement, answers 502 and is never resent
 automatically.
 
-For live capture, reserve up to 1,800 seconds, or the remaining whole-second
+For live capture, grant up to 1,800 seconds, or the remaining whole-second
 allowance if smaller. Each app stops capture when that much wall-clock time has
 passed since recording began, so an interruption pause or a stalled upload
 cannot stretch the request past its deadline, which leaves 70 seconds after the
@@ -343,13 +348,14 @@ capture and archival immediately while requesting the grant in parallel. Begin
 upload only after it arrives. The bound applies to already captured as well as
 subsequent audio: upload at most that prefix, stop capture normally when the
 bound is reached, and retain the whole original. If admission is refused,
-archive what was captured and show spent, busy or unavailable state. Client
+archive what was captured and show spent, busy or unavailable state, where
+busy means two other attempts are running on the account. Client
 capture counts the converted provider samples and stops normally at the bound,
 finishes the stream and receives the transcript. It does not cancel
 and lose the captured result. The archived original is retained. The server
 independently refuses bytes beyond that bound; a malicious client cannot turn it
 into a longer request. Batch recovery validates its complete WAV duration and
-reserves the required rounded duration before dispatch; recordings beyond the
+requests the required rounded duration before dispatch; recordings beyond the
 operation's maximum remain available for Listen/Export with a clear limit error.
 
 No separate cleanup or screenshot bytes are sent in this first operation. Future
@@ -364,13 +370,18 @@ none of those checks, so later WebSocket operations need the same.
 
 Use one SQLite database in WAL mode with `synchronous=FULL`, an exclusive live
 service owner, foreign keys and unique constraints. A monthly usage row owns
-settled samples; active reservation rows own admitted but unsettled samples.
-Do not reconstruct either from traffic logs. SQL transactions enforce:
+settled samples; active grant rows own admitted but unsettled attempts and
+their audio bounds. Do not reconstruct either from traffic logs.
 
-`spent + sum(active reservations) <= effective monthly limit`
-
-Admission checks the current subject policy and at most two active attempts per
-subject, then inserts its reservation under `BEGIN IMMEDIATE`. Grant claim and
+Devices on one account dictate at the same time from the same minutes. Each
+admission grants at most the remaining allowance (`limit - spent`) and does not
+subtract other attempts in flight; settlement charges what each attempt actually
+used. Admission refuses once spent reaches the limit and allows at most two
+active attempts per subject, so concurrent attempts can overshoot the limit by
+at most one attempt's bound (30 minutes) per month. An earlier design reserved
+each grant's whole bound, which with 30-minute grants made a second device
+wait for the first to finish; the bounded overshoot costs less than that.
+Admission inserts its grant under `BEGIN IMMEDIATE`. Grant claim and
 dispatch state transitions are atomic. Settlement increments spent and removes
 the reservation in the same transaction, only if that reservation still exists.
 A duplicate callback cannot charge twice or release another request's hold.
@@ -386,7 +397,7 @@ Mumla-service configuration, initially 60 minutes and 30 hours. Apps display the
 returned limit and never hardcode either cap. Policy can change with provider
 pricing without an app release; deploying new operator configuration uses the
 same idle-wait and admission rules as code. A lower cap blocks new admissions when
-already-used/reserved work exceeds it, without canceling previously admitted
+already-used work exceeds it, without canceling previously admitted
 bounded work. The invariant is enforced at admission against its policy snapshot.
 Policy overrides are private mappings from stable subject UUID to larger monthly
 limits, with no client-controlled tier or cap.
@@ -402,10 +413,10 @@ the service never opens itself. A failed settlement cannot strand a
 claimed row in the live count or indefinitely block shutdown. Startup recovery
 releases any remaining hold.
 
-Distinguish `allowance_exhausted` (spent) from `allowance_busy` (reserved on this
-or another device). The latter does not say the user has spent the allowance.
-Quota replies contain limit, used, reserved, server observation time and
-reset time. In-flight consumption appears as a reservation until settlement.
+Distinguish `allowance_exhausted` (spent) from `allowance_busy` (two attempts
+already running on the account). The latter does not say the user has spent the
+allowance. Quota replies contain limit, used, in-flight, server observation time
+and reset time. In-flight consumption is charged at settlement.
 
 Expired sessions and unused grants are reaped by their owning service. Closed
 request details need not be retained. Keep monthly aggregates for the current
@@ -433,10 +444,13 @@ Retry; they do not poll or own credentials. This API is agreed with the UI owner
 
 - `MumlaAccess.State`: `checking`, `available(Allowance)`,
   `iCloudUnavailable(CKAccountStatus)`, `serviceUnavailable`.
-- `Allowance`: `Duration` values `limit`, `used`, `reserved`; `Date resetsAt`.
-- `remaining = max(.zero, limit - used)`; `available` additionally subtracts
-  reservations; `isExhausted = used >= limit`. A reservation is not spending.
-- `canDictate` derives from available capacity; `refresh() async` supports Retry.
+- `Allowance`: `Duration` values `limit`, `used`; `Date resetsAt`.
+- `remaining = max(.zero, limit - used)`; `isExhausted = used >= limit`. Only
+  exhaustion and iCloud state block dictation locally; a busy account is the
+  service's answer to a grant request, never a cached state.
+- `refresh() async` supports Retry. The apps refresh after each dictation and
+  whenever a cached state blocks one, so minutes count down and a stale block
+  clears on the next attempt.
 - Typed iCloud states preserve `noAccount`, `restricted`,
   `temporarilyUnavailable` and `couldNotDetermine`.
 
@@ -590,7 +604,7 @@ and Family Sharing need a defined ownership policy before selling Pro.
 An entitlement raises the same monthly limit to 30 hours; it creates neither a
 second allowance nor a second identity. An upgrade preserves already-used
 samples. A downgrade prevents further admissions when use is already above its
-new limit; previously admitted bounded work retains its reservation. Yearly
+new limit; previously admitted bounded work keeps its grant. Yearly
 billing still has monthly fair-use windows. Price labels later come from
 localized StoreKit products. No subscription tables or unused purchase APIs are
 needed for the free launch beyond preserving stable subject ownership.
@@ -615,7 +629,7 @@ before merging the implementation or enabling the public endpoint:
 
 3. With isolated synthetic accounts/database, race two devices at the last seconds,
    replay a grant, cross a month boundary, crash after dispatch, fail settlement
-   and restart. Assert durable spent-plus-reserved behavior and honest busy versus
+   and restart. Assert durable spent and in-flight behavior and honest busy versus
    exhausted responses. Never manipulate production CloudKit or erase user data.
 
 4. Verify no-setup dictation on real iPhone and Mac through the HTTPS service and

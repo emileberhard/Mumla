@@ -10,8 +10,10 @@ to SpeechKit or llm-router.
   client-selected model belongs in launch scope.
 
 - SQLite is the sole ledger; one exclusive process owns it. Admission and
-  settlement are synchronous transactions. Spent plus active reservations never
-  exceeds the admission policy snapshot. Crash recovery releases dangling holds
+  settlement are synchronous transactions. Devices share the remaining
+  allowance: a grant's bound never exceeds `limit - spent` at admission, at
+  most two attempts per subject run at once, and `reserved_seconds` stays 0
+  for apps before 1.1.1. Crash recovery releases dangling holds
   and reports an incident; dispatch starts when Bun fetch pulls the rebuilt
   request body's first bytes, after the definition and first audio. A claimed
   attempt the client fails, dispatched or not, charges measured input with a

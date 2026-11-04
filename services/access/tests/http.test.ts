@@ -174,7 +174,7 @@ test("real HTTP admission, rebuilt upload, metering, rotation and idle fence", a
   expect((received?.get("audio") as File | undefined)?.size).toBe(32_046);
   const access = await (await call("/v1/access", "GET", session.token)).json();
   expect(access.allowance.used_seconds).toBe(2);
-  expect(access.allowance.reserved_seconds).toBe(0);
+  expect(access.allowance.in_flight_seconds).toBe(0);
   expect(
     (await call("/internal/fence", "POST", config.operatorToken)).status,
   ).toBe(200);
@@ -259,7 +259,7 @@ test.each([
       await call("/v1/access", "GET", session.token)
     ).json();
     expect(access.allowance.used_seconds).toBe(1);
-    expect(access.allowance.reserved_seconds).toBe(0);
+    expect(access.allowance.in_flight_seconds).toBe(0);
   },
 );
 
@@ -368,7 +368,7 @@ test("early upstream rejection stops an unfinished client body and releases the 
     const access = await (
       await call("/v1/access", "GET", session.token)
     ).json();
-    expect(access.allowance.reserved_seconds).toBe(0);
+    expect(access.allowance.in_flight_seconds).toBe(0);
     expect(access.allowance.used_seconds).toBe(0);
   } finally {
     finish.resolve();
@@ -468,7 +468,7 @@ test.each([401, 402, 403, 404, 408, 413, 429, 500, 503, 200])(
     ).toBe(0);
     expect(
       store.access(store.authenticate(session.token, Date.now()), Date.now())
-        .reserved_seconds,
+        .in_flight_seconds,
     ).toBe(0);
     expect(fatal).toBe([401, 403].includes(status));
     if (fatal)
@@ -509,7 +509,7 @@ test.each([400, 422])(
     });
     expect(
       (await (await call("/v1/access", "GET", session.token)).json()).allowance,
-    ).toMatchObject({ used_seconds: 1, reserved_seconds: 0 });
+    ).toMatchObject({ used_seconds: 1, in_flight_seconds: 0 });
   },
 );
 
@@ -541,7 +541,7 @@ test("router connection failure releases the hold without charging", async () =>
   });
   expect(
     (await (await call("/v1/access", "GET", session.token)).json()).allowance,
-  ).toMatchObject({ used_seconds: 0, reserved_seconds: 0 });
+  ).toMatchObject({ used_seconds: 0, in_flight_seconds: 0 });
 });
 
 test("idle fence revokes unused grants without waiting or charging", async () => {
@@ -565,7 +565,7 @@ test("idle fence revokes unused grants without waiting or charging", async () =>
     store.access(store.authenticate(session.token, Date.now()), Date.now()),
   ).toMatchObject({
     used_seconds: 0,
-    reserved_seconds: 0,
+    in_flight_seconds: 0,
   });
 });
 
@@ -642,13 +642,13 @@ test("one account cannot hold the data pool and its grant bodies time out prompt
     expect(served.status).toBe(201);
     expect((await served.json()).allowance).toMatchObject({
       used_seconds: 0,
-      reserved_seconds: 1,
+      in_flight_seconds: 1,
     });
     expect(
       store.access(store.authenticate(session.token, Date.now()), Date.now()),
     ).toMatchObject({
       used_seconds: 0,
-      reserved_seconds: 0,
+      in_flight_seconds: 0,
     });
     expect(
       (await service.handle(new Request("http://localhost/healthz"), null))
@@ -775,7 +775,7 @@ test.each([false, true])(
         store.access(store.authenticate(session.token, Date.now()), Date.now()),
       ).toMatchObject({
         used_seconds: 1,
-        reserved_seconds: 0,
+        in_flight_seconds: 0,
       });
       expect((await (await status()).json()).active).toBe(0);
       expect(
@@ -865,7 +865,7 @@ test.each(["silence", "preamble", "partial header"])(
             store.authenticate(session.token, Date.now()),
             Date.now(),
           ),
-        ).toMatchObject({ used_seconds: 0, reserved_seconds: 0 });
+        ).toMatchObject({ used_seconds: 0, in_flight_seconds: 0 });
         expect(
           (await call("/internal/reopen", "POST", config.operatorToken)).status,
         ).toBe(200);
@@ -1131,7 +1131,7 @@ test.each([0, 16_000])(
       store.access(store.authenticate(session.token, Date.now()), Date.now()),
     ).toMatchObject({
       used_seconds: 1,
-      reserved_seconds: 0,
+      in_flight_seconds: 0,
     });
     expect(() => store.claim(grant.token, Date.now())).toThrow("invalid_grant");
   },
@@ -1186,7 +1186,7 @@ test.each([
     });
     expect(
       store.access(store.authenticate(session.token, Date.now()), Date.now())
-        .reserved_seconds,
+        .in_flight_seconds,
     ).toBe(0);
   },
 );
@@ -1226,7 +1226,7 @@ test("wrong preamble is rejected on its first byte before dispatch or EOF", asyn
     store.access(store.authenticate(session.token, Date.now()), Date.now()),
   ).toMatchObject({
     used_seconds: 1,
-    reserved_seconds: 0,
+    in_flight_seconds: 0,
   });
 });
 
@@ -1298,7 +1298,7 @@ test("response-read cancellation retains client-failure charging", async () => {
       store.access(store.authenticate(session.token, Date.now()), Date.now()),
     ).toMatchObject({
       used_seconds: 1,
-      reserved_seconds: 0,
+      in_flight_seconds: 0,
     });
   } finally {
     abort.abort();
@@ -1401,7 +1401,7 @@ test.each([1, 48_000])(
         store.access(store.authenticate(session.token, Date.now()), Date.now()),
       ).toMatchObject({
         used_seconds: initialSamples === 1 ? 1 : 3,
-        reserved_seconds: 0,
+        in_flight_seconds: 0,
       });
       expect(
         (
@@ -1564,7 +1564,7 @@ test("a ready client is not timed out or charged while the upstream stops consum
     expect((await status.json()).active).toBe(1);
     expect(
       store.access(store.authenticate(session.token, Date.now()), Date.now()),
-    ).toMatchObject({ used_seconds: 0, reserved_seconds: 30 });
+    ).toMatchObject({ used_seconds: 0, in_flight_seconds: 30 });
     resume.resolve();
     const response = await pending;
     expect(response.status).toBe(200);
@@ -1573,7 +1573,7 @@ test("a ready client is not timed out or charged while the upstream stops consum
     });
     expect(
       store.access(store.authenticate(session.token, Date.now()), Date.now()),
-    ).toMatchObject({ used_seconds: 20, reserved_seconds: 0 });
+    ).toMatchObject({ used_seconds: 20, in_flight_seconds: 0 });
   } finally {
     resume.resolve();
     abort.abort();

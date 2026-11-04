@@ -20,7 +20,7 @@ function database(seconds: number) {
 }
 const october = Date.parse("2026-10-31T23:59:50Z");
 
-test("devices share one allowance; reservation contention differs from exhaustion", () => {
+test("devices dictate at once from one allowance; a third attempt is busy, not exhausted", () => {
   const { path, policy } = database(2);
   using store = disposable(new AccessStore(path, policy, "open"));
   const phone = store.value.enroll("apple-account-a", october);
@@ -32,9 +32,19 @@ test("devices share one allowance; reservation contention differs from exhaustio
     october,
   );
   expect(first.audio_limit_samples).toBe(32_000);
+  const second = store.value.reserve(
+    store.value.authenticate(mac.token, october),
+    600,
+    october,
+  );
+  expect(second.audio_limit_samples).toBe(32_000);
+  expect(second.allowance).toMatchObject({
+    in_flight_seconds: 4,
+    reserved_seconds: 0,
+  });
   expect(() =>
     store.value.reserve(
-      store.value.authenticate(mac.token, october),
+      store.value.authenticate(phone.token, october),
       1,
       october,
     ),
@@ -44,10 +54,11 @@ test("devices share one allowance; reservation contention differs from exhaustio
     "invalid_grant",
   );
   store.value.settle(grant, sampleRate + 1, true);
+  store.value.settle(store.value.claim(second.token, october), 16_000, true);
   expect(
     store.value.access(store.value.authenticate(mac.token, october), october)
       .used_seconds,
-  ).toBe(2);
+  ).toBe(3);
   expect(() =>
     store.value.reserve(
       store.value.authenticate(mac.token, october),
@@ -156,7 +167,7 @@ test("cross-month settlement stays in admission month; expired unused grant rele
     store.value.access(
       store.value.authenticate(session.token, nextMonth + 30_001),
       nextMonth + 30_001,
-    ).reserved_seconds,
+    ).in_flight_seconds,
   ).toBe(0);
   expect(() => store.value.claim(second.token, nextMonth + 30_001)).toThrow(
     "invalid_grant",
@@ -191,7 +202,7 @@ test("durable crash recovery releases holds, preserves settled usage and ownersh
     const same = store.enroll("apple-account", october);
     expect(same.subject).toBe(session.subject);
     expect(same.allowance.used_seconds).toBe(3);
-    expect(same.allowance.reserved_seconds).toBe(0);
+    expect(same.allowance.in_flight_seconds).toBe(0);
   } finally {
     store.close();
   }
@@ -221,7 +232,7 @@ test("missing ledger and a competing owner fail without resetting allowance", ()
     store.value.access(
       store.value.authenticate(session.token, october),
       october,
-    ).reserved_seconds,
+    ).in_flight_seconds,
   ).toBe(10);
   const missing = `${path}.missing`;
   expect(() => new AccessStore(missing, policy, "open")).toThrow();
@@ -277,6 +288,6 @@ test("least recently renewed session is evicted while a claimed upload keeps its
     ),
   ).toMatchObject({
     used_seconds: 1,
-    reserved_seconds: 0,
+    in_flight_seconds: 0,
   });
 });
