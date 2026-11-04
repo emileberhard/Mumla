@@ -1,10 +1,12 @@
 import { visit } from "jsonc-parser";
 
 export const sampleRate = 16_000;
-export const maximumAudioSeconds = 120;
+export const maximumAudioSeconds = 1800;
+export const httpUploadAudioSeconds = 120;
 export const sessionLifetimeMs = 30 * 24 * 60 * 60 * 1000;
 export const transcriptionPath =
   "/vendors/azure-speech/speechtotext/transcriptions:transcribe";
+export const streamPath = "/v1/dictations/stream";
 
 export class AccessError extends Error {
   constructor(

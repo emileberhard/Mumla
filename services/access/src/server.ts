@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
+import type { ServerWebSocket } from "bun";
 import type { IdentityVerifier } from "./cloudkit";
 import type { AccessConfig } from "./config";
 import {
@@ -13,15 +14,43 @@ import {
   parseJSON,
   RequestIncident,
   record,
+  streamPath,
   transcriptionPath,
 } from "./protocol";
 import { checkRouter } from "./readiness";
-import type { AccessStore, Session } from "./store";
+import type { AccessStore, Grant, Session } from "./store";
+import { StreamUpload } from "./stream";
 import { TranscriptionUpload } from "./transcription";
 
 export interface ReleaseIdentity {
   version: string;
   commit: string;
+}
+
+interface AudioInput {
+  readonly samples: number;
+  readonly failure: AccessError | undefined;
+  readonly bodyHandedOff: boolean;
+  readonly isComplete: boolean;
+  readonly interruptedWhileWaitingForClient: boolean;
+  prepare(onDispatch: () => void): Promise<{
+    signal: AbortSignal;
+    contentType: string;
+    body: ReadableStream<Uint8Array>;
+  }>;
+  close(): Promise<void>;
+}
+
+interface StreamState {
+  grant: Grant;
+  claimedAt: number;
+  client: AbortController;
+  release: () => void;
+  upload?: StreamUpload;
+}
+
+interface Upgrader {
+  upgrade(request: Request, options: { data: StreamState }): boolean;
 }
 
 function json(value: unknown, status = 200) {
@@ -237,13 +266,47 @@ export class AccessService {
     throw new AccessError(404, "not_found");
   }
 
-  async handle(request: Request, address: string | null): Promise<Response> {
+  readonly websocket = {
+    data: {} as StreamState,
+    maxPayloadLength: 256 * 1024,
+    idleTimeout: 60,
+    open: (socket: ServerWebSocket<StreamState>) => {
+      void this.stream(socket);
+    },
+    message: (
+      socket: ServerWebSocket<StreamState>,
+      message: string | Buffer,
+    ) => {
+      socket.data.upload?.receive(message);
+    },
+    close: (socket: ServerWebSocket<StreamState>) => {
+      socket.data.client.abort();
+    },
+  };
+
+  handle(request: Request, address: string | null): Promise<Response>;
+  handle(
+    request: Request,
+    address: string | null,
+    server: Upgrader,
+  ): Promise<Response | undefined>;
+  async handle(
+    request: Request,
+    address: string | null,
+    server?: Upgrader,
+  ): Promise<Response | undefined> {
     let counted = false;
     let subject: string | undefined;
     let subjectCounter: { count: number } | undefined;
     try {
       const url = new URL(request.url);
-      if (request.headers.has("upgrade"))
+      const streaming =
+        url.pathname === streamPath &&
+        request.method === "GET" &&
+        !url.search &&
+        request.headers.get("upgrade")?.toLowerCase() === "websocket" &&
+        server !== undefined;
+      if (request.headers.has("upgrade") !== streaming)
         throw new AccessError(400, "unsupported_transport");
       if (
         url.pathname === "/healthz" &&
@@ -264,7 +327,10 @@ export class AccessService {
         return await this.enroll(request, address, now);
       }
       let session: Session | undefined;
-      if (url.pathname === transcriptionPath && request.method === "POST") {
+      if (
+        streaming ||
+        (url.pathname === transcriptionPath && request.method === "POST")
+      ) {
         subject = this.store.authenticateGrant(bearer(request), now);
       } else if (
         (url.pathname === "/v1/dictations" && request.method === "POST") ||
@@ -287,6 +353,28 @@ export class AccessService {
         this.subjectRequests.set(subject, subjectCounter);
       }
       counted = true;
+      if (streaming && server) {
+        const grant = this.store.claim(bearer(request), now);
+        const owner = subject;
+        const counter = subjectCounter;
+        let released = false;
+        const state: StreamState = {
+          grant,
+          claimedAt: now,
+          client: new AbortController(),
+          release: () => {
+            if (released) return;
+            released = true;
+            this.freeSlot(owner, counter);
+          },
+        };
+        if (!server.upgrade(request, { data: state })) {
+          this.store.settle(grant, 0, false);
+          throw new AccessError(400, "unsupported_transport");
+        }
+        counted = false;
+        return undefined;
+      }
       if (url.pathname === transcriptionPath && request.method === "POST") {
         const query = [...url.searchParams];
         if (
@@ -295,7 +383,15 @@ export class AccessService {
           query[0]?.[1] !== "2025-10-15"
         )
           throw new AccessError(400, "unsupported_transcription");
-        return await this.transcribe(request, now);
+        const grant = this.store.claim(bearer(request), now);
+        const phrases = await this.transcribe(
+          grant,
+          request.signal,
+          (signal) =>
+            new TranscriptionUpload(request, grant.limit_samples, signal),
+          now,
+        );
+        return json({ combinedPhrases: phrases.map((text) => ({ text })) });
       }
       if (url.search) throw new AccessError(400, "invalid_request");
       if (url.pathname === "/v1/access" && request.method === "GET" && session)
@@ -346,13 +442,56 @@ export class AccessService {
       this.incident(error);
       return json({ error: { code: "service_unavailable" } }, 503);
     } finally {
-      if (counted) {
-        this.requests--;
-        if (subject && subjectCounter) {
-          subjectCounter.count--;
-          if (subjectCounter.count === 0) this.subjectRequests.delete(subject);
-        }
-      }
+      if (counted) this.freeSlot(subject, subjectCounter);
+      this.finishFailure();
+    }
+  }
+
+  private freeSlot(
+    subject: string | undefined,
+    subjectCounter: { count: number } | undefined,
+  ) {
+    this.requests--;
+    if (subject && subjectCounter) {
+      subjectCounter.count--;
+      if (subjectCounter.count === 0) this.subjectRequests.delete(subject);
+    }
+  }
+
+  private async stream(socket: ServerWebSocket<StreamState>) {
+    const state = socket.data;
+    try {
+      const phrases = await this.transcribe(
+        state.grant,
+        state.client.signal,
+        (signal) => {
+          state.upload = new StreamUpload(
+            socket,
+            state.grant.limit_samples,
+            signal,
+          );
+          return state.upload;
+        },
+        state.claimedAt,
+      );
+      socket.send(JSON.stringify({ type: "result", text: phrases.join("\n") }));
+    } catch (error) {
+      if (error instanceof RequestIncident) this.requestIncident(error);
+      else if (!(error instanceof AccessError)) this.incident(error);
+      const refusal =
+        error instanceof AccessError
+          ? error
+          : new AccessError(503, "service_unavailable");
+      socket.send(
+        JSON.stringify({
+          type: "error",
+          status: refusal.status,
+          code: refusal.code,
+        }),
+      );
+    } finally {
+      socket.close(1000);
+      state.release();
       this.finishFailure();
     }
   }
@@ -391,19 +530,23 @@ export class AccessService {
     }
   }
 
-  private async transcribe(request: Request, now: number) {
-    const grant = this.store.claim(bearer(request), now);
+  private async transcribe(
+    grant: Grant,
+    client: AbortSignal,
+    input: (signal: AbortSignal) => AudioInput,
+    now: number,
+  ): Promise<string[]> {
     const abort = new AbortController();
     this.pendingUploads.set(grant.hash, abort);
     const deadline = AbortSignal.timeout(Math.max(1, grant.deadline - now));
-    const signal = AbortSignal.any([request.signal, abort.signal, deadline]);
-    let upload: TranscriptionUpload | undefined;
+    const signal = AbortSignal.any([client, abort.signal, deadline]);
+    let upload: AudioInput | undefined;
     let charge = false;
     let upstreamRefused = false;
     let inputRejected = false;
     let refusedDispatch = false;
     try {
-      upload = new TranscriptionUpload(request, grant.limit_samples, signal);
+      upload = input(signal);
       const prepared = await upload.prepare(() => {
         if (abort.signal.aborted || !this.admissionOpen || !this.healthy) {
           refusedDispatch = true;
@@ -453,19 +596,17 @@ export class AccessService {
         )
           throw new Error("Invalid provider result");
       } catch (error) {
-        if (request.signal.aborted) throw error;
+        if (client.aborted) throw error;
         upstreamRefused = true;
         throw new AccessError(502, "transcription_failed");
       }
       charge = true;
-      return json({
-        combinedPhrases: (result.combinedPhrases as unknown[]).map(
-          (phrase) => ({ text: record(phrase).text }),
-        ),
-      });
+      return (result.combinedPhrases as unknown[]).map(
+        (phrase) => record(phrase).text as string,
+      );
     } catch (error) {
       const clientFailure =
-        request.signal.aborted ||
+        client.aborted ||
         upload?.failure ||
         (error instanceof AccessError && error.status < 500) ||
         (deadline.aborted && upload?.interruptedWhileWaitingForClient);

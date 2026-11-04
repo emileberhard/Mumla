@@ -1,6 +1,6 @@
 import { CloudKitIdentity } from "./cloudkit";
 import { readConfig } from "./config";
-import { maximumAudioSeconds, OperatorIncident } from "./protocol";
+import { httpUploadAudioSeconds, OperatorIncident } from "./protocol";
 import { checkRouter } from "./readiness";
 import { AccessService } from "./server";
 import { AccessStore, validateSnapshot } from "./store";
@@ -88,11 +88,16 @@ async function main() {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: config.listenPort,
-    maxRequestBodySize: maximumAudioSeconds * 32_000 + 16 * 1024,
+    maxRequestBodySize: httpUploadAudioSeconds * 32_000 + 16 * 1024,
     idleTimeout: 255,
-    fetch(request) {
-      return service.handle(request, request.headers.get("cf-connecting-ip"));
+    fetch(request, server) {
+      return service.handle(
+        request,
+        request.headers.get("cf-connecting-ip"),
+        server,
+      );
     },
+    websocket: service.websocket,
     error() {
       return Response.json(
         { error: { code: "service_unavailable" } },

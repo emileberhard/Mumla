@@ -346,7 +346,7 @@ export class AccessStore {
         const samples = Math.min(maximumSeconds, available) * sampleRate;
         const { token: grant, hash } = credential();
         const claimExpires = now + 30_000;
-        const deadline = now + 180_000;
+        const deadline = now + (samples / sampleRate + 70) * 1000;
         const inserted = this.db
           .query(`INSERT INTO grants
             SELECT ?, ?, ?, ?, ?, ?, ?, 0 FROM sessions
