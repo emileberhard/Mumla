@@ -99,8 +99,8 @@ stale documentation in the same change.
 ### Providers and credentials
 
 - Both apps transcribe only with Azure MAI-Transcribe-2
-  (`TranscriptionProviderType.dictation`) through SpeechKit's production
-  implementation. The shared profile's model and cleanup fields stay readable
+  (`TranscriptionProviderType.dictation`). The access service builds the
+  provider request; the apps stream audio to it through `AccessStream`. The shared profile's model and cleanup fields stay readable
   for other apps, but Mumla's plans pin the model and disable cleanup. Older
   model IDs remain data in history and results. Mumla shows no model, provider
   or key anywhere; no provider key exists in the apps, recipes or configuration.
@@ -112,15 +112,14 @@ stale documentation in the same change.
   allowance and issues one-use grants. `MumlaAccessOrigin` in the Info.plists
   sets the origin; the CloudKit API token comes from `MUMLA_CLOUDKIT_API_TOKEN`
   in the ignored `Local.xcconfig`.
-- Progressive capture requests its grant while capture starts, never sends
-  audio past `audio_limit_samples` and stops normally at that bound. Batch
-  recovery reserves the recording's rounded duration. Only a transcription 401
-  or 503, refused before dispatch, resends with a new grant; never resend an
-  attempt that may have reached the provider. Grant and allowance requests
-  retry 503 after jittered 0.5, 1 and 2 s.
+- Live capture requests its grant (up to 30 minutes) while capture starts,
+  never sends audio past `audio_limit_samples` and stops normally at that
+  bound. Batch recovery reserves the recording's rounded duration. Only a
+  service 401 or 503, at the handshake or before dispatch, resends with a new
+  grant; never resend an attempt that may have reached the provider. Grant
+  and allowance requests retry 503 after jittered 0.5, 1 and 2 s.
 - The keyboard reads `KeyboardAccessState` from the App Group and holds no
-  credential. Keep provider-specific code small and route transcription
-  behavior through SpeechKit.
+  credential. Provider-specific request rules belong to the access service.
 
 ### Data sync
 
@@ -400,7 +399,7 @@ container `iCloud.emileberhard.WisprClone`.
 | `just build-mac` | Compile the macOS app, signing disabled |
 | `just build-sim` | Compile `MumlaiOS` and the keyboard for the simulator |
 | `just test-keyboard` | Keyboard delivery tests on macOS |
-| `just test-access-live` | Live access acceptance from the signed Debug Mac app: CloudKit enrollment, proof replay, Transcribe Again, paced uploads to the 110 s bound |
+| `just test-access-live` | Live access acceptance from the signed Debug Mac app: CloudKit enrollment, proof replay, Transcribe Again, a paced 150 s stream, a stream stopped at a short grant's bound and a canceled stream |
 | `just realtime-eval` | Resume the provider evaluation from completed atomic run logs with adaptive concurrency |
 | `just install-mac` | Build signed Debug, replace `/Applications/Mumla Dev.app`, install the `mumla` CLI and launch; stamped with the latest version tag |
 | `just build-iphone`, `just install-iphone`, `just deliver-iphone <app>` | Signed development checkpoint for a physical iPhone and its delivery; development builds use marketing version `0.0.0` |
@@ -428,9 +427,9 @@ models, authentication, request options, upload formats and finalization, or a
 dependency change that alters it, add or update a live integration test and run
 it successfully before merging or releasing.
 
-- Exercise the app's actual factory, session or engine, audio handoff and
-  result handling through SpeechKit's production implementation; never
-  duplicate HTTP requests in the test or substitute a minimal SDK probe.
+- Exercise the app's actual session or transcriber, audio handoff and result
+  handling through `AccessStream`; never duplicate protocol messages in the
+  test or substitute a minimal probe.
 - Use the installed app's credential resolver, endpoint, model and options,
   with realistic language and dictionary settings and a boundary case for any
   documented or observed provider limit.
@@ -461,20 +460,17 @@ git tag -a x.y.z -F notes.txt
 git push origin x.y.z
 ```
 
-`.github/workflows/release.yml` runs on hosted runners only and follows
-[Canonical build](docs/design/canonical-build.md). It admits the tag after
-`ci.yml` passes on the same commit and reserves build numbers. The iOS lane
-writes the `testflight` environment's `MUMLA_CLOUDKIT_API_TOKEN` into
-`Local.xcconfig`, signs each bundle ad hoc with
-`Apple/Config/entitlements-ios.json`, exports with Xcode cloud signing and
-checks signing (`scripts/sign-bundles check`) and access configuration
-(`scripts/check-access-configuration`). Its upload, the `Public Beta`
-TestFlight review and the iOS App Store version, prepared and submitted for App Review,
-wait up to 30 minutes for the access service to report the tag's version and
-commit. In parallel `developer-id-archive` builds the Mac app without signing
-credentials and `developer-id` signs and notarizes its DMG; the upload waits
-for both, so a Mac failure ships no channel. The GitHub release rechecks the service and
-publishes the DMG as `Mumla.dmg`.
+`.github/workflows/release.yml` (hosted runners, [Canonical build](docs/design/canonical-build.md))
+admits the tag after `ci.yml` passes on its commit and reserves build numbers.
+The iOS lane writes the `testflight` environment's `MUMLA_CLOUDKIT_API_TOKEN`
+into `Local.xcconfig`, signs bundles ad hoc with
+`Apple/Config/entitlements-ios.json`, exports with cloud signing and runs
+`scripts/sign-bundles check` and `scripts/check-access-configuration`. Its
+upload, the `Public Beta` review and the App Store submission wait up to 30
+minutes for the access service to report the tag's version and commit, and for
+`developer-id-archive` (unsigned) and `developer-id` (signed, notarized DMG),
+so a Mac failure ships no channel. The GitHub release rechecks the service and
+publishes `Mumla.dmg`.
 
 - Once the app has a release, the pipeline submits each version for App Review
   and withdraws an older version still in review. The first submission and the

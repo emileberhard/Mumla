@@ -32,7 +32,7 @@ words. If that fails, and when you use Transcribe Again, Mumla sends the saved
 recording again. Mumla never captures your screen.
 
 The official builds send each recording to Mumla's access service, which the
-maintainer operates, over HTTPS through Cloudflare's network. The service
+maintainer operates, over an encrypted connection through Cloudflare's network. The service
 checks your free minutes and forwards the recording through a router that
 holds Microsoft's credential. For each request the router records metadata
 under the service's own key: path, response status, byte counts, duration and

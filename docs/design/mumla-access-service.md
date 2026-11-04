@@ -12,7 +12,7 @@ keeps provider credentials and inference transport. It gains no Mumla identity,
 quota, subscription, subject-usage or delegated-token feature.
 
 New builds have one transcription operation: MAI-Transcribe-2 in clean mode,
-including progressive upload and batch recovery. There is no model picker,
+streamed live during capture and resent from the archive for recovery. There is no model picker,
 provider branding, separate cleanup, screen-context capture, personal key entry,
 or key baking in any app channel. SpeechKit retains its other providers for
 other applications. Historical result/model identifiers remain readable; removing
@@ -207,7 +207,8 @@ content is reflected into diagnostics.
 | `DELETE /v1/session` | Session | Revoke this session and any unclaimed grants issued under it |
 | `GET /v1/access` | Session | Authoritative allowance snapshot, server time and reset time |
 | `POST /v1/dictations` | Session | Atomically reserve one supported transcription attempt; return one-use grant, claim deadline and audio limit |
-| SpeechKit's existing Azure transcription path | One-use grant | One bounded upload and provider response; claim grant atomically before dispatch |
+| `GET /v1/dictations/stream` | One-use grant, WebSocket upgrade | Current apps: one dictation stream and one result or error message; claim grant atomically at the upgrade |
+| SpeechKit's Azure transcription path | One-use grant | Installs before 1.1: one upload of at most 120 seconds and the provider response |
 | `GET /healthz` | Public | 200 with version/commit only when ready and admission is open; otherwise 503 |
 | `GET /internal/status` | Operator only | SQLite, configuration and router readiness; aggregate active work and actionable failures |
 
@@ -221,7 +222,7 @@ its own grant and charge. A lost grant response can temporarily reserve capacity
 until its short claim deadline; it cannot produce upstream work twice.
 
 The request/reply field contract uses snake_case JSON and ISO 8601 timestamps
-with offsets. `/v1/dictations` requires integer `maximum_audio_seconds` in 1...120, the apps' batch ceiling. This is an enforceable upper
+with offsets. `/v1/dictations` requires integer `maximum_audio_seconds` in 1...1800, the operation maximum. This is an enforceable upper
 bound, never a trusted consumption report. Its reply includes `token`,
 `claim_expires_at`, `request_deadline`, `audio_limit_samples` and an updated
 allowance. The sample rate is fixed by the operation. A batch client asks for its
@@ -243,10 +244,10 @@ automatically. A fence-revoked grant returns 401 `invalid_grant`; request a new
 grant without re-enrolling. No inference was dispatched under that
 refused/revoked grant.
 
-The grant is represented to existing SpeechKit factories as `LLMRouter` with
-the access-service origin and the grant as its bearer. This reuses production
-SpeechKit transports without introducing token policy into SpeechKit or the
-router. Identity sessions cannot call inference paths and grants cannot mint
+Current apps open the stream with the grant as its bearer. Installs before
+1.1 present the grant to SpeechKit's `LLMRouter` factory and upload over HTTP;
+that route stays for them, bounded to 120 seconds by its body limit. Neither
+introduces token policy into SpeechKit or the router. Identity sessions cannot call inference paths and grants cannot mint
 sessions or further grants. Refresh for later requests does not interrupt an
 already admitted upload.
 
@@ -259,11 +260,11 @@ unchanged. Do not build a catalog endpoint, descriptors or plugin interfaces.
 
 | Rule | Initial contract |
 | --- | --- |
-| Transport | POST multipart upload to `/vendors/azure-speech/speechtotext/transcriptions:transcribe`; no WebSocket upgrade |
+| Transport | One WebSocket to `/v1/dictations/stream`: a `start` text message with `languages` and `vocabulary`, binary PCM16 frames, a `finish` text message; the service answers with one `result` or `error` message and closes. Older installs POST a multipart upload to `/vendors/azure-speech/speechtotext/transcriptions:transcribe` |
 | Model/options | `api-version=2025-10-15`, enhanced `MAI-Transcribe-2`, clean style, no diarization; accept omitted timestamps or `"none"` and forward explicit `"none"` |
-| Audio | Exactly one canonical PCM16 little-endian, mono, 16,000 Hz WAV; the existing SpeechKit streaming-header sentinel is accepted for progressive upload |
-| Other input | One bounded definition before audio; existing language and dictionary filtering, at most one supported locale and 50 compatible hints; no audio URLs, extra files or arbitrary prompts |
-| Limit | At most 120 seconds of audio per attempt, at most 180 seconds total request lifetime from grant issuance and 16 KiB definition/framing overhead |
+| Audio | PCM16 little-endian, mono, 16,000 Hz: non-empty, even-length binary frames on the stream, or exactly one canonical WAV on the HTTP route, which also accepts SpeechKit's streaming-header sentinel |
+| Other input | The stream's `start` message carries the language hints and dictionary terms, bounded by the 256 KiB frame limit; the service builds the definition with SpeechKit's Azure rules: one hint becomes the locale, several leave detection to the provider, and the first 50 trimmed terms of at most 50 characters become phrase hints. The HTTP route takes one bounded definition before audio. No audio URLs, extra files or arbitrary prompts |
+| Limit | At most 1,800 seconds of audio per attempt (120 on the HTTP route) and a request lifetime of the grant's audio plus 70 seconds from grant issuance |
 | Output | One synchronous transcription result; a bounded response, no persistent upstream object or polling capability |
 | Recovery | The same operation on a WAV derived from the archived original; a separate, visibly accounted attempt |
 
@@ -280,8 +281,8 @@ recognized by Busboy, requiring exactly `\r\n` then EOF, including across chunk
 boundaries. Compare each preamble byte as it arrives, before dispatch. Bound
 outgoing batch audio to the smaller of its declared length and grant limit, then
 reject excess bytes without forwarding or charging them. A claimed upload must
-provide the validated WAV header and first complete PCM sample within three
-seconds; its whole attempt remains bounded by the 180-second deadline.
+provide its definition (the stream's `start` message or the validated WAV header) and first complete PCM sample within three
+seconds; its whole attempt remains bounded by the grant deadline.
 Incomplete uploads must sustain a cumulative floor of 8,000 parser-received PCM
 samples per second spent waiting for client input, after a ten-second grace.
 Busboy's byte counter measures arrival independently of upstream consumption.
@@ -290,20 +291,26 @@ a charged client timeout. Check progress periodically with a monotonic clock;
 silence or trickling cannot reset the budget. Failure aborts both sides, charges
 measured input under the client-failure rule and frees the idle hold. Clear that
 timer when upload completes, so provider response latency does not look like a
-slow client. SpeechKit's pinned progressive transport appends each captured PCM
-batch to its live upload; ordinary capture supplies 16,000 samples/second, and
-batch recovery supplies it faster.
+slow client. Live capture sends each captured PCM batch as it arrives, at
+16,000 samples/second; batch recovery sends the whole recording as fast as the
+stream accepts it. The service queues at most about one MiB of received audio
+and pauses reading the socket until the provider upload drains it, so a burst
+becomes TCP backpressure instead of memory.
 
-The edge is part of this deploy contract. Cloudflare's default request body
-buffering holds about the first MiB of an upload, which delays progressive audio
-past the claim window, so a zone configuration rule sets
-`request_body_buffering: none` for the transcription path alone. Cloudflare's
-125-second Proxy Read Timeout counts from when the service receives a request,
-even while its body is still streaming, and only Enterprise zones can raise it.
-A paced upload lasts as long as the recording, so the apps request progressive
-grants of at most 110 seconds and batch transcriptions of at most 120 seconds,
-which upload far faster than real time (both observed 2026-10-28). A direct
-DNS-only host would lift the ceiling but expose the server's address.
+The edge is part of this deploy contract. Cloudflare's 125-second Proxy Read
+Timeout counts from when the service receives an HTTP request, even while its
+body is still streaming, and only Enterprise zones can raise it. A paced upload
+lasts as long as the recording, so the HTTP route capped dictations at 110
+seconds. Proxied WebSockets on every plan have no such read timeout, only an
+idle timeout, and live capture sends audio continuously; that is why the
+stream exists (decided 2026-11-04). Cloudflare can still end a WebSocket when it
+restarts its edge; that attempt fails like any lost connection and keeps the
+archived original for Transcribe Again. The service's own Azure leg stays one
+streamed HTTP request over loopback through the router, without Cloudflare;
+a 200-second paced upload and a 30-minute recording both finalized in about 3.4
+seconds there (observed 2026-11-04). Azure's streaming model was rejected: it is
+a preview without phrase lists or the clean style. The HTTP route keeps its
+`request_body_buffering: none` rule for older installs.
 
 The authoritative unit is integer PCM samples. At 16,000 samples/second, the
 free month contains 57,600,000 samples. Report human-readable seconds in the
@@ -320,16 +327,15 @@ that fences admission and restarts after live work finishes. Never infer
 consumption from output word count or client reports.
 
 Bun's streaming fetch remains the forwarding owner. Dispatch starts when fetch
-pulls the rebuilt request body's first bytes, after validating the 44-byte WAV
-header. A fence or closed admission refuses an undispatched claim with retryable
+pulls the rebuilt request body's first bytes, after the definition and the first
+audio arrive. A fence or closed admission refuses an undispatched claim with retryable
 503 and no charge; the client resends with a new grant.
 
-For progressive upload, reserve up to 110 seconds, or the remaining whole-second
+For live capture, reserve up to 1,800 seconds, or the remaining whole-second
 allowance if smaller. Each app stops capture when that much wall-clock time has
 passed since recording began, so an interruption pause or a stalled upload
-cannot stretch the request toward the edge timeout, and leaves 15 seconds for
-finalization, which took under a second at the bound (observed 2026-10-28); the
-sample budget stays as a backstop. From 10 seconds before that deadline, the
+cannot stretch the request past its deadline, which leaves 70 seconds after the
+audio for upload lag and finalization; the sample budget stays as a backstop. From 10 seconds before that deadline, the
 recording UI shows the remaining time in place of the elapsed time. Start local
 capture and archival immediately while requesting the grant in parallel. Begin
 upload only after it arrives. The bound applies to already captured as well as
@@ -337,7 +343,7 @@ subsequent audio: upload at most that prefix, stop capture normally when the
 bound is reached, and retain the whole original. If admission is refused,
 archive what was captured and show spent, busy or unavailable state. Client
 capture counts the converted provider samples and stops normally at the bound,
-finishes the multipart stream and receives the transcript. It does not cancel
+finishes the stream and receives the transcript. It does not cancel
 and lose the captured result. The archived original is retained. The server
 independently refuses bytes beyond that bound; a malicious client cannot turn it
 into a longer request. Batch recovery validates its complete WAV duration and
@@ -348,9 +354,9 @@ No separate cleanup or screenshot bytes are sent in this first operation. Future
 cleanup needs a bounded input/output and attempt rule, not free arbitrary text
 requests attached to an audio-only meter. Future asynchronous providers require
 subject-owned upload/job references and retained reservations until terminal
-state. Future WebSocket operations require frame-level model/input validation,
-sample or provider-session-time metering, aggregate concurrency and a hard
-termination deadline; a transparent byte tunnel does not provide those checks.
+state. The stream validates every frame, meters samples, shares the data-request
+caps and ends at the grant deadline; a transparent byte tunnel would provide
+none of those checks, so later WebSocket operations need the same.
 
 ## Durable allowance ownership
 
@@ -455,7 +461,7 @@ Use a small Bun/TypeScript program under `services/access/`, reusing the
 existing Bun services' SQLite approach. Use a maintained streaming multipart
 parser for the narrow upload contract and Bun's `fetch` to stream the rebuilt,
 validated multipart body to the local router. This is a protocol adapter, not a
-transparent proxy; reject all upgrades. A focused streaming/abort/early-rejection
+transparent proxy; accept only the stream's upgrade. A focused streaming/abort/early-rejection
 probe on the pinned runtime is a prerequisite.
 
 Colocate it with llm-router on the existing small Linux VPS. Run under a
@@ -476,8 +482,8 @@ per-origin rate limit (IPv4-mapped IPv6 normalized to IPv4; other IPv6 10 per
 minute budget: a global count that unverified requests fill would
 let a dozen origins lock out every sign-in, so concurrency slots and per-origin
 limits bound verification instead. Acceptance must prove that the real client IP reaches this
-boundary and that the tunnel forwards progressive request bodies before capture
-ends. A client cannot trigger a deployment.
+boundary and that the tunnel carries a paced stream past the 125-second proxy
+read timeout. A client cannot trigger a deployment.
 
 The router agent's agreed service principal is `mumla-access`, with
 `access=[azure.transcription]`, an empty ladder and `archive=false`.
@@ -518,7 +524,9 @@ ingress stays up. New requests see only a brief retryable unavailable state
 while the process is replaced. Planned upgrades never kill active dictation or
 strand a reservation. One process owns the database at a time. If sustained
 traffic measurably causes idle-wait aborts, introduce a reviewed drain step or
-overlapping slots; neither is required before that evidence.
+overlapping slots; neither is required before that evidence. A dictation can
+now outlast the 15-minute wait; that deploy aborts with admission open and the
+next poll retries it.
 
 A dispatched header-plus-one-sample stall can still occupy a slot for about ten
 seconds of client-input grace at one second of allowance per grant, checked
@@ -597,7 +605,7 @@ before merging the implementation or enabling the public endpoint:
    change, session rotation, expiry and revocation. Confirm an expired user token
    returns 421 from CloudKit, distinct from API-token authentication failure.
 
-2. Through the app's actual SpeechKit factory, prove both progressive capture and
+2. Through the app's actual access stream, prove both live capture and
    batch recovery with language/dictionary settings, canonical WAV, a boundary
    vocabulary fixture and short synthetic audio. Exercise unknown-length uploads,
    chunk boundaries, cancellation, oversized/false headers and finalization. The
@@ -615,9 +623,9 @@ before merging the implementation or enabling the public endpoint:
 
 5. Confirm the actual release origin, API token,
    principal key, private subject override, backups and deploy health on their
-   owners. Verify actual Cloudflare client-IP delivery and progressive body
-   forwarding through that HTTPS route with a paced progressive upload that
-   reaches the 110-second bound, including normal completion and cancellation. No provisioned
+   owners. Verify actual Cloudflare client-IP delivery and a paced 150-second
+   stream through that HTTPS route, a stream that stops at a short grant's
+   bound, and a canceled stream's charge. No provisioned
    token or production deployment is
    assumed to exist yet. Measure the added local hop on the dev instance.
 

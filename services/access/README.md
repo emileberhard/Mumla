@@ -67,9 +67,8 @@ Cloudflare tunnel: it provides TLS, supplies `CF-Connecting-IP`, rejects
 loopback only; Cloudflare overwrites the client IP header. No generic forwarding
 headers are trusted. Enrollment requires that IP; missing/invalid IP refuses
 only that request with 503 and an incident log limited to once per minute.
-Acceptance must verify the real IP and a paced progressive upload that reaches
-the apps' 110-second bound, including normal completion and cancellation, through
-the real tunnel. Enrollment permits 10/origin/minute (IPv4-mapped IPv6 normalizes to
+Acceptance must verify the real IP and a paced 150-second stream, a stream that
+stops at a short grant's bound and a canceled stream through the real tunnel. Enrollment permits 10/origin/minute (IPv4-mapped IPv6 normalizes to
 IPv4; other IPv6 allows 10 per /64 and 100 per /48) with no shared minute budget,
 so junk from a few origins cannot lock out everyone's sign-in; a full 10,000-entry
 origin table forgets its oldest entry. At 32 sessions, enrollment
@@ -79,10 +78,10 @@ concurrently; the per-account request cap is checked before the 64-request
 global pool. Health and operator routes remain available outside that cap.
 Enrollment has eight separate slots and never blocks the idle fence. Both
 enrollment and grant bodies have two-second deadlines; grant requests
-authenticate before body reads. Claimed uploads must provide the validated WAV
-header and first complete PCM sample within three seconds. Dispatch starts when
-Bun fetch pulls the rebuilt request body's first bytes, after validating the
-44-byte WAV header. A claimed attempt the client fails, dispatched or not,
+authenticate before body reads. Claimed attempts must provide their definition
+(the stream's `start` message or the validated WAV header) and first complete
+PCM sample within three seconds. Dispatch starts when Bun fetch pulls the
+rebuilt request body's first bytes. A claimed attempt the client fails, dispatched or not,
 including a header-only stall or invalid upload, costs at least one second; a
 fence or closed admission before dispatch returns retryable 503 for free.
 
@@ -168,14 +167,15 @@ admission and exit nonzero after current requests finish or fail. Startup
 recovery releases dangling holds; a failed settlement cannot block process exit.
 The private poller applies the reopening policy above once readiness succeeds.
 
-A transcription reserves at most 120 seconds, expires unclaimed after 30 seconds
-and has a 180-second total deadline. Meter actual 16 kHz samples. Charge a
+A transcription reserves at most 1,800 seconds (120 on the HTTP route), expires
+unclaimed after 30 seconds and must finish within its audio length plus 70
+seconds of the grant. Meter actual 16 kHz samples. Charge a
 produced transcript or a client-caused failure of a claimed attempt, rounded
 up to whole seconds with a one-second minimum; a provider 400 or 422 input
 refusal costs exactly one second. Connection failures, router refusals, other
 provider 4xx and 5xx, invalid 200 responses, pre-dispatch fences and service
 crashes release the reservation. Never forward or meter
-beyond a batch WAV's declared length or its grant limit. Incomplete uploads have
+beyond a batch WAV's declared length or the grant limit. Incomplete uploads have
 a cumulative floor of 8,000 parser-received PCM samples per second of
 client-input waiting, after a ten-second grace. Waiting on upstream consumption
 pauses this clock and is never classified as a client timeout. The periodic

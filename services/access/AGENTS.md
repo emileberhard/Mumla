@@ -13,7 +13,7 @@ to SpeechKit or llm-router.
   settlement are synchronous transactions. Spent plus active reservations never
   exceeds the admission policy snapshot. Crash recovery releases dangling holds
   and reports an incident; dispatch starts when Bun fetch pulls the rebuilt
-  request body's first bytes, after a validated 44-byte WAV header. A claimed
+  request body's first bytes, after the definition and first audio. A claimed
   attempt the client fails, dispatched or not, charges measured input with a
   one-second minimum, and a provider 400 or 422 input refusal charges exactly
   one second, so no attempt an account causes is free. Fences and closed
@@ -26,10 +26,13 @@ to SpeechKit or llm-router.
   typed status only, never a credential. Pass authenticated sessions into store
   operations; grant insertion rechecks the token and expiry after its body read.
 
-- Forward only validated 16 kHz mono PCM16 WAV with the fixed clean
-  transcription definition. Rebuild multipart, meter actual samples and
-  propagate cancellation to both sides. No upgrades, URLs, arbitrary prompts or
-  generic proxy routes.
+- Current apps stream a dictation over one WebSocket at `/v1/dictations/stream`:
+  `start` with languages and vocabulary, binary 16 kHz mono PCM16 frames,
+  `finish`, then one `result` or `error` message. The service builds the fixed
+  clean MAI-Transcribe-2 definition, streams one multipart request to the
+  router, meters actual samples and propagates cancellation to both sides. The
+  HTTP WAV route stays for installs before 1.1, bounded to 120 seconds. No other
+  upgrades, URLs, arbitrary prompts or generic proxy routes.
 
 - Start fenced on every boot. The private deploy owner waits for live idle with
   admission open, takes a consistent backup, fences only when idle, replaces and
