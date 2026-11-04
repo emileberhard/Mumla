@@ -733,6 +733,7 @@ final class DictationCoordinator {
         phase = .idle
         Task {
             await controller?.cancel()
+            access.refreshInBackground()
         }
         await restoreIdleAudioSessionAfterCapture(reason: "dictation_canceled")
         CrashReporting.breadcrumb(

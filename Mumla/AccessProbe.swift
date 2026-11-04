@@ -39,8 +39,16 @@ enum AccessProbe {
     private struct Rejection: Encodable { let status: Int; let code: String?; var rejectedAsIdentity: Bool { status == 401 && code == "invalid_identity" } }
     private struct Transcription: Encodable { let audioSeconds: Double; let streamedSeconds: Double; let finishToFinalMilliseconds: Int; let characters: Int; let anchors: Int; var reachedBound = false; var passed: Bool { anchors >= 2 } }
     private struct ProofLifetime: Encodable { var acceptedAtMinutes: [Int] = []; var expiredAtMinutes: Int?; var expired: Rejection? }
-    private struct Concurrency: Encodable { let expectedSeconds: Int; let secondSeconds: Int; let thirdRefusedAsBusy: Bool; var passed: Bool { secondSeconds == expectedSeconds && thirdRefusedAsBusy } }
-    private struct Cancellation: Encodable { let streamedSeconds: Double; let chargedSeconds: Double; var passed: Bool { chargedSeconds > 0 } }
+    private struct Concurrency: Encodable {
+        let expectedSeconds: Int; let secondSeconds: Int; let thirdRefusedAsBusy: Bool; let inFlight: InFlight
+        var passed: Bool {
+            secondSeconds == expectedSeconds && thirdRefusedAsBusy
+                && inFlight.reservedSeconds == 0 && inFlight.inFlightSeconds == Double(expectedSeconds + secondSeconds)
+        }
+    }
+    private struct Cancellation: Encodable { let streamedSeconds: Double; let chargedSeconds: Double; let afterSettlement: InFlight; var passed: Bool { chargedSeconds > 0 && afterSettlement.inFlightSeconds == 0 } }
+    private struct InFlight: Codable { let inFlightSeconds: Double; let reservedSeconds: Double }
+    private struct InFlightEnvelope: Decodable { let allowance: InFlight }
 
     private static let languages = ["en", "sv"]
     private static let vocabulary = (1...57).map { "ProjectTerm\($0)" }
@@ -129,7 +137,8 @@ enum AccessProbe {
         let paced = pacedPCM(speech: wav.dropFirst(PCM16WAVHeader.byteCount))
         receipt.stage = "paced-completion"
         let remaining = try await client.allowance().remaining
-        let concurrency = Task { try await concurrentGrants(client, remaining: remaining) }
+        let reader = InFlightReader(origin: configuration.origin, transport: transport, store: store)
+        let concurrency = Task { try await concurrentGrants(client, remaining: remaining, reader: reader) }
         receipt.pacedCompletion = try await stream(paced, access: access, grantSeconds: AccessGrant.maximumAudioSeconds, cancel: false).completion
         receipt.concurrentGrants = try await concurrency.value
         receipt.stage = "bounded-completion"
@@ -142,7 +151,8 @@ enum AccessProbe {
         let settled = try await settledAllowance(client, after: before)
         receipt.pacedCancellation = Cancellation(
             streamedSeconds: cancellation.streamedSeconds,
-            chargedSeconds: (settled.used - before.used) / .seconds(1)
+            chargedSeconds: (settled.used - before.used) / .seconds(1),
+            afterSettlement: try await reader.read()
         )
     }
 
@@ -189,7 +199,7 @@ enum AccessProbe {
                               characters: text.count, anchors: anchors(in: text), reachedBound: limitReached.withLock { $0 }), streamed)
     }
 
-    private static func concurrentGrants(_ client: AccessClient, remaining: Duration) async throws -> Concurrency {
+    private static func concurrentGrants(_ client: AccessClient, remaining: Duration, reader: InFlightReader) async throws -> Concurrency {
         try await Task.sleep(for: .seconds(5))
         let (second, _) = try await client.reserve(maximumAudioSeconds: AccessGrant.maximumAudioSeconds)
         var thirdRefusedAsBusy = false
@@ -198,8 +208,25 @@ enum AccessProbe {
         return Concurrency(
             expectedSeconds: min(AccessGrant.maximumAudioSeconds, Int(remaining.components.seconds)),
             secondSeconds: second.audioLimitSamples / AccessGrant.sampleRate,
-            thirdRefusedAsBusy: thirdRefusedAsBusy
+            thirdRefusedAsBusy: thirdRefusedAsBusy,
+            inFlight: try await reader.read()
         )
+    }
+
+    private struct InFlightReader: Sendable {
+        let origin: URL
+        let transport: URLSession
+        let store: ProbeSessionStore
+
+        func read() async throws -> InFlight {
+            guard let token = try store.load()?.token else { throw AccessFailure.serviceUnavailable }
+            var request = URLRequest(url: origin.appending(path: "/v1/access"))
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            let (data, _) = try await transport.data(for: request)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            return try decoder.decode(InFlightEnvelope.self, from: data).allowance
+        }
     }
 
     private static func settledAllowance(_ client: AccessClient, after before: MumlaAccess.Allowance) async throws -> MumlaAccess.Allowance {

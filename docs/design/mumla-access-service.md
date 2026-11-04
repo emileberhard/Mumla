@@ -377,8 +377,10 @@ Devices on one account dictate at the same time from the same minutes. Each
 admission grants at most the remaining allowance (`limit - spent`) and does not
 subtract other attempts in flight; settlement charges what each attempt actually
 used. Admission refuses once spent reaches the limit and allows at most two
-active attempts per subject, so concurrent attempts can overshoot the limit by
-at most one attempt's bound (30 minutes) per month. An earlier design reserved
+active attempts per subject, so under a fixed limit concurrent attempts can
+overshoot it by at most one attempt's bound (30 minutes) per month. A lowered
+limit applies to new admissions only; attempts admitted under the old limit keep
+their bounds. Crash recovery releases attempts without charge. An earlier design reserved
 each grant's whole bound, which with 30-minute grants made a second device
 wait for the first to finish; the bounded overshoot costs less than that.
 Admission inserts its grant under `BEGIN IMMEDIATE`. Grant claim and

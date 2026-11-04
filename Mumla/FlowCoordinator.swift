@@ -572,6 +572,7 @@ final class FlowCoordinator {
         keyboardMonitor.resetToggleMode()
         Task {
             guard wasRecording else { return }
+            defer { access.refreshInBackground() }
             if let originalAudio = await controller?.cancelAndRecoverAudio() {
                 _ = await saveRecoverableRecording(
                     from: originalAudio, source: .realtime,
