@@ -116,7 +116,7 @@ async function setup(upstream: (request: Request) => Promise<Response>) {
     });
     return { socket, opened, closed };
   };
-  return { call, service, server, grant, used, open };
+  return { call, service, store, server, grant, used, open };
 }
 
 function reading(minimumBytes: number) {
@@ -326,4 +326,22 @@ test("a burst faster than the provider reads is paused, not dropped or timed out
   socket.send(JSON.stringify({ type: "finish" }));
   expect(await closed).toEqual([{ type: "result", text: "Burst." }]);
   expect(forwarded.includes(audio)).toBe(true);
+});
+
+test("a settlement failure after dispatch is never reported as retryable", async () => {
+  const { store, grant, open } = await setup(async (request) => {
+    await request.arrayBuffer();
+    return Response.json({ combinedPhrases: [{ text: "Done." }] });
+  });
+  const { socket, opened, closed } = open((await grant(10)).token);
+  await opened;
+  store.settle = () => {
+    throw Object.assign(new Error("synthetic"), { code: "SQLITE_FULL" });
+  };
+  socket.send(JSON.stringify({ type: "start", languages: [], vocabulary: [] }));
+  socket.send(pcm(160));
+  socket.send(JSON.stringify({ type: "finish" }));
+  expect(await closed).toEqual([
+    { type: "error", status: 502, code: "transcription_failed" },
+  ]);
 });

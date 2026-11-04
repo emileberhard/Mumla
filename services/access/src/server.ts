@@ -536,6 +536,35 @@ export class AccessService {
     input: (signal: AbortSignal) => AudioInput,
     now: number,
   ): Promise<string[]> {
+    let upload: AudioInput | undefined;
+    try {
+      return await this.forward(
+        grant,
+        client,
+        (signal) => {
+          upload = input(signal);
+          return upload;
+        },
+        now,
+      );
+    } catch (error) {
+      if (
+        error instanceof AccessError ||
+        error instanceof OperatorIncident ||
+        !upload?.bodyHandedOff
+      )
+        throw error;
+      this.incident(error);
+      throw new AccessError(502, "transcription_failed");
+    }
+  }
+
+  private async forward(
+    grant: Grant,
+    client: AbortSignal,
+    input: (signal: AbortSignal) => AudioInput,
+    now: number,
+  ): Promise<string[]> {
     const abort = new AbortController();
     this.pendingUploads.set(grant.hash, abort);
     const deadline = AbortSignal.timeout(Math.max(1, grant.deadline - now));

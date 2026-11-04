@@ -219,9 +219,9 @@ test("failed settlement COMMIT fences, exits nonzero and recovers without a stuc
         body: Bun.file(new URL("speechkit-progressive.bin", fixtureRoot)),
       },
     );
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(502);
     expect(await response.json()).toEqual({
-      error: { code: "service_unavailable" },
+      error: { code: "transcription_failed" },
     });
     expect(await running.child.exited).toBe(1);
     const log = await running.stderr;
