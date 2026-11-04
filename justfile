@@ -357,6 +357,7 @@ _build-mac-signed derived_data:
         -derivedDataPath "{{ derived_data }}" \
         MARKETING_VERSION="$version" \
         build
+    scripts/check-access-configuration "{{ derived_data }}/Build/Products/Debug/Mumla Dev.app/Contents/Info.plist"
 
 # Safely bootstrap Development CloudKit schema without a normal app launch.
 bootstrap-cloudkit-schema:
