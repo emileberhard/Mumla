@@ -6,12 +6,16 @@ struct TranscriptionHistoryView: View {
     @Environment(DictationCoordinator.self) private var coordinator
     @Query(filter: #Predicate<HistoryEntry> { !$0.isHidden }, sort: \HistoryEntry.createdAt, order: .reverse) private var entries: [HistoryEntry]
     @State private var searchText = ""
-    @State private var showsRecordings = false
+    @State private var showsRecordings: Bool
     @Query private var recordings: [AudioRecording]
     @State private var isShowingStats = false
     // Cached so the full-history word count runs once per history change,
     // not on every body evaluation.
     @State private var stats: HistoryStats?
+
+    init(showsRecordings: Bool = false) {
+        _showsRecordings = State(initialValue: showsRecordings)
+    }
 
     private var filteredEntries: [HistoryEntry] {
         entries.matching(searchText)
@@ -94,7 +98,7 @@ struct TranscriptionHistoryView: View {
     }
 }
 
-private struct HistoryStatsView: View {
+struct HistoryStatsView: View {
     @Environment(\.dismiss) private var dismiss
     let stats: HistoryStats
 

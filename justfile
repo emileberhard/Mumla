@@ -60,6 +60,15 @@ test-access-live: packages
 screenshots: packages
     Apple/AppStore/capture
 
+# Capture the 16-screen UI preview suite into .local/ui-previews using a warm simulator and incremental build.
+[positional-arguments]
+ui-previews *args: packages
+    Apple/AppStore/capture --previews "$@"
+
+# Shut down the warm UI preview simulator.
+ui-previews-stop:
+    Apple/AppStore/capture --stop
+
 # Build, launch, and capture a real-host forced-state keyboard screenshot.
 keyboard-layout-preview-sim: packages
     #!/usr/bin/env bash

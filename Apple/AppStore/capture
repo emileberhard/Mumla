@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+import argparse
+import fcntl
 import json
 import os
 import shutil
 import signal
 import subprocess
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -11,60 +14,233 @@ DISPLAYS = {
     "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE": "iPhone 18 Pro",
 }
 SCREENS = ["keyboard", "dictionary", "home"]
+PREVIEW_SIM_NAME = "Mumla UI Preview"
+PREVIEW_SIM_DEVICE = "iPhone 18 Pro"
+PREVIEW_LOCK = Path.home() / "Library" / "Caches" / "mumla-ui-previews" / "sim.lock"
 
 
-def run(*args):
-    return subprocess.run([str(arg) for arg in args], check=True, text=True, capture_output=True).stdout.strip()
+def run(*args, env=None):
+    return subprocess.run([str(arg) for arg in args], check=True, text=True, capture_output=True, env=env).stdout.strip()
 
 
 def cancel(signum, frame):
     raise SystemExit(128 + signum)
 
 
-def main():
-    runtimes = json.loads(run("xcrun", "simctl", "list", "runtimes", "--json"))["runtimes"]
-    supported = [r for r in runtimes if r["isAvailable"] and r["platform"] == "iOS"
-                 and all(any(t["name"] == device for t in r["supportedDeviceTypes"]) for device in DISPLAYS.values())]
+def latest_runtime(devices: list[str], env=None) -> dict:
+    runtimes = json.loads(run("xcrun", "simctl", "list", "runtimes", "--json", env=env))["runtimes"]
+    supported = [
+        r for r in runtimes
+        if r["isAvailable"]
+        and r["platform"] == "iOS"
+        and all(any(t["name"] == device for t in r["supportedDeviceTypes"]) for device in devices)
+    ]
     if not supported:
-        raise SystemExit(f"Install an iOS simulator runtime supporting {', '.join(DISPLAYS.values())}.")
-    runtime = max(supported, key=lambda r: tuple(int(p) for p in r["version"].split(".")))
+        raise SystemExit(f"Install an iOS simulator runtime supporting {', '.join(devices)}.")
+    return max(supported, key=lambda r: tuple(int(p) for p in r["version"].split(".")))
+
+
+def build_capture_app(env=None) -> tuple[Path, str]:
     build = ROOT / ".local" / "screenshot-build"
-    run("xcodebuild", "-resolvePackageDependencies", "-project", ROOT / "Mumla.xcodeproj", "-scheme", "MumlaiOS",
-        "-derivedDataPath", build, "-onlyUsePackageVersionsFromResolvedFile")
-    run("xcodebuild", "-quiet", "-project", ROOT / "Mumla.xcodeproj", "-scheme", "MumlaiOS",
-        "-configuration", "Debug", "-destination", "generic/platform=iOS Simulator", "-derivedDataPath", build,
-        "-disableAutomaticPackageResolution", "-onlyUsePackageVersionsFromResolvedFile", "-skipPackageUpdates",
-        "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) MUMLA_SCREENSHOTS", "MUMLA_CLOUDKIT_API_TOKEN=",
-        "CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=NO", "build")
+    if not (build / "SourcePackages" / "checkouts" / "SpeechKit" / "Package.swift").exists():
+        shutil.rmtree(build / "SourcePackages", ignore_errors=True)
+        run(
+            "xcodebuild", "-resolvePackageDependencies",
+            "-project", ROOT / "Mumla.xcodeproj",
+            "-scheme", "MumlaiOS",
+            "-derivedDataPath", build,
+            "-onlyUsePackageVersionsFromResolvedFile",
+            env=env,
+        )
+    run(
+        "xcodebuild", "-quiet",
+        "-project", ROOT / "Mumla.xcodeproj",
+        "-scheme", "MumlaiOS",
+        "-configuration", "Debug",
+        "-destination", "generic/platform=iOS Simulator",
+        "-derivedDataPath", build,
+        "-onlyUsePackageVersionsFromResolvedFile",
+        "-skipPackageUpdates",
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) MUMLA_SCREENSHOTS",
+        "MUMLA_CLOUDKIT_API_TOKEN=",
+        "CODE_SIGNING_ALLOWED=NO",
+        "COMPILER_INDEX_STORE_ENABLE=NO",
+        "build",
+        env=env,
+    )
     app = build / "Build/Products/Debug-iphonesimulator/MumlaiOS.app"
-    bundle = run("plutil", "-extract", "CFBundleIdentifier", "raw", app / "Info.plist")
-    for display, device in DISPLAYS.items():
-        udid = run("xcrun", "simctl", "create", "Mumla Screenshots", device, runtime["identifier"])
+    bundle = run("plutil", "-extract", "CFBundleIdentifier", "raw", app / "Info.plist", env=env)
+    return app, bundle
+
+
+def ensure_warm_preview_simulator(env=None) -> str:
+    listing = json.loads(run("xcrun", "simctl", "list", "devices", "available", "--json", env=env))
+    for runtime_id, devices in listing.get("devices", {}).items():
+        if "iOS" not in runtime_id:
+            continue
+        for dev in devices:
+            if dev.get("name") == PREVIEW_SIM_NAME and dev.get("isAvailable"):
+                udid = dev["udid"]
+                if dev.get("state") != "Booted":
+                    run("xcrun", "simctl", "bootstatus", udid, "-b", env=env)
+                return udid
+    runtime = latest_runtime([PREVIEW_SIM_DEVICE], env=env)
+    udid = run("xcrun", "simctl", "create", PREVIEW_SIM_NAME, PREVIEW_SIM_DEVICE, runtime["identifier"], env=env)
+    run("xcrun", "simctl", "bootstatus", udid, "-b", env=env)
+    return udid
+
+
+def stop_preview_simulator(env=None) -> dict:
+    PREVIEW_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with open(PREVIEW_LOCK, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        listing = json.loads(run("xcrun", "simctl", "list", "devices", "available", "--json", env=env))
+        stopped = []
+        for devices in listing.get("devices", {}).values():
+            for dev in devices:
+                if dev.get("name") == PREVIEW_SIM_NAME and dev.get("state") == "Booted":
+                    run("xcrun", "simctl", "shutdown", dev["udid"], env=env)
+                    stopped.append(dev["udid"])
+        return {"stopped": stopped}
+
+
+def clean_preview_output(output: Path):
+    output.mkdir(parents=True, exist_ok=True)
+    for png in output.glob("*.png"):
+        png.unlink()
+    jpg_dir = output / "jpg"
+    if jpg_dir.is_dir():
+        for jpg in jpg_dir.glob("*.jpg"):
+            jpg.unlink()
+    for name in ("sheet.jpg", "manifest.json", "summary.json"):
+        target = output / name
+        if target.is_file():
+            target.unlink()
+
+
+def run_previews(only: str | None, output: Path, env: dict[str, str]):
+    t0 = time.monotonic()
+    app, bundle = build_capture_app(env=env)
+    t_built = time.monotonic()
+
+    PREVIEW_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with open(PREVIEW_LOCK, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        udid = ensure_warm_preview_simulator(env=env)
+        run("xcrun", "simctl", "install", udid, app, env=env)
+        clean_preview_output(output)
+        launch_env = {
+            **env,
+            "SIMCTL_CHILD_MUMLA_CAPTURE": str(output),
+            "SIMCTL_CHILD_MUMLA_CAPTURE_SCREENS": only if only else "all",
+        }
         try:
-            run("xcrun", "simctl", "bootstatus", udid, "-b")
-            run("xcrun", "simctl", "install", udid, app)
+            launch = subprocess.run(
+                [
+                    "xcrun", "simctl", "launch",
+                    "--terminate-running-process",
+                    "--console-pty",
+                    udid,
+                    bundle,
+                    "-AppleLanguages", "(en)",
+                    "-AppleLocale", "en_US",
+                ],
+                text=True,
+                capture_output=True,
+                timeout=120,
+                env=launch_env,
+            )
+            console = f"{launch.stdout}{launch.stderr}"
+            if launch.returncode != 0:
+                raise SystemExit(f"UI preview capture failed ({launch.returncode}):\n{console}")
+        except subprocess.TimeoutExpired:
+            subprocess.run(["xcrun", "simctl", "terminate", udid, bundle], capture_output=True, env=env)
+            raise SystemExit("UI preview capture timed out after two minutes.")
+
+    manifest_path = output / "manifest.json"
+    if not manifest_path.is_file():
+        raise SystemExit(f"The app did not write {manifest_path}:\n{console}")
+    manifest = json.loads(manifest_path.read_text())
+    t_done = time.monotonic()
+
+    summary = {
+        "simulator": PREVIEW_SIM_NAME,
+        "timingMs": {
+            "build": round((t_built - t0) * 1000),
+            "captureAndSheet": round((t_done - t_built) * 1000),
+            "total": round((t_done - t0) * 1000),
+        },
+        "count": len(manifest),
+        "outputDir": str(output),
+        "sheet": str(output / "sheet.jpg"),
+        "screens": [
+            {
+                **item,
+                "png": str(output / item["png"]),
+                "jpg": str(output / item["jpg"]),
+            }
+            for item in manifest
+        ],
+    }
+    (output / "summary.json").write_text(json.dumps(summary, indent=2))
+    print(json.dumps(summary, indent=2))
+
+
+def run_app_store_slides(env: dict[str, str]):
+    runtime = latest_runtime(list(DISPLAYS.values()), env=env)
+    app, bundle = build_capture_app(env=env)
+    for display, device in DISPLAYS.items():
+        udid = run("xcrun", "simctl", "create", "Mumla Screenshots", device, runtime["identifier"], env=env)
+        try:
+            run("xcrun", "simctl", "bootstatus", udid, "-b", env=env)
+            run("xcrun", "simctl", "install", udid, app, env=env)
             raw = ROOT / ".local/screenshot-captures" / display
             output = ROOT / ".local/screenshots" / display
             for directory in (raw, output):
                 shutil.rmtree(directory, ignore_errors=True)
                 directory.mkdir(parents=True)
             try:
-                launch = subprocess.run(["xcrun", "simctl", "launch", "--console-pty", udid, bundle, "-AppleLanguages", "(en)", "-AppleLocale", "en_US"], text=True, capture_output=True,
-                                        timeout=300, env={**os.environ, "SIMCTL_CHILD_MUMLA_CAPTURE": str(raw)})
+                launch = subprocess.run(
+                    ["xcrun", "simctl", "launch", "--console-pty", udid, bundle, "-AppleLanguages", "(en)", "-AppleLocale", "en_US"],
+                    text=True,
+                    capture_output=True,
+                    timeout=300,
+                    env={**env, "SIMCTL_CHILD_MUMLA_CAPTURE": str(raw)},
+                )
                 console = f"{launch.stdout}{launch.stderr}"
             except subprocess.TimeoutExpired:
                 console = "The app was still running after five minutes."
             missing = [screen for screen in SCREENS if not (raw / f"{screen}.png").exists()]
             if missing:
                 raise SystemExit(f"The app did not capture {', '.join(missing)} on {display}:\n{console}")
-            run("xcrun", "swift", ROOT / "Apple/AppStore/compose.swift", raw, output)
+            run("xcrun", "swift", ROOT / "Apple/AppStore/compose.swift", raw, output, env=env)
             for slide in sorted(output.glob("*.png")):
                 print(slide, flush=True)
         finally:
-            subprocess.run(["xcrun", "simctl", "shutdown", udid], capture_output=True)
-            deletion = subprocess.run(["xcrun", "simctl", "delete", udid], capture_output=True)
+            subprocess.run(["xcrun", "simctl", "shutdown", udid], capture_output=True, env=env)
+            deletion = subprocess.run(["xcrun", "simctl", "delete", udid], capture_output=True, env=env)
             if deletion.returncode:
                 raise RuntimeError(f"Could not delete screenshot simulator {udid}: {deletion.stderr.decode()}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Capture Mumla App Store screenshots or the warm UI preview suite.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--previews", action="store_true", help="Capture the UI preview suite in a warm simulator and compose sheet.jpg")
+    mode.add_argument("--stop", action="store_true", help="Shut down the warm UI preview simulator")
+    parser.add_argument("--only", help="Comma-separated screen IDs for --previews (e.g. home,settings,keyboard-dark)")
+    parser.add_argument("--output", type=Path, default=ROOT / ".local" / "ui-previews", help="Output directory for --previews")
+    args = parser.parse_args()
+
+    dev_dir = os.environ.get("DEVELOPER_DIR") or run(ROOT / "scripts" / "select-xcode")
+    env = {**os.environ, "DEVELOPER_DIR": dev_dir}
+
+    if args.stop:
+        print(json.dumps(stop_preview_simulator(env=env), indent=2))
+    elif args.previews:
+        run_previews(args.only, args.output.resolve(), env)
+    else:
+        run_app_store_slides(env)
 
 
 if __name__ == "__main__":

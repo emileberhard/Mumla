@@ -40,7 +40,11 @@ final class DictationCoordinator {
     private var audioCommandTask: Task<Void, Never>?
     private var hostSwitchbackTask: Task<Void, Never>?
 #if MUMLA_SCREENSHOTS
-    let dataStore = MumlaDataStore(cloudSyncEnabled: false)
+    let dataStore: MumlaDataStore = {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MumlaCapture", isDirectory: true)
+        try? FileManager.default.removeItem(at: directory)
+        return MumlaDataStore(directoryURL: directory, cloudSyncEnabled: false)
+    }()
 #else
     let dataStore = MumlaDataStore(onPersistenceError: { error in
         CrashReporting.capture(
@@ -93,9 +97,15 @@ final class DictationCoordinator {
     private(set) var sessionEndDate: Date?
     private(set) var lastErrorMessage = ""
     private(set) var transcript = ""
+#if MUMLA_SCREENSHOTS
+    private(set) var microphoneAuthorized = true
+    private(set) var showSwipeBackHint = false
+    private(set) var keyboardHasBeenActive = true
+#else
     private(set) var microphoneAuthorized = AVAudioApplication.shared.recordPermission == .granted
     private(set) var showSwipeBackHint = false
     private(set) var keyboardHasBeenActive = DictationBridge.keyboardHasBeenActive
+#endif
     /// Settable: ContentView binds it to its navigation stack.
     var navigationPath: [MainRoute] = []
 
@@ -103,6 +113,15 @@ final class DictationCoordinator {
     var setupComplete: Bool {
         microphoneAuthorized && keyboardHasBeenActive
     }
+
+#if MUMLA_SCREENSHOTS
+    func setCapturePhase(_ phase: DictationPhase) {
+        self.phase = phase
+        if phase == .recording {
+            recordingStartDate = .now.addingTimeInterval(-14)
+        }
+    }
+#endif
 
     // MARK: - Settings
 

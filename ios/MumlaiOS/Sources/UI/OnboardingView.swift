@@ -29,6 +29,15 @@ import UIKit
 struct OnboardingView: View {
     static let tryItPendingKey = "onboardingTryItPending"
 
+#if MUMLA_SCREENSHOTS
+    enum Phase {
+        case enable
+        case connect
+        case keyboardUnconfirmed
+        case dictate
+        case done
+    }
+#else
     private enum Phase {
         case enable
         case connect
@@ -36,9 +45,13 @@ struct OnboardingView: View {
         case dictate
         case done
     }
+#endif
 
     let coordinator: DictationCoordinator
     let onFinished: () -> Void
+#if MUMLA_SCREENSHOTS
+    private var isCapturePreview = false
+#endif
 
     @State private var phase = Self.detectedPhase()
     @State private var hasOpenedSettings = false
@@ -48,6 +61,25 @@ struct OnboardingView: View {
     @State private var keyboardCheck = KeyboardConnectionCheck()
     @FocusState private var isFieldFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
+
+    init(coordinator: DictationCoordinator, onFinished: @escaping () -> Void) {
+        self.coordinator = coordinator
+        self.onFinished = onFinished
+    }
+
+#if MUMLA_SCREENSHOTS
+    init(
+        coordinator: DictationCoordinator,
+        capturePhase: Phase,
+        onFinished: @escaping () -> Void = {}
+    ) {
+        self.coordinator = coordinator
+        self.onFinished = onFinished
+        self.isCapturePreview = true
+        _phase = State(initialValue: capturePhase)
+        _microphoneStatus = State(initialValue: .granted)
+    }
+#endif
 
     private static func detectedPhase() -> Phase {
         if DictationBridge.keyboardHasBeenActive { return .dictate }
@@ -114,6 +146,9 @@ struct OnboardingView: View {
             UserDefaults.standard.set(true, forKey: Self.tryItPendingKey)
         }
         .task {
+#if MUMLA_SCREENSHOTS
+            guard !isCapturePreview else { return }
+#endif
             if phase == .dictate {
                 prepareDictation()
             }
@@ -257,6 +292,9 @@ struct OnboardingView: View {
     // MARK: - Detection
 
     private func handleScenePhaseChange(from oldScenePhase: ScenePhase, to newScenePhase: ScenePhase) {
+#if MUMLA_SCREENSHOTS
+        guard !isCapturePreview else { return }
+#endif
         guard newScenePhase == .active else { return }
         microphoneStatus = SystemPermission.microphone.status
         switch phase {

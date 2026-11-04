@@ -59,6 +59,8 @@ jobs:
         run: python3 scripts/check-build-configurations "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}/SourcePackages"
       - name: Compile the iOS app and keyboard
         run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaiOS -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
+      - name: Compile the iOS screenshot capture target
+        run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaiOS -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) MUMLA_SCREENSHOTS' MUMLA_CLOUDKIT_API_TOKEN= CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
       - name: Compile the macOS app
         run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaMac -configuration Release -destination 'generic/platform=macOS' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
       - name: Verify bundled third-party notices

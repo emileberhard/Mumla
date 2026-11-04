@@ -4,9 +4,86 @@ import SwiftUI
 import UIKit
 
 enum CaptureScreen: String, CaseIterable {
-    case keyboard
-    case dictionary
     case home
+    case homeRecording = "home-recording"
+    case homeDark = "home-dark"
+    case history
+    case historyRecordings = "history-recordings"
+    case historyStats = "history-stats"
+    case dictionary
+    case settingsDark = "settings-dark"
+    case onboardingEnable = "onboarding-enable"
+    case onboardingDictate = "onboarding-dictate"
+    case keyboardStart = "keyboard-start"
+    case keyboardIdle = "keyboard-idle"
+    case keyboard
+    case keyboardProcessing = "keyboard-processing"
+    case keyboardError = "keyboard-error"
+    case keyboardDark = "keyboard-dark"
+
+    static let appStoreScreens: [CaptureScreen] = [.keyboard, .dictionary, .home]
+
+    private static let aliases: [String: CaptureScreen] = [
+        "settings": .dictionary,
+        "keyboard-recording": .keyboard,
+        "history-transcripts": .history,
+    ]
+
+    var title: String {
+        switch self {
+        case .home: "Home · Light"
+        case .homeRecording: "Home · Recording"
+        case .homeDark: "Home · Dark"
+        case .history: "History · Transcripts"
+        case .historyRecordings: "History · Recordings"
+        case .historyStats: "History · Stats"
+        case .dictionary: "Settings · Light"
+        case .settingsDark: "Settings · Dark"
+        case .onboardingEnable: "Onboarding · Enable"
+        case .onboardingDictate: "Onboarding · Dictate"
+        case .keyboardStart: "Keyboard · Start Session"
+        case .keyboardIdle: "Keyboard · Idle"
+        case .keyboard: "Keyboard · Recording"
+        case .keyboardProcessing: "Keyboard · Processing"
+        case .keyboardError: "Keyboard · Error"
+        case .keyboardDark: "Keyboard · Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme {
+        switch self {
+        case .homeDark, .settingsDark, .keyboardDark:
+            .dark
+        default:
+            .light
+        }
+    }
+
+    static func resolve(from environment: [String: String]) throws -> (screens: [CaptureScreen], writesPreviewSheet: Bool) {
+        guard let raw = environment["MUMLA_CAPTURE_SCREENS"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty
+        else {
+            return (appStoreScreens, false)
+        }
+        if raw.lowercased() == "all" {
+            return (allCases, true)
+        }
+        var selected: [CaptureScreen] = []
+        var seen = Set<CaptureScreen>()
+        for token in raw.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }) where !token.isEmpty {
+            guard let screen = CaptureScreen(rawValue: token) ?? aliases[token] else {
+                let valid = allCases.map(\.rawValue).joined(separator: ", ")
+                throw CaptureError("unknown screen '\(token)'; valid screens: \(valid)")
+            }
+            if seen.insert(screen).inserted {
+                selected.append(screen)
+            }
+        }
+        guard !selected.isEmpty else {
+            throw CaptureError("MUMLA_CAPTURE_SCREENS named no screens")
+        }
+        return (selected, true)
+    }
 }
 
 struct CaptureView: View {
@@ -17,12 +94,30 @@ struct CaptureView: View {
     var body: some View {
         Group {
             switch screen {
-            case .keyboard:
-                KeyboardScene()
-            case .dictionary:
+            case .keyboard, .keyboardDark:
+                KeyboardScene(scenario: .recording)
+            case .keyboardStart:
+                KeyboardScene(scenario: .start)
+            case .keyboardIdle:
+                KeyboardScene(scenario: .idle)
+            case .keyboardProcessing:
+                KeyboardScene(scenario: .processing)
+            case .keyboardError:
+                KeyboardScene(scenario: .error)
+            case .dictionary, .settingsDark:
                 SettingsView()
-            case .home:
+            case .home, .homeRecording, .homeDark, .history:
                 ContentView()
+            case .historyRecordings:
+                NavigationStack {
+                    TranscriptionHistoryView(showsRecordings: true)
+                }
+            case .historyStats:
+                HistoryStatsView(stats: try! CaptureFixture.makeStats(coordinator))
+            case .onboardingEnable:
+                OnboardingView(coordinator: coordinator, capturePhase: .enable)
+            case .onboardingDictate:
+                OnboardingView(coordinator: coordinator, capturePhase: .dictate)
             case nil:
                 Color.clear
             }
@@ -33,7 +128,7 @@ struct CaptureView: View {
         .id(screen)
         .environment(coordinator)
         .modelContainer(coordinator.dataStore.container)
-        .preferredColorScheme(.light)
+        .preferredColorScheme(screen?.colorScheme ?? .light)
         .task {
             do {
                 try await capture()
@@ -46,17 +141,54 @@ struct CaptureView: View {
     }
 
     private func capture() async throws {
-        guard let directory = ProcessInfo.processInfo.environment["MUMLA_CAPTURE"].map({ URL(filePath: $0) }) else {
+        let env = ProcessInfo.processInfo.environment
+        guard let directory = env["MUMLA_CAPTURE"].map({ URL(filePath: $0) }) else {
             throw CaptureError("MUMLA_CAPTURE names no output directory")
         }
-        CaptureFixture.seed(coordinator)
+        let (screens, writesPreviewSheet) = try CaptureScreen.resolve(from: env)
+        UIView.setAnimationsEnabled(false)
+        try CaptureFixture.seed(coordinator)
         let window = try await keyWindow()
         var shown = appeared.stream.makeAsyncIterator()
-        for next in CaptureScreen.allCases {
+        var captured: [(screen: CaptureScreen, image: UIImage)] = []
+        let jpgDirectory = directory.appending(path: "jpg", directoryHint: .isDirectory)
+        if writesPreviewSheet {
+            try FileManager.default.createDirectory(at: jpgDirectory, withIntermediateDirectories: true)
+        }
+
+        for next in screens {
+            CaptureFixture.configure(coordinator, for: next)
+            window.overrideUserInterfaceStyle = next.colorScheme == .dark ? .dark : .light
             screen = next
-            guard await shown.next() == next else { throw CaptureError("the \(next.rawValue) screen did not appear") }
-            let png = try await snapshot(of: window)
+            guard await shown.next() == next else {
+                throw CaptureError("the \(next.rawValue) screen did not appear")
+            }
+            await Task.yield()
+            let image = try await snapshot(of: window)
+            guard let png = image.pngData() else {
+                throw CaptureError("could not encode \(next.rawValue) as PNG")
+            }
             try png.write(to: directory.appending(path: "\(next.rawValue).png"), options: .atomic)
+            if writesPreviewSheet {
+                let jpg = try downscaledJPEG(of: image, maxHeight: 900)
+                try jpg.write(to: jpgDirectory.appending(path: "\(next.rawValue).jpg"), options: .atomic)
+                captured.append((next, image))
+            }
+        }
+
+        if writesPreviewSheet {
+            let sheet = try composeContactSheet(captured)
+            try sheet.write(to: directory.appending(path: "sheet.jpg"), options: .atomic)
+            let manifest = captured.map { item in
+                [
+                    "id": item.screen.rawValue,
+                    "title": item.screen.title,
+                    "png": "\(item.screen.rawValue).png",
+                    "jpg": "jpg/\(item.screen.rawValue).jpg",
+                ]
+            }
+            let manifestData = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
+            try manifestData.write(to: directory.appending(path: "manifest.json"), options: .atomic)
         }
     }
 
@@ -66,11 +198,11 @@ struct CaptureView: View {
             if let window = scene?.keyWindow {
                 return window
             }
-            try await Task.sleep(for: .milliseconds(100))
+            try await Task.sleep(for: .milliseconds(50))
         }
     }
 
-    private func snapshot(of window: UIWindow) async throws -> Data {
+    private func snapshot(of window: UIWindow) async throws -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = window.traitCollection.displayScale
         format.opaque = true
@@ -80,42 +212,147 @@ struct CaptureView: View {
                 complete = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
             }
             if complete {
-                guard let png = image.pngData() else { throw CaptureError("could not encode the screen as PNG") }
-                return png
+                return image
             }
-            try await Task.sleep(for: .milliseconds(100))
+            try await Task.sleep(for: .milliseconds(50))
         }
+    }
+
+    private func downscaledJPEG(of image: UIImage, maxHeight: CGFloat) throws -> Data {
+        let pixelSize = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
+        let targetWidth = (pixelSize.width * maxHeight / pixelSize.height).rounded()
+        let targetSize = CGSize(width: targetWidth, height: maxHeight)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let scaled = UIGraphicsImageRenderer(size: targetSize, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        guard let jpg = scaled.jpegData(compressionQuality: 0.82) else {
+            throw CaptureError("could not encode resized JPEG")
+        }
+        return jpg
+    }
+
+    private func composeContactSheet(_ items: [(screen: CaptureScreen, image: UIImage)]) throws -> Data {
+        let cellHeight: CGFloat = 760
+        let first = items[0].image
+        let cellWidth = (first.size.width * cellHeight / first.size.height).rounded()
+        let columns = min(items.count, 4)
+        let rows = (items.count + columns - 1) / columns
+        let padding: CGFloat = 36
+        let labelHeight: CGFloat = 64
+        let sheetSize = CGSize(
+            width: padding + CGFloat(columns) * (cellWidth + padding),
+            height: padding + CGFloat(rows) * (cellHeight + labelHeight)
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 24, weight: .semibold),
+            .foregroundColor: UIColor(white: 0.93, alpha: 1),
+        ]
+        let sheet = UIGraphicsImageRenderer(size: sheetSize, format: format).image { context in
+            UIColor(red: 0.09, green: 0.09, blue: 0.11, alpha: 1).setFill()
+            context.fill(CGRect(origin: .zero, size: sheetSize))
+            for (index, item) in items.enumerated() {
+                let col = index % columns
+                let row = index / columns
+                let x = padding + CGFloat(col) * (cellWidth + padding)
+                let y = padding + CGFloat(row) * (cellHeight + labelHeight)
+                item.image.draw(in: CGRect(x: x, y: y, width: cellWidth, height: cellHeight))
+                let labelRect = CGRect(x: x + 4, y: y + cellHeight + 14, width: cellWidth - 8, height: labelHeight - 14)
+                (item.screen.title as NSString).draw(in: labelRect, withAttributes: attributes)
+            }
+        }
+        guard let jpg = sheet.jpegData(compressionQuality: 0.85) else {
+            throw CaptureError("could not encode contact sheet JPEG")
+        }
+        return jpg
     }
 }
 
 private enum CaptureFixture {
     static let languages = ["es"]
     static let terms = ["Saoirse", "Joaquín", "Dr. Okonkwo", "Kubernetes", "Figma", "Bergström"]
-    static let transcripts: [(minutesAgo: Int, text: String)] = [
-        (2, "Running ten minutes late, save me a seat by the window."),
-        (24, "Remind Saoirse to send the Figma file before Thursday’s review."),
-        (70, "Pick up oat milk, basil, two lemons and something for dessert."),
-        (190, "The Kubernetes upgrade went smoothly. Rolling out to production tomorrow morning."),
-        (320, "Happy birthday, Joaquín! Hope you get some sun this weekend."),
-        (1500, "Notes from the call with Dr. Okonkwo: start the new routine on Monday and check in after two weeks."),
+    static let transcripts: [(minutesAgo: Int, durationMs: Int?, bytes: Int?, text: String)] = [
+        (2, 5400, 68_420, "Running ten minutes late, save me a seat by the window."),
+        (24, 6200, 79_104, "Remind Saoirse to send the Figma file before Thursday’s review."),
+        (70, 5800, 74_880, "Pick up oat milk, basil, two lemons and something for dessert."),
+        (190, nil, nil, "The Kubernetes upgrade went smoothly. Rolling out to production tomorrow morning."),
+        (320, nil, nil, "Happy birthday, Joaquín! Hope you get some sun this weekend."),
+        (1500, nil, nil, "Notes from the call with Dr. Okonkwo: start the new routine on Monday and check in after two weeks."),
     ]
 
-    static func seed(_ coordinator: DictationCoordinator) {
+    static func seed(_ coordinator: DictationCoordinator) throws {
         coordinator.access.preview("available")
+        coordinator.dictationLanguages = ["en"]
         for language in languages {
             coordinator.addDictationLanguage(language)
         }
         for term in terms {
             coordinator.dataStore.addVocabularyTerm(term)
         }
+        let context = coordinator.dataStore.container.mainContext
         for transcript in transcripts.reversed() {
-            coordinator.dataStore.record(text: transcript.text, createdAt: .now - Double(transcript.minutesAgo * 60))
+            let createdAt = Date.now - Double(transcript.minutesAgo * 60)
+            var recordingID: UUID?
+            if let durationMs = transcript.durationMs, let bytes = transcript.bytes {
+                let id = UUID()
+                let info = AudioRecordingInfo(
+                    id: id,
+                    createdAt: createdAt,
+                    providerRawValue: TranscriptionProviderType.dictation.rawValue,
+                    providerDisplayName: TranscriptionProviderType.dictationDisplayName,
+                    deviceName: "iPhone",
+                    source: "ios/keyboard",
+                    durationMilliseconds: durationMs,
+                    byteCount: bytes,
+                    sha256: String(repeating: "a", count: 64),
+                    fileType: .caf
+                )
+                context.insert(try AudioRecording(info: info, uploaded: true))
+                recordingID = id
+            }
+            coordinator.dataStore.record(
+                text: transcript.text,
+                audioRecordingID: recordingID,
+                createdAt: createdAt
+            )
         }
+        try context.save()
+    }
+
+    static func configure(_ coordinator: DictationCoordinator, for screen: CaptureScreen) {
+        coordinator.navigationPath = screen == .history ? [.history] : []
+        switch screen {
+        case .homeRecording:
+            coordinator.access.preview("low")
+            coordinator.setCapturePhase(.recording)
+        default:
+            coordinator.access.preview("available")
+            coordinator.setCapturePhase(.idle)
+        }
+    }
+
+    static func makeStats(_ coordinator: DictationCoordinator) throws -> HistoryStats {
+        let entries = try coordinator.dataStore.container.mainContext.fetch(
+            FetchDescriptor<HistoryEntry>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+        )
+        return HistoryStats(entries: entries, storeSizeInBytes: coordinator.dataStore.storeSizeInBytes)
     }
 }
 
 private struct KeyboardScene: View {
-    @State private var bridge = KeyboardBridgeClient(sharedDefaults: nil)
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var bridge: KeyboardBridgeClient
+
+    init(scenario: KeyboardPreviewScenario) {
+        let client = KeyboardBridgeClient(sharedDefaults: nil)
+        client.applyPreviewSnapshot(scenario.snapshot)
+        _bridge = State(initialValue: client)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -136,9 +373,18 @@ private struct KeyboardScene: View {
             keyboard
         }
         .background(Color(uiColor: .systemBackground))
-        .onAppear {
-            bridge.applyPreviewSnapshot(KeyboardPreviewScenario.recording.snapshot)
-        }
+    }
+
+    private var dockBackground: Color {
+        colorScheme == .dark
+            ? Color(red: 0.17, green: 0.17, blue: 0.18)
+            : Color(red: 0.82, green: 0.84, blue: 0.86)
+    }
+
+    private var dockForeground: Color {
+        colorScheme == .dark
+            ? Color(white: 0.72)
+            : Color(white: 0.32)
     }
 
     private var keyboard: some View {
@@ -162,13 +408,13 @@ private struct KeyboardScene: View {
                 Image(systemName: "mic")
             }
             .font(.system(size: 24))
-            .foregroundStyle(Color(white: 0.32))
+            .foregroundStyle(dockForeground)
             .padding(.horizontal, 30)
             .frame(height: 30)
             .padding(.bottom, 4)
         }
         .padding(.top, 6)
-        .background(Color(red: 0.82, green: 0.84, blue: 0.86), ignoresSafeAreaEdges: .bottom)
+        .background(dockBackground, ignoresSafeAreaEdges: .bottom)
     }
 }
 
@@ -232,9 +478,9 @@ private struct ComposeField: View {
                 .background(Color(uiColor: .secondarySystemBackground), in: .circle)
             Text("\(text)\(Text("|").foregroundStyle(.blue))")
                 .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .overlay(RoundedRectangle(cornerRadius: 19).stroke(Color(uiColor: .systemGray4)))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .overlay(RoundedRectangle(cornerRadius: 19).stroke(Color(uiColor: .systemGray4)))
         }
     }
 }

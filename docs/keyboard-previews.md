@@ -58,4 +58,28 @@ For a screen recording, reuse the installed preview build, record with
 `mumla://debug/keyboard-host-test?state=...` URLs, and check the MP4 with a
 contact sheet before sharing it.
 
+## Full UI preview suite
+
+For fast iteration across the containing app (`home`, `home-recording`,
+`home-dark`, `history`, `history-recordings`, `history-stats`, `dictionary` /
+`settings`, `settings-dark`, `onboarding-enable`, `onboarding-dictate`) and
+keyboard states (`keyboard-start`, `keyboard-idle`, `keyboard` /
+`keyboard-recording`, `keyboard-processing`, `keyboard-error`,
+`keyboard-dark`):
+
+```bash
+just ui-previews
+just ui-previews --only home,settings,keyboard-dark
+just ui-previews-stop
+```
+
+`just ui-previews` builds incrementally into `.local/screenshot-build`, keeps a
+headless `Mumla UI Preview` (`iPhone 18 Pro`) simulator warm under a host lock,
+and writes `*.png`, `jpg/*.jpg`, `sheet.jpg` and `manifest.json` into
+`.local/ui-previews`. Its keyboard frames render inside `Capture.swift`'s
+synthetic `KeyboardScene` composite, so use `keyboard-preview-important-sim`
+and a physical iPhone to accept real extension-host spacing, safe areas and the
+system Globe/Dictation bar. Run `just ui-previews-stop` when done to shut down
+the warm simulator.
+
 When validation is done, run `xcrun simctl shutdown all` and quit Simulator.
