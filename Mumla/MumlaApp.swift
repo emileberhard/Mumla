@@ -150,8 +150,6 @@ private struct AllowanceMenuItem: View {
         case .available(let allowance):
             if allowance.isExhausted {
                 Text("No minutes left until \(allowance.resetsAt, format: .dateTime.month(.wide).day())")
-            } else if allowance.available == .zero {
-                Text("In use on another device")
             } else {
                 Text("\(allowance.remaining.wholeMinutes) of \(allowance.limit.wholeMinutes) min left")
             }

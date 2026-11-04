@@ -273,6 +273,7 @@ struct AccessTranscriber {
         let seconds = (samples + AccessGrant.sampleRate - 1) / AccessGrant.sampleRate
         guard seconds <= AccessGrant.maximumAudioSeconds else { throw AccessTranscriptionError.recordingTooLong }
         let pcm = wav.dropFirst(PCM16WAVHeader.byteCount)
+        defer { access.refreshInBackground() }
         var attempt = 1
         while true {
             let grant = try await access.grant(maximumAudioSeconds: seconds)
@@ -355,7 +356,7 @@ enum TranscriptionFailureMessage {
             }
             return String(localized: "No minutes left this month.")
         case .allowanceBusy:
-            return String(localized: "Minutes are in use on another device. Try again in a moment.")
+            return String(localized: "Mumla is already dictating on two of your devices. Try again when one finishes.")
         case .iCloudUnavailable(.noAccount):
             return String(localized: "Sign in to iCloud to dictate.")
         case .iCloudUnavailable:

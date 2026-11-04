@@ -346,12 +346,10 @@ nonisolated final class RejectRedirects: NSObject, URLSessionTaskDelegate, Senda
 nonisolated private struct AllowancePayload: Decodable {
     let limitSeconds: Double
     let usedSeconds: Double
-    let reservedSeconds: Double
     let resetsAt: Date
 
     var value: MumlaAccess.Allowance {
-        MumlaAccess.Allowance(limit: .seconds(limitSeconds), used: .seconds(usedSeconds),
-                              reserved: .seconds(reservedSeconds), resetsAt: resetsAt)
+        MumlaAccess.Allowance(limit: .seconds(limitSeconds), used: .seconds(usedSeconds), resetsAt: resetsAt)
     }
 }
 

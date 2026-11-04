@@ -672,6 +672,7 @@ final class FlowCoordinator {
 
     private func startRealtimeRecording() {
         if let failure = access.state.blockingFailure {
+            access.refreshInBackground()
             showError(TranscriptionFailureMessage.text(for: failure, allowance: access.state))
             return
         }
@@ -795,6 +796,7 @@ final class FlowCoordinator {
         transcriptionTask = Task(name: "RealtimeStop") { [weak self, controller] in
             let result = await controller.stop()
             guard let self else { return }
+            self.access.refreshInBackground()
 
             if self.realtimeDictationController === controller {
                 self.realtimeDictationController = nil

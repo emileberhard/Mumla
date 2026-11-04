@@ -114,7 +114,7 @@ stale documentation in the same change.
   in the ignored `Local.xcconfig`.
 - Live capture requests its grant (up to 30 minutes) while capture starts,
   never sends audio past `audio_limit_samples` and stops normally at that
-  bound. Batch recovery reserves the recording's rounded duration. Only a
+  bound. Batch recovery requests the recording's rounded duration. Only a
   service 401 or 503, at the handshake or before dispatch, resends with a new
   grant; never resend an attempt that may have reached the provider. Grant
   and allowance requests retry 503 after jittered 0.5, 1 and 2 s.

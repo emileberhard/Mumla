@@ -16,7 +16,8 @@ struct AccessClientTests {
         #expect(grant.token == "g1")
         #expect(grant.audioLimitSamples == 1_760_000)
         #expect(grant.origin == service.origin)
-        #expect(allowance.available == .seconds(3_600 - 10.5 - 600))
+        #expect(allowance.remaining == .seconds(3_600 - 10.5))
+        #expect(MumlaAccess.State.available(allowance).blockingFailure == nil)
         #expect(store.current?.token == "s1")
         #expect(store.current?.account == FakeAccessIdentity.account)
         let requests = service.requests
@@ -173,15 +174,15 @@ nonisolated final class StubAccessService: Sendable {
         }
     }
 
-    static let allowance = #"{"allowance":{"limit_seconds":3600,"used_seconds":10.5,"reserved_seconds":600,"resets_at":"2026-12-01T00:00:00Z"}}"#
+    static let allowance = #"{"allowance":{"limit_seconds":3600,"used_seconds":10.5,"in_flight_seconds":600,"reserved_seconds":0,"resets_at":"2026-12-01T00:00:00Z"}}"#
 
     static func session(_ token: String, days: Double) -> String {
         let expiry = Date.now.addingTimeInterval(days * 86_400).ISO8601Format()
-        return #"{"token":"\#(token)","expires_at":"\#(expiry)","subject":"synthetic","allowance":{"limit_seconds":3600,"used_seconds":0,"reserved_seconds":0,"resets_at":"2026-12-01T00:00:00.000Z"}}"#
+        return #"{"token":"\#(token)","expires_at":"\#(expiry)","subject":"synthetic","allowance":{"limit_seconds":3600,"used_seconds":0,"in_flight_seconds":0,"reserved_seconds":0,"resets_at":"2026-12-01T00:00:00.000Z"}}"#
     }
 
     static func grant(_ token: String, samples: Int) -> String {
-        #"{"token":"\#(token)","claim_expires_at":"2026-11-01T00:00:30Z","request_deadline":"2026-11-01T00:15:00Z","audio_limit_samples":\#(samples),"allowance":{"limit_seconds":3600,"used_seconds":10.5,"reserved_seconds":600,"resets_at":"2026-12-01T00:00:00Z"}}"#
+        #"{"token":"\#(token)","claim_expires_at":"2026-11-01T00:00:30Z","request_deadline":"2026-11-01T00:15:00Z","audio_limit_samples":\#(samples),"allowance":{"limit_seconds":3600,"used_seconds":10.5,"in_flight_seconds":600,"reserved_seconds":0,"resets_at":"2026-12-01T00:00:00Z"}}"#
     }
 
     let origin = URL(string: "https://\(UUID().uuidString.lowercased()).access.test")!

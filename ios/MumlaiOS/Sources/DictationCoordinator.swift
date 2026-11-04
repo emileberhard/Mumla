@@ -647,6 +647,7 @@ final class DictationCoordinator {
             return
         }
         if let failure = access.state.blockingFailure {
+            access.refreshInBackground()
             reportError(
                 TranscriptionFailureMessage.text(for: failure, allowance: access.state),
                 error: failure,
@@ -906,6 +907,7 @@ final class DictationCoordinator {
             )
             realtimeDictationController = nil
             let result = await completion
+            access.refreshInBackground()
             guard !Task.isCancelled else { return }
             CrashReporting.breadcrumb(
                 "Realtime stop result received",
