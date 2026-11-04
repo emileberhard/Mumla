@@ -7,8 +7,6 @@ import {
   sampleRate,
 } from "./protocol";
 
-const maximumLanguages = 16;
-const maximumVocabularyTerms = 500;
 const providerVocabularyTerms = 50;
 const providerTermLength = 50;
 const pauseBytes = 1024 * 1024;
@@ -19,19 +17,15 @@ export interface StreamSocket {
   resume(): void;
 }
 
-function strings(value: unknown, maximum: number) {
-  if (
-    !Array.isArray(value) ||
-    value.length > maximum ||
-    value.some((item) => typeof item !== "string")
-  )
+function strings(value: unknown) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string"))
     throw new AccessError(400, "invalid_message");
   return (value as string[]).map((item) => item.trim()).filter(Boolean);
 }
 
 export function definition(languages: unknown, vocabulary: unknown) {
-  const hints = strings(languages, maximumLanguages);
-  const phrases = strings(vocabulary, maximumVocabularyTerms)
+  const hints = strings(languages);
+  const phrases = strings(vocabulary)
     .filter((phrase) => [...phrase].length <= providerTermLength)
     .slice(0, providerVocabularyTerms);
   const locale = hints.length === 1 ? hints[0] : undefined;
