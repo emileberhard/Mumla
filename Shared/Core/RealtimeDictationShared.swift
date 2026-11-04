@@ -35,7 +35,8 @@ struct RealtimeDictationProviderConfiguration: Sendable {
     func makeSession() -> any RealtimeTranscriptionSession {
         GrantedRealtimeTranscriptionSession(
             grant: grant,
-            request: .init(languageHints: languageHints, customVocabulary: customVocabulary),
+            languageHints: languageHints,
+            customVocabulary: customVocabulary,
             onAudioLimitReached: onAudioLimitReached
         )
     }
@@ -44,7 +45,7 @@ struct RealtimeDictationProviderConfiguration: Sendable {
         [
             "provider": "azure-speech",
             "model": "MAI-Transcribe-2",
-            "transport": "progressive-http-upload",
+            "transport": "access-websocket",
             "custom_vocabulary_count": String(customVocabulary.count),
             "language_hints": languageHints.joined(separator: ","),
         ]

@@ -5,11 +5,6 @@ import SpeechKit
 
 @Suite("Transcription provider contracts")
 struct TranscriptionProviderContractTests {
-    @Test func batchDictationBuildsFromAnAccessGrantAlone() throws {
-        let grant = AccessGrant(token: "synthetic-grant", audioLimitSamples: 16_000, origin: URL(string: "https://access.test")!)
-        _ = try TranscriptionEngineFactory.makeBatchEngine(access: try grant.speechAccess())
-    }
-
     @Test func everyProfileDictatesWithMAITranscribe2WithoutCleanup() throws {
         var profile = DictationProfile(languages: ["sv"], dictionary: ["Mumla"])
         profile.preferredModel = TranscriptionProviderType.elevenLabsScribeV2.libraryModelID

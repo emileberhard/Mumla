@@ -24,8 +24,7 @@ nonisolated enum AccessFailure: Error, Equatable, Sendable {
 
 nonisolated struct AccessGrant: Sendable {
     static let sampleRate = 16_000
-    static let maximumAudioSeconds = 120
-    static let progressiveAudioSeconds = 110
+    static let maximumAudioSeconds = 1800
 
     let token: String
     let audioLimitSamples: Int
@@ -335,7 +334,7 @@ nonisolated private enum AccessRequestFailure: Error {
     case retryable
 }
 
-nonisolated private final class RejectRedirects: NSObject, URLSessionTaskDelegate, Sendable {
+nonisolated final class RejectRedirects: NSObject, URLSessionTaskDelegate, Sendable {
     static let shared = RejectRedirects()
 
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,

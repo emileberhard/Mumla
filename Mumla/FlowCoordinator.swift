@@ -164,7 +164,7 @@ final class FlowCoordinator {
     var isLockedRecording: Bool { keyboardMonitor.inToggleMode }
 
     private(set) var recordingStartTime: Date?
-    private(set) var recordingLimit = TimeInterval(AccessGrant.progressiveAudioSeconds)
+    private(set) var recordingLimit = TimeInterval(AccessGrant.maximumAudioSeconds)
 
     var recordingDeadline: Date? {
         recordingStartTime?.addingTimeInterval(recordingLimit)
@@ -589,7 +589,7 @@ final class FlowCoordinator {
     ) async throws -> String {
         let plan = recordingID.flatMap { dataStore.library?.plan(for: $0) }
         if let recordingID, plan != nil { try await dataStore.library?.validateProviderCapture(recordingID) }
-        let result = try await transcriber.transcribe(
+        let transcript = try await transcriber.transcribe(
             wav: wavData,
             languageHints: plan?.languages ?? dictationLanguages,
             customVocabulary: plan?.dictionary ?? customVocabulary
@@ -597,11 +597,11 @@ final class FlowCoordinator {
         guard !Task.isCancelled else { throw CancellationError() }
 
         if let recordingID, let library = dataStore.library, plan != nil {
-            try await library.recordProviderOutput(result.text, captureID: recordingID, model: TranscriptionProviderType.dictation.batchResultModelID)
+            try await library.recordProviderOutput(transcript, captureID: recordingID, model: TranscriptionProviderType.dictation.batchResultModelID)
         }
         guard !Task.isCancelled else { throw CancellationError() }
 
-        var text = result.text
+        var text = transcript
         if let lastChar = text.last, ".?!".contains(lastChar) {
             text.append(" ")
         }
@@ -681,7 +681,7 @@ final class FlowCoordinator {
         let captureID = UUID()
         realtimeCaptureID = captureID
         let access = access
-        let grant = Task { try await access.grant(maximumAudioSeconds: AccessGrant.progressiveAudioSeconds) }
+        let grant = Task { try await access.grant(maximumAudioSeconds: AccessGrant.maximumAudioSeconds) }
         let controller = RealtimeDictationController(
             makeProviderConfiguration: { [weak self] original in
                 let plan = original.dictationPlan
@@ -700,7 +700,7 @@ final class FlowCoordinator {
         let diagnosticsSessionID = controller.diagnosticsSessionID
         realtimeDictationController = controller
         recordingStartTime = Date()
-        recordingLimit = TimeInterval(AccessGrant.progressiveAudioSeconds)
+        recordingLimit = TimeInterval(AccessGrant.maximumAudioSeconds)
         scheduleRecordingStop(captureID: captureID)
         state = .recording
         AppDiagnostics.info(

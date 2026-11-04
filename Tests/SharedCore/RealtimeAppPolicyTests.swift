@@ -49,31 +49,6 @@ struct RealtimeFallbackPolicyTests {
     }
 }
 
-@Suite("Transcription upload limit")
-struct TranscriptionUploadLimitTests {
-    @Test func rejectsAudioBeyondTheEngineLimitBeforeUpload() throws {
-        let engine = TranscriptionEngine(provider: LimitedTranscriptionProvider())
-        let accepted = try TranscriptionUploadAudio.wav(
-            data: Data(repeating: 0, count: 4), fileName: "audio.wav", engine: engine
-        )
-        #expect(accepted.data.count == 4)
-        #expect(throws: SpeechKitError.self) {
-            try TranscriptionUploadAudio.wav(
-                data: Data(repeating: 0, count: 5), fileName: "audio.wav", engine: engine
-            )
-        }
-    }
-}
-
-private struct LimitedTranscriptionProvider: TranscriptionProvider {
-    let id = "limited-test"
-    let maximumAudioByteCount = 4
-
-    func transcribe(_ request: TranscriptionRequest) async throws -> TranscriptionResult {
-        throw SpeechKitError.invalidResponse
-    }
-}
-
 private struct FailingRealtimeSession: RealtimeTranscriptionSession {
     let sampleRate = 16_000
     let finalizationTimeout: Duration = .seconds(1)

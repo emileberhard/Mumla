@@ -18,6 +18,7 @@ enum AccessProbe {
         var forgedProof: Rejection?
         var transcribeAgain: Transcription?
         var pacedCompletion: Transcription?
+        var boundedCompletion: Transcription?
         var pacedCancellation: Cancellation?
         var proofLifetime: ProofLifetime?
         var failure: String?
@@ -27,8 +28,8 @@ enum AccessProbe {
             if let proofLifetime { return health?.ready == true && proofLifetime.expired?.rejectedAsIdentity == true }
             return health?.ready == true && enrolledNatively && freshProof?.status == 201
                 && replayedProof != nil && forgedProof?.rejectedAsIdentity == true
-                && transcribeAgain?.passed == true && pacedCompletion?.passed == true && pacedCompletion?.reachedBound == true
-                && pacedCancellation?.passed == true
+                && transcribeAgain?.passed == true && pacedCompletion?.passed == true && pacedCompletion?.reachedBound == false
+                && boundedCompletion?.passed == true && boundedCompletion?.reachedBound == true && pacedCancellation?.passed == true
         }
     }
 
@@ -40,7 +41,9 @@ enum AccessProbe {
 
     private static let languages = ["en", "sv"]
     private static let vocabulary = (1...57).map { "ProjectTerm\($0)" }
-    private static let pacedSeconds = AccessGrant.progressiveAudioSeconds + 10
+    private static let pacedSeconds = 150
+    private static let boundedGrantSeconds = 10
+    private static let canceledAfterSeconds = 20
 
     static func runAndExit() -> Never {
         Task {
@@ -114,18 +117,22 @@ enum AccessProbe {
         defer { try? FileManager.default.removeItem(at: original) }
         let wav = try await OriginalAudio.providerWAV(from: original, fileType: .caf)
         let started = ContinuousClock.now
-        let result = try await AccessTranscriber(access: access).transcribe(wav: wav, languageHints: languages, customVocabulary: vocabulary)
+        let text = try await AccessTranscriber(access: access).transcribe(wav: wav, languageHints: languages, customVocabulary: vocabulary)
         receipt.transcribeAgain = Transcription(
-            audioSeconds: Double(wav.count - 44) / Double(2 * AccessGrant.sampleRate), streamedSeconds: 0,
-            finishToFinalMilliseconds: milliseconds(started.duration(to: .now)), characters: result.text.count, anchors: anchors(in: result.text)
+            audioSeconds: Double(wav.count - PCM16WAVHeader.byteCount) / Double(2 * AccessGrant.sampleRate), streamedSeconds: 0,
+            finishToFinalMilliseconds: milliseconds(started.duration(to: .now)), characters: text.count, anchors: anchors(in: text)
         )
 
-        let paced = pacedPCM(speech: wav.dropFirst(44))
+        let paced = pacedPCM(speech: wav.dropFirst(PCM16WAVHeader.byteCount))
         receipt.stage = "paced-completion"
-        receipt.pacedCompletion = try await stream(paced, access: access, cancel: false).completion
+        receipt.pacedCompletion = try await stream(paced, access: access, grantSeconds: AccessGrant.maximumAudioSeconds, cancel: false).completion
+        receipt.stage = "bounded-completion"
+        let bounded = paced.prefix((boundedGrantSeconds + 5) * AccessGrant.sampleRate * 2)
+        receipt.boundedCompletion = try await stream(bounded, access: access, grantSeconds: boundedGrantSeconds, cancel: false).completion
         receipt.stage = "paced-cancellation"
         let before = try await client.allowance()
-        let cancellation = try await stream(paced, access: access, cancel: true)
+        let canceled = paced.prefix(canceledAfterSeconds * AccessGrant.sampleRate * 2)
+        let cancellation = try await stream(canceled, access: access, grantSeconds: AccessGrant.maximumAudioSeconds, cancel: true)
         let settled = try await settledAllowance(client)
         receipt.pacedCancellation = Cancellation(
             streamedSeconds: cancellation.streamedSeconds,
@@ -145,8 +152,10 @@ enum AccessProbe {
         return pcm
     }
 
-    private static func stream(_ pcm: Data, access: MumlaAccess, cancel: Bool) async throws -> (completion: Transcription?, streamedSeconds: Double) {
-        let grant = Task { try await access.grant(maximumAudioSeconds: AccessGrant.progressiveAudioSeconds) }
+    private static func stream(
+        _ pcm: Data, access: MumlaAccess, grantSeconds: Int, cancel: Bool
+    ) async throws -> (completion: Transcription?, streamedSeconds: Double) {
+        let grant = Task { try await access.grant(maximumAudioSeconds: grantSeconds) }
         let limitReached = OSAllocatedUnfairLock(initialState: false)
         let dictation = RealtimeDictation(session: RealtimeDictationProviderConfiguration(
             grant: grant, customVocabulary: vocabulary, languageHints: languages,
@@ -242,14 +251,7 @@ enum AccessProbe {
 
     private static func summary(_ error: any Error) -> String {
         let diagnostic = DiagnosticError(error)
-        var fields = [diagnostic.domain, String(diagnostic.code), diagnostic.kind].compactMap(\.self)
-        if case SpeechKitError.httpFailure(_, let body) = error,
-           let object = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any],
-           let code = (object["error"] as? [String: Any])?["code"] as? String,
-           code.count <= 64, code.allSatisfy({ $0.isASCII && ($0.isLowercase || $0 == "_") }) {
-            fields.append(code)
-        }
-        return fields.joined(separator: ":")
+        return [diagnostic.domain, String(diagnostic.code), diagnostic.kind].compactMap(\.self).joined(separator: ":")
     }
 
     private static func anchors(in text: String) -> Int {

@@ -71,7 +71,7 @@ final class DictationCoordinator {
     /// the dictation pill (in-app and, via the bridge, on the keyboard).
     private(set) var recordingStartDate: Date?
 
-    private(set) var recordingLimit = TimeInterval(AccessGrant.progressiveAudioSeconds) {
+    private(set) var recordingLimit = TimeInterval(AccessGrant.maximumAudioSeconds) {
         didSet {
             guard recordingLimit != oldValue else { return }
             scheduleRecordingStop()
@@ -763,16 +763,16 @@ final class DictationCoordinator {
     private func transcribe(wavData: Data, recordingID: UUID) async throws -> String {
         let plan = dataStore.library?.plan(for: recordingID)
         if plan != nil { try await dataStore.library?.validateProviderCapture(recordingID) }
-        let result = try await transcriber.transcribe(
+        let transcript = try await transcriber.transcribe(
             wav: wavData,
             languageHints: plan?.languages ?? dictationLanguages,
             customVocabulary: plan?.dictionary ?? customVocabulary
         )
         if let library = dataStore.library, plan != nil {
-            try await library.recordProviderOutput(result.text, captureID: recordingID, model: TranscriptionProviderType.dictation.batchResultModelID)
+            try await library.recordProviderOutput(transcript, captureID: recordingID, model: TranscriptionProviderType.dictation.batchResultModelID)
         }
 
-        var text = result.text
+        var text = transcript
         if let lastChar = text.last, ".?!".contains(lastChar) {
             text.append(" ")
         }
@@ -794,9 +794,9 @@ final class DictationCoordinator {
     private func startRealtimeDictation() async throws {
         let access = access
         let capture = UUID()
-        let grant = Task { try await access.grant(maximumAudioSeconds: AccessGrant.progressiveAudioSeconds) }
+        let grant = Task { try await access.grant(maximumAudioSeconds: AccessGrant.maximumAudioSeconds) }
         realtimeCapture = (capture, grant)
-        recordingLimit = TimeInterval(AccessGrant.progressiveAudioSeconds)
+        recordingLimit = TimeInterval(AccessGrant.maximumAudioSeconds)
         Task { [weak self] in
             switch await grant.result {
             case .success(let reserved) where self?.realtimeCapture?.id == capture:

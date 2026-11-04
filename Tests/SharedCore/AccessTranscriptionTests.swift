@@ -27,11 +27,16 @@ struct AccessTranscriptionTests {
     }
 
     @Test(arguments: [
-        (SpeechKitError.httpFailure(statusCode: 401, body: ""), TranscriptionRecovery.resendArchived),
-        (SpeechKitError.httpFailure(statusCode: 503, body: ""), .resendArchived),
-        (SpeechKitError.httpFailure(statusCode: 502, body: ""), .keepForRetry),
-        (RealtimeDictationError.streamFailed(SpeechKitError.httpFailure(statusCode: 503, body: "")), .resendArchived),
+        (AccessStreamFailure.refused(status: 401), TranscriptionRecovery.resendArchived),
+        (AccessStreamFailure.refused(status: 503), .resendArchived),
+        (AccessStreamFailure.refused(status: 502), .keepForRetry),
+        (AccessStreamFailure.refused(status: 413), .keepForRetry),
+        (AccessStreamFailure.invalidReply, .keepForRetry),
+        (URLError(.timedOut), .keepForRetry),
+        (RealtimeDictationError.streamFailed(AccessStreamFailure.refused(status: 503)), .resendArchived),
+        (RealtimeDictationError.streamFailed(AccessStreamFailure.refused(status: 502)), .keepForRetry),
         (RealtimeDictationError.streamFailed(URLError(.networkConnectionLost)), .keepForRetry),
+        (RealtimeDictationError.connectionFailed(AccessStreamFailure.refused(status: 401)), .resendArchived),
         (RealtimeDictationError.connectionFailed(AccessFailure.allowanceExhausted), .refused(.allowanceExhausted)),
         (RealtimeDictationError.connectionFailed(URLError(.cannotConnectToHost)), .resendArchived),
         (RealtimeDictationError.connectionFailed(CancellationError()), .canceled),
