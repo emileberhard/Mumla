@@ -14,6 +14,18 @@ struct AccessTranscriptionTests {
         #expect(budget.admit(Data([5, 5])).isEmpty)
     }
 
+    @Test func theStartMessageCarriesTheDictionarysLeadingTermsWithinItsBudget() throws {
+        let small = ["Mumla", "Lund", "quote \" and backslash \\"]
+        #expect(AccessStream.leadingTerms(of: small) == small)
+
+        let large = (0..<6_000).map { "term \($0) " + String(repeating: "x", count: 40) }
+        let sent = AccessStream.leadingTerms(of: large)
+        #expect(!sent.isEmpty && sent.count < large.count)
+        #expect(sent == Array(large.prefix(sent.count)))
+        #expect(try JSONEncoder().encode(sent).count <= AccessStream.vocabularyBudgetBytes)
+        #expect(try JSONEncoder().encode(Array(large.prefix(sent.count + 1))).count > AccessStream.vocabularyBudgetBytes)
+    }
+
     @Test func onlyCanonicalMonoPCM16AtTheGrantRateIsMeasured() throws {
         let pcm = Data(repeating: 0, count: 32_000)
         let canonical = try RealtimePCM16WAVFile.data(pcmData: pcm, sampleRate: 16_000)

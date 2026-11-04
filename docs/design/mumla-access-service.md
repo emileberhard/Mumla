@@ -57,7 +57,7 @@ sequenceDiagram
     A->>M: Request one transcription grant in parallel
     M->>M: Atomically reserve allowance
     M-->>A: One-use grant and maximum audio duration
-    A->>M: SpeechKit upload, authenticated by grant
+    A->>M: Dictation stream, authenticated by grant
     M->>R: Validated, bounded PCM upload with server credential
     R-->>M: Production provider result
     M->>M: Atomically settle measured samples
@@ -263,7 +263,7 @@ unchanged. Do not build a catalog endpoint, descriptors or plugin interfaces.
 | Transport | One WebSocket to `/v1/dictations/stream`: a `start` text message with `languages` and `vocabulary`, binary PCM16 frames, a `finish` text message; the service answers with one `result` or `error` message and closes. Older installs POST a multipart upload to `/vendors/azure-speech/speechtotext/transcriptions:transcribe` |
 | Model/options | `api-version=2025-10-15`, enhanced `MAI-Transcribe-2`, clean style, no diarization; accept omitted timestamps or `"none"` and forward explicit `"none"` |
 | Audio | PCM16 little-endian, mono, 16,000 Hz: non-empty, even-length binary frames on the stream, or exactly one canonical WAV on the HTTP route, which also accepts SpeechKit's streaming-header sentinel |
-| Other input | The stream's `start` message carries the language hints and dictionary terms, bounded by the 256 KiB frame limit; the service builds the definition with SpeechKit's Azure rules: one hint becomes the locale, several leave detection to the provider, and the first 50 trimmed terms of at most 50 characters become phrase hints. The HTTP route takes one bounded definition before audio. No audio URLs, extra files or arbitrary prompts |
+| Other input | The stream's `start` message carries the language hints and the dictionary's leading terms, which clients cap at 128 KiB of the 256 KiB frame limit; the service builds the definition with SpeechKit's Azure rules: one hint becomes the locale, several leave detection to the provider, and the first 50 trimmed terms of at most 50 characters become phrase hints. The HTTP route takes one bounded definition before audio. No audio URLs, extra files or arbitrary prompts |
 | Limit | At most 1,800 seconds of audio per attempt (120 on the HTTP route) and a request lifetime of the grant's audio plus 70 seconds from grant issuance |
 | Output | One synchronous transcription result; a bounded response, no persistent upstream object or polling capability |
 | Recovery | The same operation on a WAV derived from the archived original; a separate, visibly accounted attempt |
@@ -329,7 +329,9 @@ consumption from output word count or client reports.
 Bun's streaming fetch remains the forwarding owner. Dispatch starts when fetch
 pulls the rebuilt request body's first bytes, after the definition and the first
 audio arrive. A fence or closed admission refuses an undispatched claim with retryable
-503 and no charge; the client resends with a new grant.
+503 and no charge; the client resends with a new grant. An unexpected failure
+after dispatch, such as a failed settlement, answers 502 and is never resent
+automatically.
 
 For live capture, reserve up to 1,800 seconds, or the remaining whole-second
 allowance if smaller. Each app stops capture when that much wall-clock time has
@@ -625,14 +627,13 @@ before merging the implementation or enabling the public endpoint:
    principal key, private subject override, backups and deploy health on their
    owners. Verify actual Cloudflare client-IP delivery and a paced 150-second
    stream through that HTTPS route, a stream that stops at a short grant's
-   bound, and a canceled stream's charge. No provisioned
-   token or production deployment is
-   assumed to exist yet. Measure the added local hop on the dev instance.
+   bound, and a canceled stream's charge. Measure the added local hop on the
+   dev instance.
 
-Current evidence is source inspection, live documentation and read-only router
-metadata. No native CloudKit exchange, service deployment,
-new build, live integration test or physical acceptance was performed for this
-record. All of those remain explicit implementation gates.
+When this record was approved (2026-10-27), its evidence was source
+inspection, live documentation and read-only router metadata; these gates
+were then run during implementation. The stream gate passed through
+Cloudflare on 2026-11-04 against a dev instance.
 
 ## First-party and implementation references
 

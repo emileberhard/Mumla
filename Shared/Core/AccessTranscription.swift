@@ -56,6 +56,7 @@ nonisolated enum AccessStreamFailure: Error, Equatable, StructuredDiagnosticErro
 }
 
 nonisolated final class AccessStream: Sendable {
+    static let vocabularyBudgetBytes = 128 * 1024
     private static let transport = AccessClient.makeTransport()
 
     private let socket: URLSessionWebSocketTask
@@ -77,13 +78,22 @@ nonisolated final class AccessStream: Sendable {
         socket.resume()
         let stream = AccessStream(socket: socket)
         do {
-            let start = try JSONEncoder().encode(Start(languages: languages, vocabulary: vocabulary))
+            let start = try JSONEncoder().encode(Start(languages: languages, vocabulary: leadingTerms(of: vocabulary)))
             try await stream.deliver(.string(String(decoding: start, as: UTF8.self)))
         } catch {
             stream.cancel()
             throw error
         }
         return stream
+    }
+
+    static func leadingTerms(of vocabulary: [String]) -> [String] {
+        let encoder = JSONEncoder()
+        var remaining = vocabularyBudgetBytes - 1
+        return Array(vocabulary.prefix { term in
+            remaining -= ((try? encoder.encode(term).count) ?? remaining) + 1
+            return remaining >= 0
+        })
     }
 
     func send(_ audio: Data) async throws {
