@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import type { ServerWebSocket } from "bun";
+import type { PurchaseVerifier } from "./appstore";
 import type { IdentityVerifier } from "./cloudkit";
 import type { AccessConfig } from "./config";
 import {
@@ -123,6 +124,8 @@ export class AccessService {
   private backingUp = false;
   private requests = 0;
   private readonly enrollments = new Set<AbortController>();
+  private readonly notifications = new Set<AbortController>();
+  private readonly purchaseChecks = new Set<AbortController>();
   private fatalReported = false;
   private readonly pendingUploads = new Map<string, AbortController>();
   private readonly uploads = new Set<string>();
@@ -136,6 +139,7 @@ export class AccessService {
   constructor(
     private readonly config: AccessConfig,
     private readonly identity: IdentityVerifier,
+    private readonly purchases: PurchaseVerifier,
     private readonly store: AccessStore,
     private readonly release: ReleaseIdentity,
     private readonly onFatal: () => void,
@@ -326,6 +330,13 @@ export class AccessService {
         if (url.search) throw new AccessError(400, "invalid_request");
         return await this.enroll(request, address, now);
       }
+      if (
+        url.pathname === "/v1/app-store/notifications" &&
+        request.method === "POST"
+      ) {
+        if (url.search) throw new AccessError(400, "invalid_request");
+        return await this.notification(request);
+      }
       let session: Session | undefined;
       if (
         streaming ||
@@ -334,6 +345,7 @@ export class AccessService {
         subject = this.store.authenticateGrant(bearer(request), now);
       } else if (
         (url.pathname === "/v1/dictations" && request.method === "POST") ||
+        (url.pathname === "/v1/purchases" && request.method === "POST") ||
         (url.pathname === "/v1/access" && request.method === "GET") ||
         (url.pathname === "/v1/session/renew" && request.method === "POST") ||
         (url.pathname === "/v1/session" && request.method === "DELETE")
@@ -433,6 +445,12 @@ export class AccessService {
           throw new AccessError(503, "service_unavailable");
         return json(this.store.reserve(session, maximum, Date.now()), 201);
       }
+      if (
+        url.pathname === "/v1/purchases" &&
+        request.method === "POST" &&
+        session
+      )
+        return await this.purchase(request, session);
       throw new AccessError(404, "not_found");
     } catch (error) {
       void request.body?.cancel().catch(() => {});
@@ -494,6 +512,69 @@ export class AccessService {
       state.release();
       this.finishFailure();
     }
+  }
+
+  private async verifying<T>(
+    checks: Set<AbortController>,
+    request: Request,
+    limit: number,
+    key: string,
+    work: (value: string) => Promise<T>,
+  ) {
+    const abort = new AbortController();
+    const signal = AbortSignal.any([request.signal, abort.signal]);
+    checks.add(abort);
+    try {
+      const body = await jsonBody(
+        request,
+        limit,
+        AbortSignal.any([signal, AbortSignal.timeout(2000)]),
+      );
+      exactKeys(body, [key]);
+      const value = body[key];
+      if (typeof value !== "string" || !value)
+        throw new AccessError(400, "invalid_request");
+      const result = await work(value);
+      if (!this.admissionOpen || !this.healthy)
+        throw new AccessError(503, "service_unavailable");
+      return result;
+    } catch (error) {
+      if (abort.signal.aborted)
+        throw new AccessError(503, "service_unavailable");
+      throw error;
+    } finally {
+      checks.delete(abort);
+    }
+  }
+
+  private async purchase(request: Request, session: Session) {
+    const transaction = await this.verifying(
+      this.purchaseChecks,
+      request,
+      16 * 1024,
+      "signed_transaction",
+      (jws) => this.purchases.transaction(jws),
+    );
+    return json({
+      allowance: this.store.purchase(session, transaction, Date.now()),
+    });
+  }
+
+  private async notification(request: Request) {
+    if (this.notifications.size >= 8)
+      throw new AccessError(503, "service_busy");
+    const transaction = await this.verifying(
+      this.notifications,
+      request,
+      64 * 1024,
+      "signedPayload",
+      (payload) => this.purchases.notification(payload),
+    );
+    if (transaction) this.store.notify(transaction, Date.now());
+    return new Response(null, {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
+    });
   }
 
   private async enroll(request: Request, address: string | null, now: number) {
@@ -678,6 +759,8 @@ export class AccessService {
   private closeAdmission() {
     this.admissionOpen = false;
     for (const enrollment of this.enrollments) enrollment.abort();
+    for (const check of this.notifications) check.abort();
+    for (const check of this.purchaseChecks) check.abort();
     for (const upload of this.pendingUploads.values()) upload.abort();
   }
 }

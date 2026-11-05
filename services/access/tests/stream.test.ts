@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { AccessConfig } from "../src/config";
 import { AccessService } from "../src/server";
 import { AccessStore } from "../src/store";
+import { syntheticPolicy, syntheticVerifier } from "./appstore-fixture";
 
 const resources: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
@@ -40,6 +41,7 @@ async function setup(upstream: (request: Request) => Promise<Response>) {
     operatorToken,
     freeMonthlySeconds: 600,
     subjectOverrides: {},
+    ...syntheticPolicy,
   };
   const store = new AccessStore(config.database, config, "initialize");
   resources.push(() => store.close());
@@ -53,6 +55,7 @@ async function setup(upstream: (request: Request) => Promise<Response>) {
         return "verified-apple-identity";
       },
     },
+    syntheticVerifier(),
     store,
     { version: "1.2.3", commit: "abc123" },
     () => {},

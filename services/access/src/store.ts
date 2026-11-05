@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
 import { chmod, rename, rm } from "node:fs/promises";
+import type { SignedTransaction } from "./appstore";
 import {
   AccessError,
   OperatorIncident,
@@ -25,7 +26,39 @@ export interface Grant {
 
 interface Policy {
   freeMonthlySeconds: number;
+  proMonthlySeconds: number;
+  sandboxProMonthlySeconds: number;
   subjectOverrides: Record<string, number>;
+}
+
+const subscriptionSchema = `
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    environment TEXT NOT NULL CHECK (environment IN ('Production', 'Sandbox')),
+    original_transaction_id TEXT NOT NULL,
+    owner TEXT,
+    transaction_id TEXT NOT NULL,
+    purchased INTEGER NOT NULL,
+    expires INTEGER NOT NULL,
+    revoked INTEGER,
+    signed INTEGER NOT NULL,
+    PRIMARY KEY (environment, original_transaction_id)
+  ) STRICT;
+  CREATE INDEX IF NOT EXISTS subscriptions_owner ON subscriptions(owner);
+`;
+
+interface Subscription {
+  owner: string | null;
+  transaction_id: string;
+  purchased: number;
+  signed: number;
+}
+
+function supersedes(transaction: SignedTransaction, stored: Subscription) {
+  if (transaction.transactionId === stored.transaction_id)
+    return transaction.signed > stored.signed;
+  if (transaction.purchased !== stored.purchased)
+    return transaction.purchased > stored.purchased;
+  return BigInt(transaction.transactionId) > BigInt(stored.transaction_id);
 }
 
 function digest(token: string) {
@@ -111,7 +144,8 @@ export class AccessStore {
       CREATE INDEX IF NOT EXISTS sessions_subject ON sessions(subject);
       PRAGMA user_version = 1;
     `);
-      validateDatabase(this.db);
+      this.db.exec(subscriptionSchema);
+      validateDatabase(this.db, "required");
       const recovery = this.db
         .query<{ count: number }, []>("SELECT COUNT(*) AS count FROM grants")
         .get()?.count;
@@ -131,7 +165,7 @@ export class AccessStore {
   }
 
   check() {
-    validateDatabase(this.db);
+    validateDatabase(this.db, "required");
     this.checkCapacity();
   }
 
@@ -301,9 +335,24 @@ export class AccessStore {
       )
       .get(subject, start)?.samples;
     if (inFlight === undefined) throw new Error("Missing in-flight total");
+    const entitlement = this.db
+      .query<{ production: number | null }, [string, number]>(
+        "SELECT MAX(environment = 'Production') AS production FROM subscriptions WHERE owner = ? AND expires > ? AND revoked IS NULL",
+      )
+      .get(subject, now)?.production;
+    if (entitlement === undefined) throw new Error("Missing plan");
+    const base =
+      this.policy.subjectOverrides[subject] ?? this.policy.freeMonthlySeconds;
+    const pro =
+      entitlement === null
+        ? undefined
+        : entitlement
+          ? this.policy.proMonthlySeconds
+          : this.policy.sandboxProMonthlySeconds;
     return {
-      limit_seconds:
-        this.policy.subjectOverrides[subject] ?? this.policy.freeMonthlySeconds,
+      plan: pro === undefined ? "free" : "pro",
+      limit_seconds: pro === undefined ? base : Math.max(base, pro),
+      pro_limit_seconds: this.policy.proMonthlySeconds,
       used_seconds: used / sampleRate,
       in_flight_seconds: inFlight / sampleRate,
       reserved_seconds: 0,
@@ -413,12 +462,89 @@ export class AccessStore {
       .immediate();
   }
 
+  private applyPurchase(
+    transaction: SignedTransaction,
+    claimant: string | null,
+  ) {
+    const stored = this.db
+      .query<Subscription, [string, string]>(
+        "SELECT owner, transaction_id, purchased, signed FROM subscriptions WHERE environment = ? AND original_transaction_id = ?",
+      )
+      .get(transaction.environment, transaction.originalTransactionId);
+    if (stored && !supersedes(transaction, stored)) {
+      const owner = stored.owner ?? transaction.appAccountToken ?? claimant;
+      if (owner !== stored.owner)
+        this.db
+          .query(
+            "UPDATE subscriptions SET owner = ? WHERE environment = ? AND original_transaction_id = ?",
+          )
+          .run(
+            owner,
+            transaction.environment,
+            transaction.originalTransactionId,
+          );
+      return owner;
+    }
+    const owner = transaction.appAccountToken ?? stored?.owner ?? claimant;
+    this.db
+      .query(
+        "INSERT OR REPLACE INTO subscriptions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        transaction.environment,
+        transaction.originalTransactionId,
+        owner,
+        transaction.transactionId,
+        transaction.purchased,
+        transaction.expires,
+        transaction.revoked,
+        transaction.signed,
+      );
+    return owner;
+  }
+
+  purchase(session: Session, transaction: SignedTransaction, now: number) {
+    const allowance = this.db
+      .transaction(() => {
+        this.checkCapacity();
+        this.prune(now);
+        if (
+          !this.db
+            .query(
+              "SELECT 1 FROM sessions WHERE id = ? AND token_hash = ? AND expires > ?",
+            )
+            .get(session.id, session.token_hash, now)
+        )
+          throw new AccessError(401, "invalid_session");
+        return this.applyPurchase(transaction, session.subject) ===
+          session.subject
+          ? this.allowance(session.subject, now)
+          : null;
+      })
+      .immediate();
+    if (!allowance) throw new AccessError(409, "purchase_owned_elsewhere");
+    return allowance;
+  }
+
+  notify(transaction: SignedTransaction, now: number) {
+    this.db
+      .transaction(() => {
+        this.checkCapacity();
+        this.prune(now);
+        this.applyPurchase(transaction, null);
+      })
+      .immediate();
+  }
+
   revokeUnclaimed() {
     this.db.query("DELETE FROM grants WHERE claimed = 0").run();
   }
 }
 
-function validateDatabase(db: Database) {
+function validateDatabase(
+  db: Database,
+  subscriptions: "required" | "optional",
+) {
   const integrity = db
     .query<{ quick_check: string }, []>("PRAGMA quick_check")
     .all();
@@ -437,9 +563,18 @@ function validateDatabase(db: Database) {
   db.query(
     "SELECT token_hash, session_id, subject, period, limit_samples, claim_expires, deadline, claimed FROM grants LIMIT 0",
   ).all();
+  const tables = db
+    .query<{ count: number }, []>(
+      "SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = 'subscriptions'",
+    )
+    .get()?.count;
+  if (tables === 0 && subscriptions === "optional") return;
+  db.query(
+    "SELECT environment, original_transaction_id, owner, transaction_id, purchased, expires, revoked, signed FROM subscriptions LIMIT 0",
+  ).all();
 }
 
 export function validateSnapshot(path: string) {
   using db = new Database(path, { readonly: true, strict: true });
-  validateDatabase(db);
+  validateDatabase(db, "optional");
 }

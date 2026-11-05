@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { transcriptionPath } from "../src/protocol";
+import { syntheticPolicy } from "./appstore-fixture";
 
 const main = new URL("../src/main.ts", import.meta.url).pathname;
 const preload = new URL("fixtures/cloudkit-preload.ts", import.meta.url)
@@ -42,6 +43,7 @@ test("CLI initializes explicitly, starts fenced, snapshots live state and checks
     operatorToken: "synthetic-operator-token-with-32-characters",
     freeMonthlySeconds: 60,
     subjectOverrides: {},
+    ...syntheticPolicy,
   };
   const configPath = join(directory, "config.json");
   await Bun.write(configPath, JSON.stringify(config));

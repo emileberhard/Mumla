@@ -1,3 +1,4 @@
+import { AppStoreVerifier } from "./appstore";
 import { CloudKitIdentity } from "./cloudkit";
 import { readConfig } from "./config";
 import { httpUploadAudioSeconds, OperatorIncident } from "./protocol";
@@ -80,6 +81,7 @@ async function main() {
   const service = new AccessService(
     config,
     new CloudKitIdentity(config.cloudKitContainer, config.cloudKitAPIToken),
+    new AppStoreVerifier(config),
     store,
     release,
     () => stop(1),
