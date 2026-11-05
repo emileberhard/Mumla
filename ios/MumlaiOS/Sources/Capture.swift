@@ -91,12 +91,8 @@ struct CaptureView: View {
             case .settings:
                 ContentView()
                     .sheet(isPresented: .constant(true)) { SettingsView() }
-            case .home, .homeRecording, .homeDark, .history:
+            case .home, .homeRecording, .homeDark, .history, .historyRecordings:
                 ContentView()
-            case .historyRecordings:
-                PushedOnAppear {
-                    TranscriptionHistoryView(showsRecordings: true)
-                }
             case .historyStats:
                 ContentView()
                     .sheet(isPresented: .constant(true)) {
@@ -148,8 +144,12 @@ struct CaptureView: View {
             guard await shown.next(isolation: #isolation) == next else {
                 throw CaptureError("the \(next.rawValue) screen did not appear")
             }
-            if [.history, .historyStats].contains(next) {
+            if [.history, .historyRecordings, .historyStats].contains(next) {
                 coordinator.navigationPath = [.history]
+                try await settle(window)
+            }
+            if next == .historyRecordings {
+                try selectSegment(1, in: window)
             }
             try await settle(window)
             let image = try await screenshot(next, in: directory)
@@ -183,6 +183,21 @@ struct CaptureView: View {
             }
             previous = next
         }
+    }
+
+    private func selectSegment(_ index: Int, in window: UIWindow) throws {
+        guard let control = segmentedControl(in: window) else {
+            throw CaptureError("the screen has no segmented control")
+        }
+        control.selectedSegmentIndex = index
+        control.sendActions(for: .valueChanged)
+    }
+
+    private func segmentedControl(in view: UIView) -> UISegmentedControl? {
+        if let control = view as? UISegmentedControl {
+            return control
+        }
+        return view.subviews.lazy.compactMap(segmentedControl).first
     }
 
     private func screenshot(_ screen: CaptureScreen, in directory: URL) async throws -> UIImage {
@@ -336,19 +351,6 @@ private enum CaptureFixture {
             FetchDescriptor<HistoryEntry>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
         )
         return HistoryStats(entries: entries, storeSizeInBytes: coordinator.dataStore.storeSizeInBytes)
-    }
-}
-
-private struct PushedOnAppear<Destination: View>: View {
-    @ViewBuilder let destination: Destination
-    @State private var path: [Int] = []
-
-    var body: some View {
-        NavigationStack(path: $path) {
-            Color(uiColor: .systemGroupedBackground)
-                .navigationDestination(for: Int.self) { _ in destination }
-                .task { path = [0] }
-        }
     }
 }
 
