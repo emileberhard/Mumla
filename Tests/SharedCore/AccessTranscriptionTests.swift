@@ -64,7 +64,7 @@ struct AccessTranscriptionTests {
     @Test func transcribeAgainReservesUpToTheBatchBoundAndRefusesLongerRecordingsWithoutAsking() async throws {
         let service = StubAccessService()
         service.reply("POST /v1/dictations", 402, #"{"error":{"code":"allowance_exhausted"}}"#)
-        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: FakeAccessIdentity.account))
+        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: FakeAccessIdentity.account, subject: FakeAccessIdentity.subject))
         let transcriber = AccessTranscriber(access: MumlaAccess(client: service.client(store: store)))
         func wav(seconds: Int) throws -> Data {
             try RealtimePCM16WAVFile.data(pcmData: Data(count: seconds * AccessGrant.sampleRate * 2), sampleRate: AccessGrant.sampleRate)

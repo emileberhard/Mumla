@@ -37,6 +37,12 @@ nonisolated struct StoredAccessSession: Codable, Equatable, Sendable {
     let token: String
     let expiresAt: Date
     let account: String
+    let subject: UUID
+}
+
+nonisolated enum PurchaseRejection: Error, Equatable, Sendable {
+    case invalid
+    case ownedElsewhere
 }
 
 nonisolated protocol AccessSessionStore: Sendable {
@@ -146,6 +152,18 @@ actor AccessClient {
         return response.allowance.value
     }
 
+    func accountToken() async throws -> UUID {
+        try await currentSession(verifyingAccount: true).subject
+    }
+
+    func submitPurchase(signedTransaction: String) async throws -> MumlaAccess.Allowance {
+        let body = try JSONEncoder().encode(["signed_transaction": signedTransaction])
+        let response: AllowanceEnvelope = try await authorized(verifyingAccount: true) { token in
+            self.request("POST", "/v1/purchases", bearer: token, body: body)
+        }
+        return response.allowance.value
+    }
+
     func reserve(maximumAudioSeconds: Int) async throws -> (AccessGrant, MumlaAccess.Allowance) {
         precondition((1...AccessGrant.maximumAudioSeconds).contains(maximumAudioSeconds))
         let body = try JSONEncoder().encode(["maximum_audio_seconds": maximumAudioSeconds])
@@ -239,7 +257,7 @@ actor AccessClient {
 
     private func keep(_ response: SessionEnvelope, account: String, generation: Int) throws -> StoredAccessSession {
         guard generation == self.generation else { throw CancellationError() }
-        let session = StoredAccessSession(token: response.token, expiresAt: response.expiresAt, account: account)
+        let session = StoredAccessSession(token: response.token, expiresAt: response.expiresAt, account: account, subject: response.subject)
         try store.save(session)
         cached = session
         loaded = true
@@ -279,8 +297,10 @@ actor AccessClient {
             let code = (try? Self.decoder.decode(ErrorEnvelope.self, from: data))?.error.code
             switch http.statusCode {
             case 401: throw AccessRequestFailure.invalidSession
+            case 400 where code == "invalid_purchase": throw PurchaseRejection.invalid
             case 402: throw AccessFailure.allowanceExhausted
             case 409 where code == "allowance_busy": throw AccessFailure.allowanceBusy
+            case 409 where code == "purchase_owned_elsewhere": throw PurchaseRejection.ownedElsewhere
             case 503:
                 guard retrying else { throw AccessRequestFailure.retryable }
                 guard let delay = delays.popFirst() else { throw AccessFailure.serviceUnavailable }
@@ -347,9 +367,16 @@ nonisolated private struct AllowancePayload: Decodable {
     let limitSeconds: Double
     let usedSeconds: Double
     let resetsAt: Date
+    let plan: String?
+    let proLimitSeconds: Double?
 
     var value: MumlaAccess.Allowance {
-        MumlaAccess.Allowance(limit: .seconds(limitSeconds), used: .seconds(usedSeconds), resetsAt: resetsAt)
+        let plan: MumlaAccess.Plan = switch (plan, proLimitSeconds) {
+        case ("pro", _): .pro
+        case ("free", let proLimit?): .free(proLimit: .seconds(proLimit))
+        default: .notOffered
+        }
+        return MumlaAccess.Allowance(limit: .seconds(limitSeconds), used: .seconds(usedSeconds), resetsAt: resetsAt, plan: plan)
     }
 }
 
@@ -360,6 +387,7 @@ nonisolated private struct AllowanceEnvelope: Decodable {
 nonisolated private struct SessionEnvelope: Decodable {
     let token: String
     let expiresAt: Date
+    let subject: UUID
 }
 
 nonisolated private struct GrantEnvelope: Decodable {
