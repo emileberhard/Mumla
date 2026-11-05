@@ -1,8 +1,8 @@
 # Mumla Pro
 
-Status: proposed, pending the independent challenge. Extends
-[the access service](mumla-access-service.md), whose "Later Pro integration"
-section set the constraints below.
+Status: decided after two independent challenges; their findings and
+dispositions are at the end. Extends [the access service](mumla-access-service.md),
+whose "Later Pro integration" section set the constraints below.
 
 ## Goal and constraints
 
@@ -12,9 +12,10 @@ manages or cancels it. The access service stays the only authority on what an
 account may use; a client never asserts Pro or chooses its limit.
 
 - Free: 60 processing minutes per UTC calendar month per iCloud account.
-- Pro: $6.99 a month or $49.99 a year through StoreKit, presented as unlimited
-  with a disclosed fair-use ceiling of 30 hours a month. Yearly billing keeps
-  monthly windows. Both caps are service configuration.
+- Pro: $6.99 a month or $49.99 a year through StoreKit, for 30 hours of
+  dictation a month. Every surface, App Store metadata included, states the 30
+  hours; none calls Pro unlimited. Yearly billing keeps monthly windows. Both
+  limits are service configuration.
 - An entitlement raises the same monthly limit; upgrades keep used minutes, and a
   downgrade blocks new admissions without canceling admitted work.
 - The existing service subject UUID is StoreKit's `appAccountToken`.
@@ -24,44 +25,44 @@ account may use; a client never asserts Pro or chooses its limit.
 ## Ownership policy
 
 Ownership derives only from Apple-signed data and the service's own records.
+The service keeps one row per subscription, `(environment,
+originalTransactionId)`, holding its latest signed state and its owner.
 
-1. **A purchase belongs to the subject its `appAccountToken` names.** The iOS app
-   always purchases with the session's subject. A signed transaction whose token
-   names another subject entitles that subject, never the submitter, who gets
-   `409 purchase_owned_elsewhere`. A token that names no known subject entitles
-   nobody.
-2. **A transaction without a token belongs to the first subject that submits
-   it**, recorded permanently per `(environment, originalTransactionId)`. This
-   covers subscriptions started outside the app, such as an offer code redeemed
-   in the App Store. Later token-less transactions in that subscription follow
-   the claim; notifications for an unclaimed one are ignored until a device
-   claims it.
-3. **One subscription entitles one iCloud account at a time.** Per
-   `(environment, originalTransactionId)` only the most recent transaction, by
-   purchase date, counts, as in StoreKit's `currentEntitlements`. A later
-   transaction with another token, such as a resubscription after an iCloud
-   account change, moves the entitlement; replaying an older JWS cannot bring
-   back a superseded one.
-4. **iCloud account changes do not move Pro.** Restore on another iCloud account
-   shows that the subscription belongs to another iCloud account and offers
-   Manage Subscription. There is no self-service transfer. If support must move
-   one, the operator uses App Store Server API's Set App Account Token, which
-   carries the new token into renewals; the service follows the newer signed
-   data without database edits.
-5. **Refunds and revocations end access at `revocationDate`.** Admitted work
-   continues under its grant. A reversed refund restores access through the
-   newer signed transaction.
-6. **Family Sharing stays off** (enabling it is irreversible). Only
-   `inAppOwnershipType` `PURCHASED` entitles. Multi-seat purchase is disabled and
-   the products are sold only on the App Store, not to Apple Business or Apple
-   School.
-7. **Sandbox is accepted in production.** App Review and TestFlight purchase in
-   the sandbox against the production service, so their purchases grant Pro with
-   the same ceiling. TestFlight testers therefore get Pro without paying; the
-   ceiling bounds it, and a measured abuse response is a reviewed change.
-   Environment is part of every key, so a sandbox transaction never collides
-   with a production one. Xcode and local StoreKit testing are not Apple-signed
-   and are refused.
+1. **The latest transaction defines a subscription's state.** A transaction
+   replaces the stored one when its purchase date is later (transaction ID
+   breaks a tie) or, for the same transaction, when its `signedDate` is later.
+   Replaying an older JWS, or an older transaction's refund, changes nothing.
+2. **A purchase belongs to the subject its `appAccountToken` names.** The iOS app
+   always purchases with the session's subject. A submitter whose subject the
+   owner is not gets `409 purchase_owned_elsewhere`; a token that names no
+   known subject entitles nobody.
+3. **A transaction without a token inherits the subscription's owner.** This
+   covers resubscriptions and offers redeemed outside the app. An older
+   transaction's token names the owner of a subscription that has none yet.
+   Only a subscription with no owner at all goes to the first subject that
+   submits one of its transactions, permanently.
+4. **iCloud account changes do not move Pro.** Where StoreKit holds an
+   entitlement that the service reports as owned elsewhere, the app replaces
+   Get Pro with "belongs to another iCloud account" and Manage Subscription, so
+   it never sells a crossgrade that would reach the other account. Transfers are
+   outside launch scope. If support must move one, the operator calls Set App
+   Account Token and the user taps Restore on the new device; whether StoreKit
+   then returns the re-tokened transaction is unverified, and otherwise the move
+   lands at the next renewal.
+5. **Revocation ends access.** A refunded or revoked latest transaction stops
+   entitling, including one stored before anyone claimed the subscription;
+   admitted work continues under its grant. A reversed refund restores access
+   through the newer signed transaction.
+6. **One purchase, one account.** Family Sharing stays off (enabling it is
+   irreversible), and only `inAppOwnershipType` `PURCHASED` entitles.
+   Multiseat purchase is disabled, the products sell only on the App Store,
+   and they are not promoted on the App Store page.
+7. **Sandbox is accepted with its own ceiling.** App Review and TestFlight
+   purchase in the sandbox against the production service without paying, and
+   the iOS download links the public TestFlight group. A sandbox entitlement
+   therefore raises the limit only to `sandboxProMonthlySeconds`, enough to
+   review Pro but not a free substitute. Environment is part of the key; Xcode
+   and local StoreKit testing are not Apple-signed and are refused.
 8. **No billing grace period at launch.** Access ends at `expiresDate`; a
    recovered renewal arrives as a new transaction.
 
@@ -69,131 +70,183 @@ The limit is the larger of a private subject override and the plan's limit.
 
 ## How the service learns of entitlements
 
-Both paths feed one operation, `apply(signedTransaction)`, which is idempotent
-and order-independent.
+Both paths feed one store operation that verifies, then applies rule 1 inside
+one `BEGIN IMMEDIATE` transaction, so duplicate, retried and reordered
+deliveries converge.
 
-- **Client submission.** The iOS app sends the transaction's
-  `jwsRepresentation` to `POST /v1/purchases` for every verified transaction in
-  the Pro group from `Transaction.updates` (where StoreKit views deliver
-  purchases), from `Transaction.unfinished` at launch, after Restore
-  (`AppStore.sync`, then `currentEntitlements`), and at launch and foreground
-  when the service reports Free while StoreKit holds an entitlement. It finishes
-  a transaction after a 200 or a definitive 400 or 409; a 503 or network failure
-  leaves it unfinished for the next launch.
+- **Client submission.** The iOS app sends each verified Pro-group
+  transaction's `jwsRepresentation` to `POST /v1/purchases`: the purchase
+  result, `Transaction.updates` (which also delivers unfinished transactions
+  once at launch, renewals and refunds), Restore (`AppStore.sync`, then
+  `currentEntitlements`) and a reconcile of `currentEntitlements` at launch and
+  foreground. It finishes a transaction after a 200, a definitive 400 or a 409.
+  A 409 is remembered per transaction ID so foregrounds do not resubmit it.
+  After a failure it shows "purchase completed, activating", retries three
+  times at 1, 2 and 4 seconds, then keeps the transaction unfinished behind a
+  Retry button; Get Pro stays hidden meanwhile.
 - **App Store Server Notifications V2.** `POST /v1/app-store/notifications`
-  verifies the signed payload and applies its `signedTransactionInfo`, whatever
-  the notification type. This covers renewals, expiry, refunds and revocations
-  while no device runs StoreKit, as for a Mac-only user. It returns 200 when the
-  payload was applied or deliberately ignored (no transaction, unclaimed, other
-  group), 400 when verification fails, and 503 when it could not decide, so
-  Apple retries.
+  applies a verified payload's `signedTransactionInfo` whatever the
+  notification type: renewals, expiry, refunds and revocations while no device
+  runs StoreKit, as for a Mac-only user. It answers 200 when the payload was
+  applied or deliberately ignored (no transaction, other group or ownership
+  type), 400 when verification fails and 503 when it could not decide. Apple
+  retries any 40x or 50x five times over about a week in production and never in
+  the sandbox; a retried 400 is harmless.
+- **Replay.** `scripts/replay-notifications.ts` (operator) reads Get
+  Notification History for a window (180 days in production, 30 in the sandbox)
+  and posts each payload to the endpoint above; records reflect their original
+  state, which rule 1 makes safe to replay. The maintainer runs it after any
+  period the endpoint was unreachable or answering 5xx, and on a report of a
+  missing renewal or refund. It needs an In-App Purchase key from the operator's
+  environment; whether the production host ever holds one is an open
+  deployment decision.
 
-Verification uses Apple's App Store Server Library behind one service module
-that returns Mumla's own types. It pins Apple Root CA - G3 (SHA-256
-`63343ABF…653E9179`, committed as a public certificate), checks the chain's
-Apple OIDs, the bundle ID, the app Apple ID for Production, and the
-environment, with online revocation checks. A revocation-check outage is
-retryable (503) and bounded by a timeout; it never affects already stored
-entitlements or admission. The service then requires the configured
-subscription group, type Auto-Renewable Subscription, `PURCHASED` ownership and
-an expiry date.
-
-Per `(environment, transactionId)` the service keeps the newest `signedDate`, so
-duplicate, retried and reordered deliveries converge. Apple retries undelivered
-notifications; a device's next launch reconciles through StoreKit. Missed
-notifications for a user with no iOS device leave a lapsed renewal unseen until
-an iOS launch or an operator replay from Get Notification History; the
-service holds no App Store Server API key at launch.
+Verification uses Apple's App Store Server Library behind one module that
+returns Mumla's own types. It pins Apple Root CA - G3 (SHA-256
+`63343ABF…653E9179`, committed as a public certificate) and checks the chain's
+Apple OIDs, certificate validity at the payload's `signedDate`, the signature,
+the bundle ID, the app Apple ID for Production, and the environment. It runs
+offline: no OCSP request, no egress, no timeout to bound, and an old but
+authentic JWS stays valid after Apple's signing certificate expires. The cost
+is that a revoked Apple signing key would need a forward fix. The service then
+requires the configured subscription group, type Auto-Renewable Subscription,
+`PURCHASED` ownership, numeric transaction IDs and an expiry date.
 
 ## Service API and schema
 
 | Endpoint | Authorization | Contract |
 | --- | --- | --- |
-| `POST /v1/purchases` | Session | Body `{"signed_transaction": "<JWS>"}`, at most 16 KiB with the two-second body deadline. 200 `{allowance}`; 400 `invalid_purchase`; 409 `purchase_owned_elsewhere`; 503 retryable |
-| `POST /v1/app-store/notifications` | Public, Apple-signed body | `{"signedPayload": "<JWS>"}`, at most 64 KiB, eight separate slots outside the data pool |
+| `POST /v1/purchases` | Session | Body `{"signed_transaction": "<JWS>"}`, at most 16 KiB with a two-second body deadline. 200 `{allowance}`; 400 `invalid_purchase`; 409 `purchase_owned_elsewhere`; 503 retryable |
+| `POST /v1/app-store/notifications` | Public, Apple-signed body | `{"signedPayload": "<JWS>"}`, at most 64 KiB with a two-second body deadline, eight slots outside the data pool; the slot is taken before reading |
 
-The allowance gains `plan` (`"free"` or `"pro"`) and `pro_limit_seconds`. Apps
-treat a missing `plan` as "Pro not offered", so a rolled-back service keeps
-dictation working and hides Pro. Configuration gains required
-`appStoreBundleId`, `appStoreAppId`, `subscriptionGroupId` and
-`proMonthlySeconds`.
+The allowance gains `plan` (`"free"` or `"pro"`) and `pro_limit_seconds`, the
+production Pro limit that the offer states. Configuration gains required
+`proMonthlySeconds`, `sandboxProMonthlySeconds`, `appStoreBundleId`,
+`appStoreAppId` and `subscriptionGroupId`.
 
-Two STRICT tables, created with `CREATE TABLE IF NOT EXISTS` on every open, keep
-`user_version` 1 so the previous executable still opens the database and simply
-ignores them; during such a rollback Pro users get the free limit. Snapshot
-validation accepts databases without them.
+One STRICT table, created with `CREATE TABLE IF NOT EXISTS` on every open:
+`subscriptions(environment, original_transaction_id, owner, transaction_id,
+purchased, expires, revoked, signed)`, keyed by environment and original
+transaction ID and indexed by owner. Its size is bounded by the number of
+subscriptions, so nothing is pruned. `user_version` stays 1 and snapshot
+validation accepts databases without the table.
 
-- `purchase_claims(environment, original_transaction_id, subject)`: permanent
-  first-claim rows for token-less subscriptions.
-- `purchase_transactions(environment, transaction_id, original_transaction_id,
-  subject, purchased, expires, revoked, signed)`: the newest signed state of each
-  transaction and its resolved owner. `revoked` is null unless Apple revoked it.
-
-Rows are pruned 90 days after `expires`, never by revocation date, so a stale
-pre-refund JWS cannot outlive the record that supersedes it. Claims are never
-pruned. Writes and the ownership decision run in one `BEGIN IMMEDIATE`
-transaction.
+**Pro is a forward-only boundary.** The previous executable rejects the new
+configuration keys and would ignore purchases, so it is never a rollback target
+once Pro ships: defects are fixed forward. The first Pro deploy's automatic
+readiness fallback restores the previous artifact and its previous
+configuration together, before any purchase exists. Apps treat a missing
+`plan` as Pro not offered only so development builds keep working against the
+pre-Pro service between merge and release; that branch goes once the first Pro
+release is live.
 
 ## Identifiers
 
 | Item | Value |
 | --- | --- |
-| Subscription group | `22248259`, renamed from "WisprClone Pro" to "Mumla Pro" |
-| Monthly | `emileberhard.WisprClone.ios.subscription.monthly` (existing, never submitted), $6.99, level 1 |
-| Yearly | `emileberhard.WisprClone.ios.subscription.yearly`, $49.99, level 1 |
+| Subscription group | `22248259`, reference name and en-US name "Mumla Pro" |
+| Monthly | `emileberhard.WisprClone.ios.subscription.monthly` (Apple ID `6792479392`), one month, level 1 |
+| Yearly | `emileberhard.WisprClone.ios.subscription.yearly` (Apple ID `6831377958`), one year, level 1 |
 
 Both products give the same service at one level, so switching between them
-takes effect at the next renewal. The apps reference only the group ID; the
-service checks only the group; product IDs live in App Store Connect and the
-StoreKit configuration file. The sandbox notification URL is the production
-service's notifications endpoint; the production URL is set at launch.
+takes effect at the next renewal. Both have Family Sharing off, multiseat off,
+App Store distribution only, every territory the app sells in, and prices at
+Apple's equalization of the US price. The apps reference only the group ID; the
+service checks only the group; product IDs live in App Store Connect and
+`Apple/StoreKit/MumlaPro.storekit`. The sandbox notification URL is the
+production service's endpoint; the production URL is set once the endpoint has
+passed acceptance, and a dev instance may hold the sandbox URL during that
+acceptance while no Pro build is in TestFlight or App Review.
 
 ## Where Pro appears
 
 - **iOS paywall** (`ProOfferView`, a sheet): `SubscriptionStoreView` for the
   group with localized StoreKit prices, Restore, terms and privacy links, and a
-  header that states the fair-use ceiling from `pro_limit_seconds`.
+  header that states the 30 hours from `pro_limit_seconds`.
 - **iOS allowance card**: a Get Pro button when Free and running low or out,
-  where the card already appears above the dictation pill and in Settings.
+  where the card already appears.
 - **iOS Settings**: a plan section. Free shows Get Pro and Restore; Pro shows
-  Manage Subscription; a subscription owned by another iCloud account says so
-  and offers Manage Subscription.
+  Manage Subscription; activation shows its progress and Retry; a subscription
+  owned by another iCloud account says so and offers Manage Subscription.
 - **Mac**: the menu and Settings show the plan. Free links to Mumla on the App
   Store for iPhone and iPad; Pro links to the App Store's subscription
   management.
 - Pro's allowance reads as Mumla Pro, with remaining time shown only near the
   ceiling.
 
+## Privacy
+
+The service stores, per subscription, the environment, original and latest
+transaction IDs, purchase, expiry, revocation and signing dates, and the owning
+subject, for as long as the service runs. Apps send the signed transaction
+only. The App Store privacy label gains Purchases (Purchase History), linked to
+the user, for App Functionality, and the iOS app's privacy manifest declares
+the same.
+
 ## Alternatives rejected
 
+- **A row per transaction with first-claim rows**: more state, a pruning rule
+  whose retention had to outlive every stale JWS, and a correlated "latest"
+  query; one row per subscription gives the same answers.
+- **Online revocation checks**: an OCSP egress dependency and a timeout that
+  could release capacity while work continued, and certificate validity judged
+  at the current time would reject an old authentic JWS.
 - **Notifications only**: a purchase would wait on Apple's delivery and could
   not report ownership conflicts to the buyer.
 - **Client submission only**: a refund or lapse would go unseen until a device
   launches, and a Mac-only user would keep a lapsed Pro.
-- **App Store Server API status queries**: adds a long-lived key, a per-request
-  Apple dependency and rate limits, for what signed submissions and
-  notifications already deliver.
+- **Per-request App Store Server API queries**: a long-lived key on the host,
+  a per-dictation Apple dependency and rate limits, for what submissions and
+  notifications deliver. The operator replay keeps the smallest recovery.
 - **First claim owns the whole subscription forever**: a user who resubscribes
   under a new iCloud account would pay without receiving Pro.
 - **Hand-written JWS verification**: Apple's library owns chain, OID and
-  revocation rules; hiding it behind one module keeps it replaceable.
+  signature rules; hiding it behind one module keeps it replaceable.
 
 ## What becomes expensive to change
 
 - Product and group identifiers are permanent once created.
 - Every transaction carries a subject UUID forever; changing how subjects are
   identified means re-tokening subscriptions through Set App Account Token.
-- Enabling Family Sharing cannot be undone.
+- Enabling Family Sharing cannot be undone; removing Apple Business or School
+  distribution after approval cancels their subscribers.
 - Refusing Sandbox later would break App Review and TestFlight purchases.
-- The disclosed fair-use ceiling, monthly windows and price are customer
-  promises; Apple's price-increase rules govern raises.
-- Permanent first-claim rows, the additive tables and the allowance's `plan`
-  field that installed apps read.
+- The 30 hours, monthly windows and prices are customer promises; Apple's
+  price-increase rules govern raises.
+- The `subscriptions` table and the allowance's `plan` field that installed
+  apps read.
 
-## Assumptions to verify
+## Assumptions to verify in the sandbox
 
-- Apple keeps `originalTransactionId` across renewals and resubscriptions in a
-  group and repeats `appAccountToken` on renewals.
-- Online revocation checks work from the service host through its egress.
-- Apple's library runs under the pinned Bun runtime and its compiled single
-  executable.
+- Renewals repeat `appAccountToken` and keep `originalTransactionId`; whether a
+  resubscription after lapse keeps the same original ID.
+- Both crossgrades take effect at renewal; refund, refund reversal and
+  reordered delivery converge.
+- StoreKit returns a re-tokened transaction after Set App Account Token and
+  Restore.
+
+## Challenge record
+
+Two independent reviewers challenged the proposal before any product existed.
+Both approved the identifiers.
+
+| Finding | Disposition |
+| --- | --- |
+| Unclaimed refunds were discarded, so a pre-refund JWS could later grant Pro | Fixed: state is stored whatever its ownership (rules 1 and 5) |
+| The previous executable rejects the new configuration, so rollback was not compatible | Pro is a forward-only boundary |
+| Public TestFlight would give Pro without payment | Fixed: sandbox ceiling (rule 7) |
+| Token-less renewals in an owned subscription had no rule | Fixed: inheritance (rule 3) |
+| The paywall could sell a plan owned by another account | Fixed: owned-elsewhere state replaces Get Pro |
+| A failed activation after payment had no visible recovery | Fixed: activating state, bounded retry, Retry |
+| Missed notifications had no repair; sandbox never retries | Operator replay through Get Notification History |
+| Support transfer had no path into the service | Out of launch scope; procedure and its unverified step recorded (rule 4). Disagreed with building a support operation now: no current caller |
+| Online checks judge certificates at the current time | Offline verification; the suggested `Transaction.latest` retry code is then unnecessary |
+| Notification body read lacked a deadline | Two-second deadline, slot taken before reading |
+| The notification endpoint can be starved by slow bodies | Launch step: allow only Apple's `17.0.0.0/8` on that path at the edge |
+| "Unlimited" wording risks App Review and consumer law | Copy states 30 hours everywhere |
+| Multiseat is on by default for new subscriptions | Disabled on both, App Store only |
+| First subscriptions must ship with an app version | Launch step for the maintainer, with review screenshot, notes and the standard EULA link in metadata |
+| Apple retries 40x too | Recorded above |
+| Promoted purchases would lack a token | Products are not promoted |
+| Set both notification URLs together | Partly disagreed: the sandbox URL is set now so test notifications and sandbox purchases reach the endpoint once deployed; the production URL waits for acceptance |
+| Separate `Transaction.unfinished` pass | Dropped; `Transaction.updates` delivers them at launch |

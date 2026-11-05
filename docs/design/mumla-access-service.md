@@ -23,9 +23,9 @@ account**, shared across iPhone, iPad and Mac. The service also supports a
 private, larger allowance for the maintainer's verified subject. That policy
 uses the same admission, metering and account checks; it grants no bypass key.
 
-Pro is a later change: $6.99/month or $49.99/year through StoreKit, presented as
-unlimited with a disclosed 30-hour monthly fair-use ceiling. No purchases,
-entitlement verifier, paywall or Pro UI belong in this first implementation.
+Pro, $6.99/month or $49.99/year through StoreKit for 30 hours of dictation a
+month, came later; [Mumla Pro](mumla-pro.md) records its ownership policy,
+verification and schema.
 
 The identity guarantee is one allowance per iCloud account, not proof of one
 physical person. Multiple Apple accounts remain possible. All platforms use the same verified
@@ -596,20 +596,20 @@ without claiming the untagged instance is a production release.
 
 ## Later Pro integration
 
+The constraints below shaped [Mumla Pro](mumla-pro.md), which supersedes this
+section's open questions.
+
 The existing subject UUID becomes StoreKit's `appAccountToken`. Verify Apple-signed
-transactions and current entitlement on the service, and uniquely associate
+transactions on the service, and uniquely associate
 `(store environment, originalTransactionId)` with one subject. Never let a client
 assert Pro, choose its limit or replay a purchase under several iCloud accounts.
-Restoration of purchases without an app account token, account changes, refunds
-and Family Sharing need a defined ownership policy before selling Pro.
 
 An entitlement raises the same monthly limit to 30 hours; it creates neither a
 second allowance nor a second identity. An upgrade preserves already-used
 samples. A downgrade prevents further admissions when use is already above its
 new limit; previously admitted bounded work keeps its grant. Yearly
-billing still has monthly fair-use windows. Price labels later come from
-localized StoreKit products. No subscription tables or unused purchase APIs are
-needed for the free launch beyond preserving stable subject ownership.
+billing still has monthly windows. Price labels come from localized StoreKit
+products.
 
 ## Feasibility and acceptance gates
 
