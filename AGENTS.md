@@ -1,16 +1,14 @@
 # Mumla
 
-Mumla is voice-to-text for macOS and iOS: a macOS menu bar app, an iOS
-containing app, and an iOS keyboard extension that dictates through it. Ship
-small, correct changes that preserve the dictation UX, keyboard reliability,
-the release pipeline and the shared `SpeechKit` integration. `CLAUDE.md` is a
+Mumla is voice-to-text for macOS and iOS: a menu bar app, an iOS app, and a
+keyboard extension. Preserve dictation UX, keyboard reliability, the release
+pipeline and the shared `SpeechKit` integration. `CLAUDE.md` is a
 symlink to this file; it is the canonical agent context for the repository.
 
 ## Public repository
 
 This repository is public and source-available under PolyForm Shield 1.0.0.
-Everything committed, including history, issues and Actions logs, is public.
-Never commit or print:
+History, issues and Actions logs are public. Never commit or print:
 
 - secrets: access sessions and grants, signing material, provider
   credentials, App Store Connect keys, the ignored `Local.xcconfig`;
@@ -24,10 +22,9 @@ Never commit or print:
 under Settings > Third-party Notices; CI checks the bundled copies byte for
 byte. A new or updated dependency updates both with its exact upstream text.
 
-Fixtures, screenshots and evaluation audio are synthetic. Raw provider
-evaluation results stay in the ignored `Evaluations/RealtimeTranscription/results/`.
-Write `the maintainer` where a step needs the owner. Machine-specific values
-belong in ignored local files, not in committed defaults.
+Fixtures, screenshots and evaluation audio are synthetic; raw provider results stay
+in ignored `Evaluations/RealtimeTranscription/results/`. Write `the maintainer`
+for the owner. Machine-specific values belong in ignored local files.
 
 ## Ownership
 
@@ -403,10 +400,11 @@ container `iCloud.emileberhard.WisprClone`.
 | `just realtime-eval` | Resume the provider evaluation from completed atomic run logs with adaptive concurrency |
 | `just install-mac` | Build signed Debug, replace `/Applications/Mumla Dev.app`, install the `mumla` CLI and launch; stamped with the latest version tag |
 | `just build-iphone`, `just install-iphone`, `just deliver-iphone <app>` | Signed development checkpoint for a physical iPhone and its delivery; development builds use marketing version `0.0.0` |
-| `just ui-previews [id…]`, `just keyboard-preview-*` | All iOS screens in `.local/ui-previews/sheet.jpg`; real-host keyboard checks ([docs](docs/keyboard-previews.md)) |
+| `just ui-previews [id…]` | All iOS screens in `.local/ui-previews/sheet.jpg` ([docs](docs/ui-previews.md)) |
+| `just keyboard-preview-*`, `just keyboard-layout-preview-*` | Real-host keyboard checks ([docs](docs/keyboard-previews.md)) |
 
-`just` alone lists every recipe. Signed recipes use the maintainer's signing
-and device tooling; contributors use the unsigned recipes or their own team.
+`just` lists every recipe. Signed recipes use the maintainer's signing and device
+tooling; contributors use unsigned recipes or their own team.
 The ignored `Apple/Config/Local.xcconfig`, included last by `Mumla.xcconfig`,
 overrides project-level settings such as `DEVELOPMENT_TEAM` and supplies
 `MUMLA_CLOUDKIT_API_TOKEN`; bundle identifiers and the Debug targets' manual
@@ -414,6 +412,8 @@ signing profiles are target settings that outrank it. Builds resolve only the
 committed `Package.resolved`; `.xcode-version` names the Xcode, and
 `DEVELOPER_DIR` overrides it per invocation. Update that one file when moving
 Xcode and check that the hosted image has it.
+
+Capture-only code belongs under `MUMLA_SCREENSHOTS` and must not change shipping behavior.
 
 Use the smallest relevant validation. Keyboard UI changes are checked on a
 physical iPhone unless asked otherwise. If a build cannot run, state the

@@ -42,7 +42,12 @@ final class DictationCoordinator {
 #if MUMLA_SCREENSHOTS
     let dataStore: MumlaDataStore = {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MumlaCapture", isDirectory: true)
-        try? FileManager.default.removeItem(at: directory)
+        do {
+            try FileManager.default.removeItem(at: directory)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+        } catch {
+            fatalError("Could not remove capture scratch store: \(error)")
+        }
         return MumlaDataStore(directoryURL: directory, cloudSyncEnabled: false)
     }()
 #else
@@ -99,13 +104,12 @@ final class DictationCoordinator {
     private(set) var transcript = ""
 #if MUMLA_SCREENSHOTS
     private(set) var microphoneAuthorized = true
-    private(set) var showSwipeBackHint = false
     private(set) var keyboardHasBeenActive = true
 #else
     private(set) var microphoneAuthorized = AVAudioApplication.shared.recordPermission == .granted
-    private(set) var showSwipeBackHint = false
     private(set) var keyboardHasBeenActive = DictationBridge.keyboardHasBeenActive
 #endif
+    private(set) var showSwipeBackHint = false
     /// Settable: ContentView binds it to its navigation stack.
     var navigationPath: [MainRoute] = []
 
@@ -115,6 +119,8 @@ final class DictationCoordinator {
     }
 
 #if MUMLA_SCREENSHOTS
+    var captureShowsRecordings = false
+
     func setCapturePhase(_ phase: DictationPhase) {
         self.phase = phase
         if phase == .recording {

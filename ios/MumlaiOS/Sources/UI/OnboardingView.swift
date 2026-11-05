@@ -29,7 +29,6 @@ import UIKit
 struct OnboardingView: View {
     static let tryItPendingKey = "onboardingTryItPending"
 
-#if MUMLA_SCREENSHOTS
     enum Phase {
         case enable
         case connect
@@ -37,15 +36,6 @@ struct OnboardingView: View {
         case dictate
         case done
     }
-#else
-    private enum Phase {
-        case enable
-        case connect
-        case keyboardUnconfirmed
-        case dictate
-        case done
-    }
-#endif
 
     let coordinator: DictationCoordinator
     let onFinished: () -> Void
@@ -70,11 +60,10 @@ struct OnboardingView: View {
 #if MUMLA_SCREENSHOTS
     init(
         coordinator: DictationCoordinator,
-        capturePhase: Phase,
-        onFinished: @escaping () -> Void = {}
+        capturePhase: Phase
     ) {
         self.coordinator = coordinator
-        self.onFinished = onFinished
+        self.onFinished = {}
         self.isCapturePreview = true
         _phase = State(initialValue: capturePhase)
         _microphoneStatus = State(initialValue: .granted)

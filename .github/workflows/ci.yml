@@ -14,6 +14,7 @@ jobs:
     outputs:
       app: ${{ steps.paths.outputs.app }}
       access: ${{ steps.paths.outputs.access }}
+      capture: ${{ steps.paths.outputs.capture }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -22,13 +23,16 @@ jobs:
       - name: Check affected paths
         id: paths
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           if [[ $GITHUB_EVENT_NAME == push ]] || git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Eq '^(Mumla/|Shared/|Tests/|ios/|Apple/|Evaluations/|Mumla\.xcodeproj/|justfile$|scripts/(GrantKit\.revision|prepare-packages|select-xcode|sign-bundles|build-developer-id-dmg\.sh|check-build-configurations)$|\.xcode-version$|\.github/workflows/)'; then
             echo 'app=true' >> "$GITHUB_OUTPUT"
           fi
           if [[ $GITHUB_EVENT_NAME == push ]] || git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Eq '^(services/access/|\.github/workflows/ci\.yml$)'; then
             echo 'access=true' >> "$GITHUB_OUTPUT"
+          fi
+          if [[ -z "$BASE" || "$BASE" =~ ^0+$ ]] || git diff --name-only "$BASE" "$GITHUB_SHA" | grep -Eq '^(Apple/AppStore/|ios/MumlaiOS/Sources/Capture\.swift$|\.github/workflows/ci\.yml$)'; then
+            echo 'capture=true' >> "$GITHUB_OUTPUT"
           fi
 
   scripts:
@@ -60,7 +64,7 @@ jobs:
       - name: Compile the iOS app and keyboard
         run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaiOS -configuration Release -destination 'generic/platform=iOS' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
       - name: Compile the iOS screenshot capture target
-        run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaiOS -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) MUMLA_SCREENSHOTS' MUMLA_CLOUDKIT_API_TOKEN= CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
+        run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaiOS -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates ARCHS=arm64 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) MUMLA_SCREENSHOTS' MUMLA_CLOUDKIT_API_TOKEN= CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
       - name: Compile the macOS app
         run: xcodebuild -quiet -project Mumla.xcodeproj -scheme MumlaMac -configuration Release -destination 'generic/platform=macOS' -derivedDataPath "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}" -disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile -skipPackageUpdates CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
       - name: Verify bundled third-party notices
@@ -83,6 +87,19 @@ jobs:
       - name: Remove build output
         if: always()
         run: rm -rf "${{ runner.temp }}/build-${{ github.run_id }}-${{ github.run_attempt }}"
+
+  capture:
+    needs: changes
+    if: needs.changes.outputs.capture == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: scripts/select-xcode
+      - run: scripts/prepare-packages
+      - run: Apple/AppStore/capture app-store
 
   access:
     needs: changes

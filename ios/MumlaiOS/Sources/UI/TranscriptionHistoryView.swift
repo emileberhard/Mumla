@@ -27,6 +27,9 @@ struct TranscriptionHistoryView: View {
             .padding(.horizontal)
             if showsRecordings {
                 AudioArchiveView(dataStore: coordinator.dataStore)
+#if MUMLA_SCREENSHOTS
+                    .onAppear { coordinator.captureShowsRecordings = true }
+#endif
             } else {
                 transcriptList
             }
@@ -53,10 +56,12 @@ struct TranscriptionHistoryView: View {
         .searchable(text: $searchText, prompt: "Search transcriptions")
         .task { await coordinator.dataStore.refreshRemoteChangesWhileVisible() }
         .task(id: entries.count) {
-            stats = entries.isEmpty ? nil : HistoryStats(
-                entries: entries,
-                storeSizeInBytes: coordinator.dataStore.storeSizeInBytes
-            )
+#if MUMLA_SCREENSHOTS
+            let storeSize: Int64 = 1_048_576
+#else
+            let storeSize = coordinator.dataStore.storeSizeInBytes
+#endif
+            stats = entries.isEmpty ? nil : HistoryStats(entries: entries, storeSizeInBytes: storeSize)
         }
         .navigationTitle("History")
         .toolbar {
@@ -94,7 +99,7 @@ struct TranscriptionHistoryView: View {
     }
 }
 
-struct HistoryStatsView: View {
+private struct HistoryStatsView: View {
     @Environment(\.dismiss) private var dismiss
     let stats: HistoryStats
 

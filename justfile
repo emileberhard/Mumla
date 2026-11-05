@@ -60,7 +60,7 @@ test-access-live: packages
 screenshots: packages
     Apple/AppStore/capture app-store
 
-# Render the iOS screens (all, or the named CaptureScreen IDs) into .local/ui-previews in this Mac's shared warm simulator.
+# Render iOS screens in the shared simulator: pass IDs and optionally --appearance light|dark (default dark).
 [positional-arguments]
 ui-previews *screens: packages
     Apple/AppStore/capture previews "$@"

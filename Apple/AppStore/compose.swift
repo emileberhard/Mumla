@@ -67,8 +67,8 @@ struct Phone: View {
                 .interpolation(.high)
                 .frame(width: Screen.size.width, height: Screen.size.height)
                 .clipShape(RoundedRectangle(cornerRadius: Screen.cornerRadius, style: .continuous))
-                .overlay(alignment: .top) {
-                    Capsule().fill(.black).frame(width: 126, height: 37).padding(.top, 11)
+                .overlay(alignment: .bottom) {
+                    Capsule().fill(.black).frame(width: 140, height: 5).padding(.bottom, 8)
                 }
         }
         .frame(width: Self.size.width, height: Self.size.height)
@@ -117,7 +117,7 @@ struct Slide: View {
 
 let slides: [(String, Slide)] = [
     ("1-keyboard", Slide(headline: [("Just ", nil), ("speak", Brand.amber), (".\nIn ", nil), ("any app", Brand.pink), (".", nil)], screen: "keyboard")),
-    ("2-dictionary", Slide(headline: [("Names", Brand.amber), (" spelled\n", nil), ("your way", Brand.pink), (".", nil)], screen: "dictionary")),
+    ("2-dictionary", Slide(headline: [("Names", Brand.amber), (" spelled\n", nil), ("your way", Brand.pink), (".", nil)], screen: "settings")),
     ("3-home", Slide(headline: [("Every word ", nil), ("kept", Brand.amber), ("\nand ", nil), ("synced", Brand.pink), (".", nil)], screen: "home")),
 ]
 

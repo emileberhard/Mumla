@@ -15,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[2]
 BUILD = ROOT / ".local" / "screenshot-build"
 APP = BUILD / "Build/Products/Debug-iphonesimulator/MumlaiOS.app"
 PREVIEWS = ROOT / ".local" / "ui-previews"
-APP_STORE_SCREENS = ["keyboard", "dictionary", "home"]
+APP_STORE_SCREENS = ["keyboard", "settings", "home"]
+RESOLVED = ROOT / "Mumla.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+RESOLVED_COPY = BUILD / "Package.resolved"
 APP_STORE_DISPLAYS = {
     "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE": "iPhone 18 Pro",
 }
@@ -26,8 +28,8 @@ STATUS_BAR = ["--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active",
               "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "charged", "--batteryLevel", "100"]
 
 
-def run(*args):
-    return subprocess.run([str(arg) for arg in args], check=True, text=True, capture_output=True).stdout.strip()
+def run(*args, timeout=None):
+    return subprocess.run([str(arg) for arg in args], check=True, text=True, capture_output=True, timeout=timeout).stdout.strip()
 
 
 def cancel(signum, frame):
@@ -44,9 +46,10 @@ def latest_runtime(devices):
 
 
 def build():
-    if not (BUILD / "SourcePackages").exists():
+    if not (BUILD / "SourcePackages").exists() or not RESOLVED_COPY.exists() or RESOLVED.read_bytes() != RESOLVED_COPY.read_bytes():
         run("xcodebuild", "-resolvePackageDependencies", "-project", ROOT / "Mumla.xcodeproj", "-scheme", "MumlaiOS",
             "-derivedDataPath", BUILD, "-onlyUsePackageVersionsFromResolvedFile")
+        shutil.copyfile(RESOLVED, RESOLVED_COPY)
     run("xcodebuild", "-quiet", "-project", ROOT / "Mumla.xcodeproj", "-scheme", "MumlaiOS",
         "-configuration", "Debug", "-destination", "generic/platform=iOS Simulator", "-derivedDataPath", BUILD,
         "-disableAutomaticPackageResolution", "-onlyUsePackageVersionsFromResolvedFile", "-skipPackageUpdates",
@@ -55,29 +58,37 @@ def build():
     return run("plutil", "-extract", "CFBundleIdentifier", "raw", APP / "Info.plist")
 
 
-def capture(udid, bundle, output, screens, mask, timeout):
+def capture(udid, bundle, output, screens, appearance, timeout):
     shutil.rmtree(output, ignore_errors=True)
     output.mkdir(parents=True)
     run("xcrun", "simctl", "status_bar", udid, "override", *STATUS_BAR)
-    env = {**os.environ, "SIMCTL_CHILD_MUMLA_CAPTURE": str(output)}
+    env = {**os.environ, "SIMCTL_CHILD_MUMLA_CAPTURE": str(output),
+           "SIMCTL_CHILD_MUMLA_CAPTURE_APPEARANCE": appearance}
     if screens:
         env["SIMCTL_CHILD_MUMLA_CAPTURE_SCREENS"] = ",".join(screens)
     launch = ["xcrun", "simctl", "launch", "--terminate-running-process", "--console-pty", udid, bundle, *LOCALE]
     ready = output / "ready"
     console = output / "console.log"
     deadline = time.monotonic() + timeout
+    expired = False
     with open(console, "w") as log:
         app = subprocess.Popen(launch, stdout=log, stderr=subprocess.STDOUT, env=env)
         try:
             while app.poll() is None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    expired = True
+                    break
                 if ready.exists():
                     screen = ready.read_text().strip()
                     ready.unlink()
                     shot = output / f".{screen}.png"
-                    run("xcrun", "simctl", "io", udid, "screenshot", f"--mask={mask}", shot)
+                    try:
+                        run("xcrun", "simctl", "io", udid, "screenshot", "--mask=black", shot, timeout=remaining)
+                    except subprocess.TimeoutExpired:
+                        expired = True
+                        break
                     shot.rename(output / f"{screen}.png")
-                elif time.monotonic() > deadline:
-                    break
                 else:
                     time.sleep(0.02)
         finally:
@@ -87,8 +98,21 @@ def capture(udid, bundle, output, screens, mask, timeout):
                 app.wait()
     manifest = output / "manifest.json"
     if not manifest.exists():
-        raise SystemExit(f"The app did not finish the capture within {timeout} seconds:\n{console.read_text()}")
+        reason = f"exceeded the {timeout}-second deadline" if expired else "exited before finishing"
+        raise SystemExit(f"The app {reason}:\n{console.read_text()}")
     return json.loads(manifest.read_text())
+
+
+@contextmanager
+def simulator_appearance(udid, appearance):
+    previous = run("xcrun", "simctl", "ui", udid, "appearance")
+    if previous not in ("light", "dark"):
+        raise RuntimeError(f"Could not read simulator appearance: {previous}")
+    run("xcrun", "simctl", "ui", udid, "appearance", appearance)
+    try:
+        yield
+    finally:
+        run("xcrun", "simctl", "ui", udid, "appearance", previous)
 
 
 @contextmanager
@@ -125,13 +149,14 @@ def warm_simulator():
         yield udid
 
 
-def previews(screens):
+def previews(screens, appearance):
     started = time.monotonic()
     bundle = build()
     built = time.monotonic()
     with warm_simulator() as udid:
         run("xcrun", "simctl", "install", udid, APP)
-        ids = capture(udid, bundle, PREVIEWS, screens, mask="black", timeout=90)
+        with simulator_appearance(udid, appearance):
+            ids = capture(udid, bundle, PREVIEWS, screens, appearance=appearance, timeout=90)
     print(json.dumps({
         "sheet": str(PREVIEWS / "sheet.jpg"),
         "screens": [{"id": id, "png": str(PREVIEWS / f"{id}.png"), "jpg": str(PREVIEWS / "jpg" / f"{id}.jpg")}
@@ -157,7 +182,8 @@ def app_store():
             run("xcrun", "simctl", "bootstatus", udid, "-b")
             run("xcrun", "simctl", "install", udid, APP)
             raw = ROOT / ".local/screenshot-captures" / display
-            capture(udid, bundle, raw, APP_STORE_SCREENS, mask="ignored", timeout=300)
+            with simulator_appearance(udid, "light"):
+                capture(udid, bundle, raw, APP_STORE_SCREENS, appearance="light", timeout=300)
             output = ROOT / ".local/screenshots" / display
             shutil.rmtree(output, ignore_errors=True)
             output.mkdir(parents=True)
@@ -177,13 +203,14 @@ def main():
     commands.add_parser("app-store", help="capture the App Store slides into .local/screenshots on fresh simulators")
     previews_parser = commands.add_parser(
         "previews", help="capture screens into .local/ui-previews in the warm simulator this Mac's apps share")
+    previews_parser.add_argument("--appearance", choices=("light", "dark"), default="dark")
     previews_parser.add_argument("screens", nargs="*", help="CaptureScreen IDs from ios/MumlaiOS/Sources/Capture.swift; all when omitted")
     commands.add_parser("stop", help="shut down the shared warm simulator")
     args = parser.parse_args()
     if args.command == "app-store":
         app_store()
     elif args.command == "previews":
-        previews(args.screens)
+        previews(args.screens, args.appearance)
     else:
         stop()
 

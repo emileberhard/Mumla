@@ -35,11 +35,18 @@ struct DictationPillContent: View {
             } else {
                 HStack(spacing: 8) {
                     if showsProgress {
+#if MUMLA_SCREENSHOTS
+                        Image(systemName: "progress.indicator")
+                            .font(.system(size: 16))
+                            .foregroundStyle(foregroundColor)
+                            .accessibilityHidden(true)
+#else
                         ProgressView()
                             .progressViewStyle(.circular)
                             .controlSize(.small)
                             .tint(foregroundColor)
                             .accessibilityHidden(true)
+#endif
                     } else if let symbolName {
                         Image(systemName: symbolName)
                             .font(.system(size: 17, weight: .semibold))

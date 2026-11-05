@@ -1,0 +1,30 @@
+# UI preview suite
+
+`just ui-previews` renders every `CaptureScreen` in
+`ios/MumlaiOS/Sources/Capture.swift`; pass IDs to render a subset. An unknown
+ID fails with the valid list. The app reaches screens through its real root,
+waits for stable frames and signals the driver to take real Simulator
+screenshots, with the status bar pinned to 9:41 and the Dynamic Island and
+corners masked. Previews default to dark; App Store captures use light.
+
+```bash
+just ui-previews
+just ui-previews home settings keyboard
+just ui-previews --appearance light home settings
+just ui-previews-stop
+```
+
+The command builds incrementally into `.local/screenshot-build`, installs into
+the shared warm `iPhone 18 Pro` simulator recorded under
+`~/Library/Caches/ui-previews/`, and writes `*.png`, `jpg/*.jpg`, `sheet.jpg`,
+`console.log` and `manifest.json` into `.local/ui-previews`. Keyboard frames
+are synthetic composites; use the [real-host keyboard recipes](keyboard-previews.md)
+and a physical iPhone to accept extension-host spacing, safe areas and the
+system Globe/Dictation bar. `onboarding-dictate` shows the field unfocused,
+without a keyboard. Run `just ui-previews-stop` when the shared simulator is no
+longer in use.
+
+The separate driver screenshot captures the actual Dynamic Island and home
+indicator, unlike the template's in-app rendering; this is needed for App
+Store slides and makes previews match that capture path. The slide compositor
+adds a home indicator because the Simulator capture may omit it.

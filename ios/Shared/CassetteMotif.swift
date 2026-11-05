@@ -25,7 +25,11 @@ struct CassetteMotifView: View {
     var recordingStartDate: Date?
     var recordingDeadline: Date?
 
+#if MUMLA_SCREENSHOTS
+    private let reduceMotion = true
+#else
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+#endif
 
     /// How long the transport has been running. Advanced by an explicit task
     /// clock; every tick mutates state, so each frame is a fresh render and
@@ -112,6 +116,9 @@ private struct RecordingTimeText: View {
     let pulse: Double
 
     var body: some View {
+#if MUMLA_SCREENSHOTS
+        Text("0:14")
+#else
         if let deadline {
             let schedule = RecordingTimeSchedule(deadline: deadline)
             TimelineView(schedule) { context in
@@ -124,6 +131,7 @@ private struct RecordingTimeText: View {
         } else {
             elapsed
         }
+#endif
     }
 
     private var elapsed: some View {

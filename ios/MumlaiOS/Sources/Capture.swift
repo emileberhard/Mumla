@@ -6,11 +6,9 @@ import UIKit
 enum CaptureScreen: String, CaseIterable {
     case home
     case homeRecording = "home-recording"
-    case homeDark = "home-dark"
     case history
     case historyRecordings = "history-recordings"
     case historyStats = "history-stats"
-    case dictionary
     case settings
     case onboardingEnable = "onboarding-enable"
     case onboardingDictate = "onboarding-dictate"
@@ -19,35 +17,30 @@ enum CaptureScreen: String, CaseIterable {
     case keyboard
     case keyboardProcessing = "keyboard-processing"
     case keyboardError = "keyboard-error"
-    case keyboardDark = "keyboard-dark"
 
     var title: String {
         switch self {
-        case .home: "Home · App Store"
+        case .home: "Home"
         case .homeRecording: "Home · Recording"
-        case .homeDark: "Home · Dark"
         case .history: "History · Transcripts"
         case .historyRecordings: "History · Recordings"
         case .historyStats: "History · Stats"
-        case .dictionary: "Settings · App Store"
         case .settings: "Settings"
         case .onboardingEnable: "Onboarding · Enable"
         case .onboardingDictate: "Onboarding · Dictate"
-        case .keyboardStart: "Keyboard · Start Session"
-        case .keyboardIdle: "Keyboard · Idle"
-        case .keyboard: "Keyboard · Recording"
-        case .keyboardProcessing: "Keyboard · Processing"
-        case .keyboardError: "Keyboard · Error"
-        case .keyboardDark: "Keyboard · Dark"
+        case .keyboardStart: "Keyboard composite · Start Session"
+        case .keyboardIdle: "Keyboard composite · Idle"
+        case .keyboard: "Keyboard composite · Recording"
+        case .keyboardProcessing: "Keyboard composite · Processing"
+        case .keyboardError: "Keyboard composite · Error"
         }
     }
 
-    var colorScheme: ColorScheme {
-        switch self {
-        case .home, .dictionary, .keyboard, .keyboardStart, .keyboardIdle, .keyboardProcessing, .keyboardError:
-            .light
-        default:
-            .dark
+    static func style(_ appearance: String?) throws -> UIUserInterfaceStyle {
+        switch appearance {
+        case "light": .light
+        case "dark", nil: .dark
+        default: throw CaptureError("unknown appearance \(appearance!)")
         }
     }
 
@@ -72,11 +65,12 @@ struct CaptureView: View {
     let coordinator: DictationCoordinator
     @State private var screen: CaptureScreen?
     @State private var appeared = AsyncStream.makeStream(of: CaptureScreen.self)
+    @State private var cleared = AsyncStream.makeStream(of: Void.self)
 
     var body: some View {
         Group {
             switch screen {
-            case .keyboard, .keyboardDark:
+            case .keyboard:
                 KeyboardScene(scenario: .recording)
             case .keyboardStart:
                 KeyboardScene(scenario: .start)
@@ -86,24 +80,14 @@ struct CaptureView: View {
                 KeyboardScene(scenario: .processing)
             case .keyboardError:
                 KeyboardScene(scenario: .error)
-            case .dictionary:
-                SettingsView()
-            case .settings:
+            case .settings, .home, .homeRecording, .history, .historyRecordings, .historyStats:
                 ContentView()
-                    .sheet(isPresented: .constant(true)) { SettingsView() }
-            case .home, .homeRecording, .homeDark, .history, .historyRecordings:
-                ContentView()
-            case .historyStats:
-                ContentView()
-                    .sheet(isPresented: .constant(true)) {
-                        HistoryStatsView(stats: try! CaptureFixture.makeStats(coordinator))
-                    }
             case .onboardingEnable:
                 OnboardingView(coordinator: coordinator, capturePhase: .enable)
             case .onboardingDictate:
                 OnboardingView(coordinator: coordinator, capturePhase: .dictate)
             case nil:
-                Color.clear
+                Color.clear.onAppear { cleared.continuation.yield(()) }
             }
         }
         .onAppear {
@@ -117,7 +101,11 @@ struct CaptureView: View {
                 try await capture()
                 exit(0)
             } catch {
-                print("capture failed: \(DiagnosticError(error).metadata)")
+                if let error = error as? CaptureError {
+                    print("capture failed: \(error)")
+                } else {
+                    print("capture failed: \(DiagnosticError(error).metadata)")
+                }
                 exit(1)
             }
         }
@@ -129,33 +117,49 @@ struct CaptureView: View {
             throw CaptureError("MUMLA_CAPTURE names no output directory")
         }
         let screens = try CaptureScreen.named(env["MUMLA_CAPTURE_SCREENS"])
+        let style = try CaptureScreen.style(env["MUMLA_CAPTURE_APPEARANCE"])
         UIView.setAnimationsEnabled(false)
         try CaptureFixture.seed(coordinator)
         let window = try await keyWindow()
         var shown = appeared.stream.makeAsyncIterator()
-        var captured: [(screen: CaptureScreen, image: UIImage)] = []
+        var blank = cleared.stream.makeAsyncIterator()
+        _ = await blank.next(isolation: #isolation)
         let jpgDirectory = directory.appending(path: "jpg", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: jpgDirectory, withIntermediateDirectories: true)
 
-        for next in screens {
-            CaptureFixture.configure(coordinator, for: next)
-            window.overrideUserInterfaceStyle = next.colorScheme == .dark ? .dark : .light
-            screen = next
-            guard await shown.next(isolation: #isolation) == next else {
-                throw CaptureError("the \(next.rawValue) screen did not appear")
+        window.overrideUserInterfaceStyle = style
+        let captured = try await withThrowingTaskGroup(of: (CaptureScreen, UIImage).self) { group in
+            for next in screens {
+                CaptureFixture.configure(coordinator, for: next)
+                screen = next
+                guard await shown.next(isolation: #isolation) == next else {
+                    throw CaptureError("the \(next.rawValue) screen did not appear")
+                }
+                if [.history, .historyRecordings, .historyStats].contains(next) {
+                    coordinator.navigationPath = [.history]
+                    try await settle(window, screen: next)
+                }
+                if next == .historyRecordings {
+                    coordinator.captureShowsRecordings = false
+                    let previous = try await drawnFrame(of: window)
+                    try selectSegment(1, in: window)
+                    try await waitForRecordings(from: previous, in: window)
+                }
+                if next == .settings || next == .historyStats {
+                    try activateToolbarButton(in: window)
+                }
+                try await settle(window, screen: next)
+                let image = try await screenshot(next, in: directory)
+                group.addTask { (next, try await CaptureFiles.write(image, named: next.rawValue, into: jpgDirectory)) }
+                screen = nil
+                _ = await blank.next(isolation: #isolation)
+                try await settle(window, screen: next)
             }
-            if [.history, .historyRecordings, .historyStats].contains(next) {
-                coordinator.navigationPath = [.history]
-                try await settle(window)
+            var images: [CaptureScreen: UIImage] = [:]
+            for try await (screen, image) in group {
+                images[screen] = image
             }
-            if next == .historyRecordings {
-                try selectSegment(1, in: window)
-            }
-            try await settle(window)
-            let image = try await screenshot(next, in: directory)
-            let jpg = try downscaledJPEG(of: image, maxHeight: 900)
-            try jpg.write(to: jpgDirectory.appending(path: "\(next.rawValue).jpg"), options: .atomic)
-            captured.append((next, image))
+            return screens.map { (screen: $0, image: images[$0]!) }
         }
 
         let sheet = try composeContactSheet(captured)
@@ -173,7 +177,7 @@ struct CaptureView: View {
         }
     }
 
-    private func settle(_ window: UIWindow) async throws {
+    private func settle(_ window: UIWindow, screen: CaptureScreen) async throws {
         var previous = try await drawnFrame(of: window)
         for _ in 0..<30 {
             try await Task.sleep(for: .milliseconds(33))
@@ -183,6 +187,38 @@ struct CaptureView: View {
             }
             previous = next
         }
+        throw CaptureError("the \(screen.rawValue) screen did not settle")
+    }
+
+    private func waitForRecordings(from previous: Data?, in window: UIWindow) async throws {
+        for _ in 0..<60 {
+            try await Task.sleep(for: .milliseconds(33))
+            if coordinator.captureShowsRecordings {
+                if try await drawnFrame(of: window) != previous { return }
+            }
+        }
+        throw CaptureError("the history-recordings screen did not appear")
+    }
+
+    private func activateToolbarButton(in window: UIWindow) throws {
+        func navigationBar(in view: UIView) -> UINavigationBar? {
+            if let bar = view as? UINavigationBar { return bar }
+            return view.subviews.lazy.compactMap(navigationBar).first
+        }
+        func controls(in view: UIView) -> [UIControl] {
+            let own = (view as? UIControl).map { [$0] } ?? []
+            return own + view.subviews.flatMap(controls)
+        }
+        guard let bar = navigationBar(in: window) else {
+            throw CaptureError("the navigation bar did not appear")
+        }
+        let trailing = controls(in: bar).filter {
+            !$0.allTargets.isEmpty && $0.convert($0.bounds, to: bar).midX > bar.bounds.midX
+        }
+        guard trailing.count == 1, let button = trailing.first else {
+            throw CaptureError("expected one trailing toolbar button, found \(trailing.count)")
+        }
+        button.sendActions(for: .touchUpInside)
     }
 
     private func selectSegment(_ index: Int, in window: UIWindow) throws {
@@ -203,7 +239,7 @@ struct CaptureView: View {
     private func screenshot(_ screen: CaptureScreen, in directory: URL) async throws -> UIImage {
         let file = directory.appending(path: "\(screen.rawValue).png")
         try Data(screen.rawValue.utf8).write(to: directory.appending(path: "ready"), options: .atomic)
-        for _ in 0..<500 {
+        for _ in 0..<15_000 {
             if let image = UIImage(contentsOfFile: file.path()) {
                 return image
             }
@@ -228,22 +264,6 @@ struct CaptureView: View {
         }
     }
 
-    private func downscaledJPEG(of image: UIImage, maxHeight: CGFloat) throws -> Data {
-        let pixelSize = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
-        let targetWidth = (pixelSize.width * maxHeight / pixelSize.height).rounded()
-        let targetSize = CGSize(width: targetWidth, height: maxHeight)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-        let scaled = UIGraphicsImageRenderer(size: targetSize, format: format).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: targetSize))
-        }
-        guard let jpg = scaled.jpegData(compressionQuality: 0.82) else {
-            throw CaptureError("could not encode resized JPEG")
-        }
-        return jpg
-    }
-
     private func composeContactSheet(_ items: [(screen: CaptureScreen, image: UIImage)]) throws -> Data {
         let cellHeight: CGFloat = 760
         let first = items[0].image
@@ -260,7 +280,7 @@ struct CaptureView: View {
         format.scale = 1
         format.opaque = true
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 24, weight: .semibold),
+            .font: UIFont.systemFont(ofSize: 18, weight: .semibold),
             .foregroundColor: UIColor(white: 0.93, alpha: 1),
         ]
         let sheet = UIGraphicsImageRenderer(size: sheetSize, format: format).image { context in
@@ -280,6 +300,18 @@ struct CaptureView: View {
             throw CaptureError("could not encode contact sheet JPEG")
         }
         return jpg
+    }
+}
+
+nonisolated private enum CaptureFiles {
+    @concurrent static func write(_ image: UIImage, named id: String, into directory: URL) async throws -> UIImage {
+        let height: CGFloat = 900 / image.scale
+        guard let thumbnail = image.preparingThumbnail(of: CGSize(width: image.size.width * height / image.size.height, height: height)),
+              let jpeg = thumbnail.jpegData(compressionQuality: 0.82) else {
+            throw CaptureError("could not make the \(id) thumbnail")
+        }
+        try jpeg.write(to: directory.appending(path: "\(id).jpg"), options: .atomic)
+        return thumbnail
     }
 }
 
@@ -346,12 +378,7 @@ private enum CaptureFixture {
         }
     }
 
-    static func makeStats(_ coordinator: DictationCoordinator) throws -> HistoryStats {
-        let entries = try coordinator.dataStore.container.mainContext.fetch(
-            FetchDescriptor<HistoryEntry>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
-        )
-        return HistoryStats(entries: entries, storeSizeInBytes: coordinator.dataStore.storeSizeInBytes)
-    }
+
 }
 
 private struct KeyboardScene: View {
@@ -495,7 +522,7 @@ private struct ComposeField: View {
     }
 }
 
-private struct CaptureError: Error, CustomStringConvertible {
+nonisolated private struct CaptureError: Error, CustomStringConvertible {
     let description: String
 
     init(_ description: String) {
