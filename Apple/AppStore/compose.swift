@@ -49,24 +49,6 @@ enum Screen {
     static let cornerRadius: CGFloat = 62
 }
 
-struct StatusBar: View {
-    var body: some View {
-        HStack {
-            Text("9:41")
-                .font(.system(size: 17, weight: .semibold))
-            Spacer()
-            HStack(spacing: 6) {
-                ForEach(["cellularbars", "wifi", "battery.100percent"], id: \.self) { Image(systemName: $0) }
-            }
-            .font(.system(size: 15, weight: .semibold))
-        }
-        .padding(.leading, 50)
-        .padding(.trailing, 32)
-        .frame(height: 59)
-        .foregroundStyle(.black)
-    }
-}
-
 struct Phone: View {
     static let scale: CGFloat = 2.2
     static var size: CGSize { CGSize(width: Screen.size.width + 15, height: Screen.size.height + 15) }
@@ -84,10 +66,6 @@ struct Phone: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: Screen.size.width, height: Screen.size.height)
-                .overlay(alignment: .top) { StatusBar() }
-                .overlay(alignment: .bottom) {
-                    Capsule().fill(.black).frame(width: 140, height: 5).padding(.bottom, 8)
-                }
                 .clipShape(RoundedRectangle(cornerRadius: Screen.cornerRadius, style: .continuous))
                 .overlay(alignment: .top) {
                     Capsule().fill(.black).frame(width: 126, height: 37).padding(.top, 11)

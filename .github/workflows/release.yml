@@ -390,7 +390,7 @@ jobs:
         run: |
           umask 077
           scripts/prepare-packages
-          Apple/AppStore/capture
+          Apple/AppStore/capture app-store
 
       - name: Wait for the ready access-service release
         timeout-minutes: 32

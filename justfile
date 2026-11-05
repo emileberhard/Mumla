@@ -58,16 +58,16 @@ test-access-live: packages
 
 # Capture the app's screens and compose the App Store slides into .local/screenshots, as the release does.
 screenshots: packages
-    Apple/AppStore/capture
+    Apple/AppStore/capture app-store
 
-# Capture the 16-screen UI preview suite into .local/ui-previews using a warm simulator and incremental build.
+# Render the iOS screens (all, or the named CaptureScreen IDs) into .local/ui-previews in this Mac's shared warm simulator.
 [positional-arguments]
-ui-previews *args: packages
-    Apple/AppStore/capture --previews "$@"
+ui-previews *screens: packages
+    Apple/AppStore/capture previews "$@"
 
-# Shut down the warm UI preview simulator.
+# Shut down the shared warm UI preview simulator.
 ui-previews-stop:
-    Apple/AppStore/capture --stop
+    Apple/AppStore/capture stop
 
 # Build, launch, and capture a real-host forced-state keyboard screenshot.
 keyboard-layout-preview-sim: packages

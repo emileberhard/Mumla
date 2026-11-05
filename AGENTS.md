@@ -403,7 +403,7 @@ container `iCloud.emileberhard.WisprClone`.
 | `just realtime-eval` | Resume the provider evaluation from completed atomic run logs with adaptive concurrency |
 | `just install-mac` | Build signed Debug, replace `/Applications/Mumla Dev.app`, install the `mumla` CLI and launch; stamped with the latest version tag |
 | `just build-iphone`, `just install-iphone`, `just deliver-iphone <app>` | Signed development checkpoint for a physical iPhone and its delivery; development builds use marketing version `0.0.0` |
-| `just ui-previews`, `just ui-previews-stop` | Warm simulator capture of the 16-screen iOS app and keyboard preview suite into `.local/ui-previews` (`sheet.jpg`, `jpg/`, `*.png`); see [keyboard previews](docs/keyboard-previews.md) |
+| `just ui-previews [id…]`, `just ui-previews-stop` | Real-Simulator screenshots of every iOS screen and keyboard state into `.local/ui-previews` (`sheet.jpg`, `jpg/`, `*.png`) on the shared warm simulator; see [keyboard previews](docs/keyboard-previews.md) |
 | `just keyboard-preview-*`, `just keyboard-layout-preview-*` | Simulator keyboard checks in the real extension host; see [keyboard previews](docs/keyboard-previews.md) |
 
 `just` alone lists every recipe. Signed recipes use the maintainer's signing

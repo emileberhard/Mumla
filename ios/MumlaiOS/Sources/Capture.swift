@@ -11,7 +11,7 @@ enum CaptureScreen: String, CaseIterable {
     case historyRecordings = "history-recordings"
     case historyStats = "history-stats"
     case dictionary
-    case settingsDark = "settings-dark"
+    case settings
     case onboardingEnable = "onboarding-enable"
     case onboardingDictate = "onboarding-dictate"
     case keyboardStart = "keyboard-start"
@@ -21,24 +21,16 @@ enum CaptureScreen: String, CaseIterable {
     case keyboardError = "keyboard-error"
     case keyboardDark = "keyboard-dark"
 
-    static let appStoreScreens: [CaptureScreen] = [.keyboard, .dictionary, .home]
-
-    private static let aliases: [String: CaptureScreen] = [
-        "settings": .dictionary,
-        "keyboard-recording": .keyboard,
-        "history-transcripts": .history,
-    ]
-
     var title: String {
         switch self {
-        case .home: "Home · Light"
+        case .home: "Home · App Store"
         case .homeRecording: "Home · Recording"
         case .homeDark: "Home · Dark"
         case .history: "History · Transcripts"
         case .historyRecordings: "History · Recordings"
         case .historyStats: "History · Stats"
-        case .dictionary: "Settings · Light"
-        case .settingsDark: "Settings · Dark"
+        case .dictionary: "Settings · App Store"
+        case .settings: "Settings"
         case .onboardingEnable: "Onboarding · Enable"
         case .onboardingDictate: "Onboarding · Dictate"
         case .keyboardStart: "Keyboard · Start Session"
@@ -52,37 +44,27 @@ enum CaptureScreen: String, CaseIterable {
 
     var colorScheme: ColorScheme {
         switch self {
-        case .homeDark, .settingsDark, .keyboardDark:
-            .dark
-        default:
+        case .home, .dictionary, .keyboard, .keyboardStart, .keyboardIdle, .keyboardProcessing, .keyboardError:
             .light
+        default:
+            .dark
         }
     }
 
-    static func resolve(from environment: [String: String]) throws -> (screens: [CaptureScreen], writesPreviewSheet: Bool) {
-        guard let raw = environment["MUMLA_CAPTURE_SCREENS"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty
-        else {
-            return (appStoreScreens, false)
+    static func named(_ list: String?) throws -> [CaptureScreen] {
+        guard let list else {
+            return allCases
         }
-        if raw.lowercased() == "all" {
-            return (allCases, true)
-        }
-        var selected: [CaptureScreen] = []
-        var seen = Set<CaptureScreen>()
-        for token in raw.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }) where !token.isEmpty {
-            guard let screen = CaptureScreen(rawValue: token) ?? aliases[token] else {
-                let valid = allCases.map(\.rawValue).joined(separator: ", ")
-                throw CaptureError("unknown screen '\(token)'; valid screens: \(valid)")
+        let screens = try list.split(separator: ",", omittingEmptySubsequences: false).map { id in
+            guard let screen = CaptureScreen(rawValue: String(id)) else {
+                throw CaptureError("there is no screen \"\(id)\"; the screens are \(allCases.map(\.rawValue).joined(separator: ", "))")
             }
-            if seen.insert(screen).inserted {
-                selected.append(screen)
-            }
+            return screen
         }
-        guard !selected.isEmpty else {
-            throw CaptureError("MUMLA_CAPTURE_SCREENS named no screens")
+        guard Set(screens).count == screens.count else {
+            throw CaptureError("\(list) names a screen more than once")
         }
-        return (selected, true)
+        return screens
     }
 }
 
@@ -104,16 +86,22 @@ struct CaptureView: View {
                 KeyboardScene(scenario: .processing)
             case .keyboardError:
                 KeyboardScene(scenario: .error)
-            case .dictionary, .settingsDark:
+            case .dictionary:
                 SettingsView()
+            case .settings:
+                ContentView()
+                    .sheet(isPresented: .constant(true)) { SettingsView() }
             case .home, .homeRecording, .homeDark, .history:
                 ContentView()
             case .historyRecordings:
-                NavigationStack {
+                PushedOnAppear {
                     TranscriptionHistoryView(showsRecordings: true)
                 }
             case .historyStats:
-                HistoryStatsView(stats: try! CaptureFixture.makeStats(coordinator))
+                ContentView()
+                    .sheet(isPresented: .constant(true)) {
+                        HistoryStatsView(stats: try! CaptureFixture.makeStats(coordinator))
+                    }
             case .onboardingEnable:
                 OnboardingView(coordinator: coordinator, capturePhase: .enable)
             case .onboardingDictate:
@@ -128,7 +116,6 @@ struct CaptureView: View {
         .id(screen)
         .environment(coordinator)
         .modelContainer(coordinator.dataStore.container)
-        .preferredColorScheme(screen?.colorScheme ?? .light)
         .task {
             do {
                 try await capture()
@@ -145,51 +132,35 @@ struct CaptureView: View {
         guard let directory = env["MUMLA_CAPTURE"].map({ URL(filePath: $0) }) else {
             throw CaptureError("MUMLA_CAPTURE names no output directory")
         }
-        let (screens, writesPreviewSheet) = try CaptureScreen.resolve(from: env)
+        let screens = try CaptureScreen.named(env["MUMLA_CAPTURE_SCREENS"])
         UIView.setAnimationsEnabled(false)
         try CaptureFixture.seed(coordinator)
         let window = try await keyWindow()
         var shown = appeared.stream.makeAsyncIterator()
         var captured: [(screen: CaptureScreen, image: UIImage)] = []
         let jpgDirectory = directory.appending(path: "jpg", directoryHint: .isDirectory)
-        if writesPreviewSheet {
-            try FileManager.default.createDirectory(at: jpgDirectory, withIntermediateDirectories: true)
-        }
+        try FileManager.default.createDirectory(at: jpgDirectory, withIntermediateDirectories: true)
 
         for next in screens {
             CaptureFixture.configure(coordinator, for: next)
             window.overrideUserInterfaceStyle = next.colorScheme == .dark ? .dark : .light
             screen = next
-            guard await shown.next() == next else {
+            guard await shown.next(isolation: #isolation) == next else {
                 throw CaptureError("the \(next.rawValue) screen did not appear")
             }
-            await Task.yield()
-            let image = try await snapshot(of: window)
-            guard let png = image.pngData() else {
-                throw CaptureError("could not encode \(next.rawValue) as PNG")
+            if [.history, .historyStats].contains(next) {
+                coordinator.navigationPath = [.history]
             }
-            try png.write(to: directory.appending(path: "\(next.rawValue).png"), options: .atomic)
-            if writesPreviewSheet {
-                let jpg = try downscaledJPEG(of: image, maxHeight: 900)
-                try jpg.write(to: jpgDirectory.appending(path: "\(next.rawValue).jpg"), options: .atomic)
-                captured.append((next, image))
-            }
+            try await settle(window)
+            let image = try await screenshot(next, in: directory)
+            let jpg = try downscaledJPEG(of: image, maxHeight: 900)
+            try jpg.write(to: jpgDirectory.appending(path: "\(next.rawValue).jpg"), options: .atomic)
+            captured.append((next, image))
         }
 
-        if writesPreviewSheet {
-            let sheet = try composeContactSheet(captured)
-            try sheet.write(to: directory.appending(path: "sheet.jpg"), options: .atomic)
-            let manifest = captured.map { item in
-                [
-                    "id": item.screen.rawValue,
-                    "title": item.screen.title,
-                    "png": "\(item.screen.rawValue).png",
-                    "jpg": "jpg/\(item.screen.rawValue).jpg",
-                ]
-            }
-            let manifestData = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
-            try manifestData.write(to: directory.appending(path: "manifest.json"), options: .atomic)
-        }
+        let sheet = try composeContactSheet(captured)
+        try sheet.write(to: directory.appending(path: "sheet.jpg"), options: .atomic)
+        try JSONEncoder().encode(screens.map(\.rawValue)).write(to: directory.appending(path: "manifest.json"), options: .atomic)
     }
 
     private func keyWindow() async throws -> UIWindow {
@@ -202,7 +173,31 @@ struct CaptureView: View {
         }
     }
 
-    private func snapshot(of window: UIWindow) async throws -> UIImage {
+    private func settle(_ window: UIWindow) async throws {
+        var previous = try await drawnFrame(of: window)
+        for _ in 0..<30 {
+            try await Task.sleep(for: .milliseconds(33))
+            let next = try await drawnFrame(of: window)
+            if next == previous {
+                return
+            }
+            previous = next
+        }
+    }
+
+    private func screenshot(_ screen: CaptureScreen, in directory: URL) async throws -> UIImage {
+        let file = directory.appending(path: "\(screen.rawValue).png")
+        try Data(screen.rawValue.utf8).write(to: directory.appending(path: "ready"), options: .atomic)
+        for _ in 0..<500 {
+            if let image = UIImage(contentsOfFile: file.path()) {
+                return image
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        throw CaptureError("the driver took no screenshot of \(screen.rawValue)")
+    }
+
+    private func drawnFrame(of window: UIWindow) async throws -> Data? {
         let format = UIGraphicsImageRendererFormat()
         format.scale = window.traitCollection.displayScale
         format.opaque = true
@@ -212,7 +207,7 @@ struct CaptureView: View {
                 complete = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
             }
             if complete {
-                return image
+                return image.cgImage?.dataProvider?.data as Data?
             }
             try await Task.sleep(for: .milliseconds(50))
         }
@@ -325,7 +320,7 @@ private enum CaptureFixture {
     }
 
     static func configure(_ coordinator: DictationCoordinator, for screen: CaptureScreen) {
-        coordinator.navigationPath = screen == .history ? [.history] : []
+        coordinator.navigationPath = []
         switch screen {
         case .homeRecording:
             coordinator.access.preview("low")
@@ -341,6 +336,19 @@ private enum CaptureFixture {
             FetchDescriptor<HistoryEntry>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
         )
         return HistoryStats(entries: entries, storeSizeInBytes: coordinator.dataStore.storeSizeInBytes)
+    }
+}
+
+private struct PushedOnAppear<Destination: View>: View {
+    @ViewBuilder let destination: Destination
+    @State private var path: [Int] = []
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            Color(uiColor: .systemGroupedBackground)
+                .navigationDestination(for: Int.self) { _ in destination }
+                .task { path = [0] }
+        }
     }
 }
 
