@@ -13,6 +13,7 @@ struct SettingsView: View {
             Form {
                 Section {
                     AllowanceView(access: coordinator.access)
+                    ProPlanRows()
                 }
 
                 SpokenLanguagesSection()

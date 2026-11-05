@@ -10,6 +10,7 @@ enum CaptureScreen: String, CaseIterable {
     case historyRecordings = "history-recordings"
     case historyStats = "history-stats"
     case settings
+    case proOffer = "pro-offer"
     case onboardingEnable = "onboarding-enable"
     case onboardingDictate = "onboarding-dictate"
     case keyboardStart = "keyboard-start"
@@ -26,6 +27,7 @@ enum CaptureScreen: String, CaseIterable {
         case .historyRecordings: "History · Recordings"
         case .historyStats: "History · Stats"
         case .settings: "Settings"
+        case .proOffer: "Mumla Pro offer"
         case .onboardingEnable: "Onboarding · Enable"
         case .onboardingDictate: "Onboarding · Dictate"
         case .keyboardStart: "Keyboard composite · Start Session"
@@ -63,6 +65,7 @@ enum CaptureScreen: String, CaseIterable {
 
 struct CaptureView: View {
     let coordinator: DictationCoordinator
+    let pro: ProStore
     @State private var screen: CaptureScreen?
     @State private var appeared = AsyncStream.makeStream(of: CaptureScreen.self)
     @State private var cleared = AsyncStream.makeStream(of: Void.self)
@@ -82,6 +85,8 @@ struct CaptureView: View {
                 KeyboardScene(scenario: .error)
             case .settings, .home, .homeRecording, .history, .historyRecordings, .historyStats:
                 ContentView()
+            case .proOffer:
+                ProOfferView(previewToken: UUID())
             case .onboardingEnable:
                 OnboardingView(coordinator: coordinator, capturePhase: .enable)
             case .onboardingDictate:
@@ -95,6 +100,7 @@ struct CaptureView: View {
         }
         .id(screen)
         .environment(coordinator)
+        .environment(pro)
         .modelContainer(coordinator.dataStore.container)
         .task {
             do {

@@ -21,7 +21,7 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 10) {
                     if coordinator.access.state.isWorthNoticing {
-                        AllowanceView(access: coordinator.access)
+                        ProUpgradeRow { AllowanceView(access: coordinator.access) }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(16)
                             .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 22))

@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct MumlaiOSApp: App {
     @State private var coordinator: DictationCoordinator
+    @State private var pro: ProStore
     /// True until first-run setup and its try-it are finished; the root shows
     /// the blocking onboarding wizard instead of the main view while set.
     @State private var isOnboarding: Bool
@@ -21,6 +22,7 @@ struct MumlaiOSApp: App {
         let launchedFromKeyboard = DictationBridge.hasFreshKeyboardLaunchIntent()
         let coordinator = DictationCoordinator(showSwipeBackHint: launchedFromKeyboard)
         _coordinator = State(initialValue: coordinator)
+        _pro = State(initialValue: ProStore(access: coordinator.access))
         _isOnboarding = State(initialValue: !coordinator.setupComplete
             || UserDefaults.standard.bool(forKey: OnboardingView.tryItPendingKey))
     }
@@ -28,7 +30,7 @@ struct MumlaiOSApp: App {
     var body: some Scene {
         WindowGroup {
 #if MUMLA_SCREENSHOTS
-            CaptureView(coordinator: coordinator)
+            CaptureView(coordinator: coordinator, pro: pro)
 #else
             rootView
                 .modelContainer(coordinator.dataStore.container)
@@ -40,6 +42,7 @@ struct MumlaiOSApp: App {
             switch newPhase {
             case .active:
                 coordinator.applicationDidBecomeActive()
+                Task { await pro.reconcile() }
             case .background:
                 coordinator.applicationDidEnterBackground()
             case .inactive:
@@ -99,6 +102,7 @@ struct MumlaiOSApp: App {
     private var mainView: some View {
         ContentView()
             .environment(coordinator)
+            .environment(pro)
             .overlay {
                 if coordinator.showSwipeBackHint {
                     KeyboardReturnHintView {
