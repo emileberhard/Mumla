@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: 2026-10-28
+Last updated: 2026-11-06
 
 Mumla turns your speech into text on Mac and iPhone. It has no sign-up,
 advertising, analytics or tracking, and it sells no data. This policy describes
@@ -52,6 +52,18 @@ used each month, for the current and previous two months. It counts sign-ins
 per network address in memory only, to limit abuse, and keeps no request log
 with your address. Each device keeps its own session in its Keychain, where it
 does not sync.
+
+## Mumla Pro
+
+Mumla Pro is an App Store subscription you buy on iPhone or iPad. Apple handles
+the payment; Mumla never sees your payment details or Apple Account. The
+purchase carries your random account number so the access service can credit
+Pro to your iCloud account on all its devices. The app sends the service
+Apple's signed record of each purchase, and Apple's servers tell it about
+renewals, cancellations and refunds. For each subscription the service stores
+its transaction identifiers, its purchase, expiry and refund dates, and the
+account it belongs to, for as long as the service runs. TestFlight purchases,
+which cost nothing, are stored the same way.
 
 ## Delivering text
 
@@ -138,4 +150,4 @@ Accessibility or keyboard Full Access permissions, sign out of iCloud to keep
 everything on one device, and build Mumla yourself with your own services.
 Turning something off stops its future use; it does not delete what providers,
 iCloud or Sentry already received. To have the access service forget your
-account and its usage, email the address above.
+account, its usage and its purchases, email the address above.
