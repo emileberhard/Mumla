@@ -74,16 +74,18 @@ Both paths feed one store operation that verifies, then applies rule 1 inside
 one `BEGIN IMMEDIATE` transaction, so duplicate, retried and reordered
 deliveries converge.
 
-- **Client submission.** The iOS app sends each verified Pro-group
-  transaction's `jwsRepresentation` to `POST /v1/purchases`: the purchase
-  result, `Transaction.updates` (which also delivers unfinished transactions
-  once at launch, renewals and refunds), Restore (`AppStore.sync`, then
-  `currentEntitlements`) and a reconcile of `currentEntitlements` at launch and
-  foreground. It finishes a transaction after a 200, a definitive 400 or a 409.
-  A 409 is remembered per transaction ID so foregrounds do not resubmit it.
-  After a failure it shows "purchase completed, activating", retries three
-  times at 1, 2 and 4 seconds, then keeps the transaction unfinished behind a
-  Retry button; Get Pro stays hidden meanwhile.
+- **Client submission.** `ProStore` sends each verified Pro-group
+  transaction's `jwsRepresentation` to `POST /v1/purchases`: from
+  `Transaction.updates` (purchases from the store view, renewals, refunds, and
+  unfinished transactions once at launch), and from the group's subscription
+  status at launch, foreground, Restore (`AppStore.sync` first) and whenever
+  the paywall sees the status change. It finishes a transaction after a 200, a
+  definitive 400 or a 409, and remembers each answered transaction until the
+  iCloud account changes, so foregrounds do not resubmit it. While a
+  submission runs the paywall shows "Activating Mumla Pro"; once the access
+  client's bounded retries fail, it keeps the transaction unfinished and shows
+  "Mumla Pro isn't active yet" with Try Again, which the next foreground also
+  retries. Get Pro stays hidden meanwhile.
 - **App Store Server Notifications V2.** `POST /v1/app-store/notifications`
   applies a verified payload's `signedTransactionInfo` whatever the
   notification type: renewals, expiry, refunds and revocations while no device
@@ -162,17 +164,27 @@ acceptance while no Pro build is in TestFlight or App Review.
 
 - **iOS paywall** (`ProOfferView`, a sheet): `SubscriptionStoreView` for the
   group with localized StoreKit prices, Restore, terms and privacy links, and a
-  header that states the 30 hours from `pro_limit_seconds`.
-- **iOS allowance card**: a Get Pro button when Free and running low or out,
-  where the card already appears.
-- **iOS Settings**: a plan section. Free shows Get Pro and Restore; Pro shows
-  Manage Subscription; activation shows its progress and Retry; a subscription
-  owned by another iCloud account says so and offers Manage Subscription.
-- **Mac**: the menu and Settings show the plan. Free links to Mumla on the App
-  Store for iPhone and iPad; Pro links to the App Store's subscription
-  management.
+  header that states the 30 hours from `pro_limit_seconds`. It loads the
+  account token first, so every purchase carries it.
+- **iOS allowance card** (`ProUpgradeRow`): a Get Pro button when Free and
+  running low or out, where the card already appears.
+- **iOS Settings** (`ProPlanRows`, in the allowance section): Free shows Get
+  Mumla Pro and Restore Purchases; Pro shows Manage Subscription; activation
+  shows its progress and Try Again; a subscription owned by another iCloud
+  account says so and offers Manage Subscription.
+- **Mac** (`ProStatusRow`): the menu and Settings show the plan. Free links to
+  Mumla on the App Store for iPhone and iPad; Pro links to the App Store's
+  subscription management.
 - Pro's allowance reads as Mumla Pro, with remaining time shown only near the
   ceiling.
+
+## Testing
+
+Service tests sign synthetic transactions with a generated chain; the live
+acceptance uses real sandbox purchases. `Apple/StoreKit/MumlaPro.storekit`
+mirrors the products for local StoreKit testing: select it under the MumlaiOS
+scheme's Run options. Its transactions are Xcode-signed, so the service refuses
+them and the app finishes them; it exercises the paywall, not activation.
 
 ## Privacy
 
