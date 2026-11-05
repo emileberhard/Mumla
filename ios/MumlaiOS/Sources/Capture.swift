@@ -377,8 +377,6 @@ private enum CaptureFixture {
             coordinator.setCapturePhase(.idle)
         }
     }
-
-
 }
 
 private struct KeyboardScene: View {
