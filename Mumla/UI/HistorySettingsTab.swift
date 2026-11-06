@@ -165,7 +165,7 @@ private struct HistoryEntryRow: View {
                     }
                     .toggleStyle(.button)
                     .onChange(of: showsEveryone) { _, shows in
-                        if shows { AppDiagnostics.info("Showed everyone's words", category: "voice_filter") }
+                        if shows { AppDiagnostics.warning("Showed everyone's words", category: "voice_filter") }
                     }
                 }
 

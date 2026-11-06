@@ -169,7 +169,7 @@ struct TranscriptView: View {
                         }
                         .toggleStyle(.button)
                         .onChange(of: showsEveryone) { _, shows in
-                            if shows { CrashReporting.breadcrumb("Showed everyone's words", category: "voice_filter") }
+                            if shows { CrashReporting.warning("Showed everyone's words", category: "voice_filter") }
                         }
                     }
                 }
@@ -191,7 +191,7 @@ struct TranscriptView: View {
                     if let everyone = entry.unfilteredText {
                         Button("Copy Everything", systemImage: "doc.on.doc") {
                             UIPasteboard.general.string = everyone
-                            CrashReporting.breadcrumb("Copied everyone's words", category: "voice_filter")
+                            CrashReporting.warning("Copied everyone's words", category: "voice_filter")
                         }
                     }
                     if let recordingID {
