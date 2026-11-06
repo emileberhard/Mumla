@@ -19,7 +19,8 @@ EDITABLE = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADAT
 IN_REVIEW = {"WAITING_FOR_REVIEW", "IN_REVIEW"}
 OPEN_SUBMISSIONS = "READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,UNRESOLVED_ISSUES,CANCELING"
 RELEASED = {"READY_FOR_DISTRIBUTION", "PROCESSING_FOR_DISTRIBUTION", "REPLACED_WITH_NEW_VERSION"}
-SUBSCRIPTIONS_TO_SUBMIT = {"READY_TO_SUBMIT", "DEVELOPER_ACTION_NEEDED", "REJECTED"}
+SUBSCRIPTIONS_PENDING = {"READY_TO_SUBMIT", "DEVELOPER_ACTION_NEEDED", "REJECTED",
+                         "WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_BINARY_APPROVAL"}
 SUBSCRIPTIONS_APPROVED = {"APPROVED", "DEVELOPER_REMOVED_FROM_SALE", "REMOVED_FROM_SALE"}
 IN_BETA = {"WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW", "BETA_APPROVED", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING"}
 DEADLINE = time.monotonic() + 40 * 60
@@ -106,6 +107,9 @@ def draft_version(app, platform, version):
     if state in IN_REVIEW and name == version:
         print(f"::notice::App Store version {version} is already {state}.", file=sys.stderr)
         return None, released
+    if released and state in IN_REVIEW | {"READY_FOR_REVIEW"} and awaits_first_subscriptions(app):
+        print(f"::notice::App Store version {name} is {state} while the app's first subscriptions await review; they go to App Review with a version only on the website, so {version} waits.", file=sys.stderr)
+        return None, released
     if released and state == "READY_FOR_REVIEW" and name == version:
         submit_for_review(app, platform, draft["id"], version)
         return None, released
@@ -155,7 +159,7 @@ def withdraw(app, platform, version_id, name):
 def awaits_first_subscriptions(app):
     states = {subscription["attributes"]["state"] for group in api("GET", f"apps/{app}/subscriptionGroups", limit=200)
               for subscription in api("GET", f"subscriptionGroups/{group['id']}/subscriptions", limit=200)}
-    return bool(states & SUBSCRIPTIONS_TO_SUBMIT) and not states & SUBSCRIPTIONS_APPROVED
+    return bool(states & SUBSCRIPTIONS_PENDING) and not states & SUBSCRIPTIONS_APPROVED
 
 
 def submit_for_review(app, platform, version_id, version):

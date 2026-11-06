@@ -166,6 +166,8 @@ class ReviewPolicyTests(unittest.TestCase):
                 return {"attributes": {"appVersionState": "DEVELOPER_REJECTED"}}
             if path == "appStoreVersions/review":
                 return {"attributes": {"versionString": "0.14.3", "releaseType": "MANUAL"}}
+            if path == "apps/app/subscriptionGroups":
+                return []
 
         with patch.object(asc, "api", side_effect=api):
             self.assertEqual(("review", True), asc.draft_version("app", "IOS", "0.14.3"))
@@ -181,6 +183,34 @@ class ReviewPolicyTests(unittest.TestCase):
         }}]) as api:
             self.assertEqual((None, False), asc.draft_version("app", "IOS", "1.0.1"))
             self.assertEqual(["GET"], [call.args[0] for call in api.call_args_list])
+
+    def test_a_newer_tag_leaves_a_version_in_review_with_the_first_subscriptions(self):
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                raise AssertionError(f"{method} {path}")
+            if path == "apps/app/appStoreVersions":
+                return [{"id": "review", "attributes": {"appVersionState": "WAITING_FOR_REVIEW", "versionString": "1.2.0"}}, LIVE]
+            if path == "apps/app/subscriptionGroups":
+                return [{"id": "group"}]
+            if path == "subscriptionGroups/group/subscriptions":
+                return [{"attributes": {"state": "WAITING_FOR_REVIEW"}}, {"attributes": {"state": "WAITING_FOR_REVIEW"}}]
+
+        with patch.object(asc, "api", side_effect=api):
+            self.assertEqual((None, True), asc.draft_version("app", "IOS", "1.2.1"))
+
+    def test_a_rerun_leaves_a_prepared_version_for_the_first_subscriptions_website_submission(self):
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                raise AssertionError(f"{method} {path}")
+            if path == "apps/app/appStoreVersions":
+                return [{"id": "draft", "attributes": {"appVersionState": "READY_FOR_REVIEW", "versionString": "1.2.0"}}, LIVE]
+            if path == "apps/app/subscriptionGroups":
+                return [{"id": "group"}]
+            if path == "subscriptionGroups/group/subscriptions":
+                return [{"attributes": {"state": "READY_TO_SUBMIT"}}]
+
+        with patch.object(asc, "api", side_effect=api):
+            self.assertEqual((None, True), asc.draft_version("app", "IOS", "1.2.0"))
 
     def test_a_newer_tag_deletes_its_versions_item_from_an_unsubmitted_draft(self):
         writes = []
@@ -245,6 +275,8 @@ class ReviewPolicyTests(unittest.TestCase):
                 return [submission("resolved", "draft", "UNRESOLVED_ISSUES")]
             if path == "reviewSubmissions/resolved/items":
                 return [item("ours", "draft", "READY_FOR_REVIEW")]
+            if path == "apps/app/subscriptionGroups":
+                return []
 
         with patch.object(asc, "api", side_effect=api):
             self.assertEqual((None, True), asc.draft_version("app", "IOS", "0.14.3"))

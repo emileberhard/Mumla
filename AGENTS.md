@@ -473,12 +473,11 @@ ships no channel. The GitHub release rechecks the service and
 publishes `Mumla.dmg`.
 
 - Once the app has a release, the pipeline submits each version for App Review
-  and withdraws an older version still in review. The first submission, the
-  first with subscriptions (website-only) and the App Store release stay with
-  the maintainer.
-- Every channel carries the tag's version; Developer ID and TestFlight build
-  numbers may differ. A published version is immutable: its DMG is never
-  replaced, and the download never rolls back.
+  and withdraws an older one in review, except one with the first
+  subscriptions. The first submission, the first with subscriptions
+  (website-only) and the App Store release stay with the maintainer.
+- Developer ID and TestFlight build numbers may differ. A published version is
+  immutable: its DMG is never replaced, and the download never rolls back.
 - Retry with "Re-run failed jobs" in the tag's own run while that tag is the
   newest. Retries reuse the uploaded builds and the published DMG, whose
   digest a retry must match. Re-running all jobs builds a different DMG that
