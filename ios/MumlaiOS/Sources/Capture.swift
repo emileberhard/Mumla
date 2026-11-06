@@ -268,29 +268,71 @@ nonisolated private enum CaptureFiles {
     }
 }
 
-private enum CaptureFixture {
-    static let languages = ["es"]
-    static let terms = ["Saoirse", "Joaquín", "Dr. Okonkwo", "Kubernetes", "Figma", "Bergström"]
-    static let transcripts: [(minutesAgo: Int, durationMs: Int?, bytes: Int?, text: String)] = [
-        (2, 5400, 68_420, "Running ten minutes late, save me a seat by the window."),
-        (24, 6200, 79_104, "Remind Saoirse to send the Figma file before Thursday’s review."),
-        (70, 5800, 74_880, "Pick up oat milk, basil, two lemons and something for dessert."),
-        (190, nil, nil, "The Kubernetes upgrade went smoothly. Rolling out to production tomorrow morning."),
-        (320, nil, nil, "Happy birthday, Joaquín! Hope you get some sun this weekend."),
-        (1500, nil, nil, "Notes from the call with Dr. Okonkwo: start the new routine on Monday and check in after two weeks."),
-    ]
+private struct CaptureContent {
+    let languages: [String]
+    let terms: [String]
+    let transcripts: [(minutesAgo: Int, durationMs: Int?, bytes: Int?, text: String)]
+    let conversation: [(text: String, isOutgoing: Bool)]
+    let draft: String
 
+    static let current = Bundle.main.preferredLocalizations.first == "sv" ? swedish : english
+
+    static let english = CaptureContent(
+        languages: ["en", "es"],
+        terms: ["Saoirse", "Joaquín", "Dr. Okonkwo", "Kubernetes", "Figma", "Bergström"],
+        transcripts: [
+            (2, 5400, 68_420, "Running ten minutes late, save me a seat by the window."),
+            (24, 6200, 79_104, "Remind Saoirse to send the Figma file before Thursday’s review."),
+            (70, 5800, 74_880, "Pick up oat milk, basil, two lemons and something for dessert."),
+            (190, nil, nil, "The Kubernetes upgrade went smoothly. Rolling out to production tomorrow morning."),
+            (320, nil, nil, "Happy birthday, Joaquín! Hope you get some sun this weekend."),
+            (1500, nil, nil, "Notes from the call with Dr. Okonkwo: start the new routine on Monday and check in after two weeks."),
+        ],
+        conversation: [
+            ("How was the flight?", false),
+            ("Long, but I slept most of the way.", true),
+            ("Are we still on for dinner tonight?", false),
+            ("Yes! Table for two at 7.", true),
+            ("Perfect. What’s the address again?", false),
+        ],
+        draft: "It’s the little place on Elm Street, right next to the bakery."
+    )
+
+    static let swedish = CaptureContent(
+        languages: ["sv", "en"],
+        terms: ["Saoirse", "Joaquín", "Dr. Okonkwo", "Kubernetes", "Figma", "Bergström"],
+        transcripts: [
+            (2, 5400, 68_420, "Jag är tio minuter sen, spara en plats vid fönstret åt mig."),
+            (24, 6200, 79_104, "Påminn Saoirse om att skicka Figma-filen före granskningen på torsdag."),
+            (70, 5800, 74_880, "Köp havremjölk, basilika, två citroner och något till efterrätt."),
+            (190, nil, nil, "Kubernetes-uppgraderingen gick smidigt. Vi rullar ut i produktion i morgon bitti."),
+            (320, nil, nil, "Grattis på födelsedagen, Joaquín! Hoppas du får lite sol i helgen."),
+            (1500, nil, nil, "Anteckningar från samtalet med Dr. Okonkwo: börja med den nya rutinen på måndag och stäm av om två veckor."),
+        ],
+        conversation: [
+            ("Hur var flyget?", false),
+            ("Långt, men jag sov nästan hela vägen.", true),
+            ("Blir det middag i kväll?", false),
+            ("Ja! Bord för två klockan sju.", true),
+            ("Perfekt. Vad var adressen nu igen?", false),
+        ],
+        draft: "Det är det lilla stället på Storgatan, precis bredvid bageriet."
+    )
+}
+
+private enum CaptureFixture {
     static func seed(_ coordinator: DictationCoordinator) throws {
+        let content = CaptureContent.current
         coordinator.access.preview("available")
-        coordinator.dictationLanguages = ["en"]
-        for language in languages {
+        coordinator.dictationLanguages = Array(content.languages.prefix(1))
+        for language in content.languages.dropFirst() {
             coordinator.addDictationLanguage(language)
         }
-        for term in terms {
+        for term in content.terms {
             coordinator.dataStore.addVocabularyTerm(term)
         }
         let context = coordinator.dataStore.container.mainContext
-        for transcript in transcripts.reversed() {
+        for transcript in content.transcripts.reversed() {
             let createdAt = Date.now - Double(transcript.minutesAgo * 60)
             var recordingID: UUID?
             if let durationMs = transcript.durationMs, let bytes = transcript.bytes {
@@ -369,14 +411,12 @@ private struct KeyboardScene: View {
             ConversationHeader()
             Spacer(minLength: 0)
             VStack(spacing: 6) {
-                Bubble(text: "How was the flight?", isOutgoing: false)
-                Bubble(text: "Long, but I slept most of the way.", isOutgoing: true)
-                Bubble(text: "Are we still on for dinner tonight?", isOutgoing: false)
-                Bubble(text: "Yes! Table for two at 7.", isOutgoing: true)
-                Bubble(text: "Perfect. What’s the address again?", isOutgoing: false)
+                ForEach(Array(CaptureContent.current.conversation.enumerated()), id: \.offset) { _, message in
+                    Bubble(text: message.text, isOutgoing: message.isOutgoing)
+                }
             }
             .padding(.horizontal, 12)
-            ComposeField(text: "It’s the little place on Elm Street, right next to the bakery.")
+            ComposeField(text: CaptureContent.current.draft)
                 .padding(.horizontal, 12)
                 .padding(.top, 14)
                 .padding(.bottom, 8)

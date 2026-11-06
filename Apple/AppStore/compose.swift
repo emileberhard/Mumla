@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 let canvas = CGSize(width: 1206, height: 2622)
 let captures = URL(filePath: CommandLine.arguments[1])
 let output = URL(filePath: CommandLine.arguments[2])
+let locale = CommandLine.arguments[3]
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("\(message)\n".utf8))
@@ -115,11 +116,22 @@ struct Slide: View {
     }
 }
 
-let slides: [(String, Slide)] = [
-    ("1-keyboard", Slide(headline: [("Just ", nil), ("speak", Brand.amber), (".\nIn ", nil), ("any app", Brand.pink), (".", nil)], screen: "keyboard")),
-    ("2-dictionary", Slide(headline: [("Names", Brand.amber), (" spelled\n", nil), ("your way", Brand.pink), (".", nil)], screen: "dictionary")),
-    ("3-home", Slide(headline: [("Every word ", nil), ("kept", Brand.amber), ("\nand ", nil), ("synced", Brand.pink), (".", nil)], screen: "transcripts")),
+let headlines: [String: [[Phrase]]] = [
+    "en-US": [
+        [("Just ", nil), ("speak", Brand.amber), (".\nIn ", nil), ("any app", Brand.pink), (".", nil)],
+        [("Names", Brand.amber), (" spelled\n", nil), ("your way", Brand.pink), (".", nil)],
+        [("Every word ", nil), ("kept", Brand.amber), ("\nand ", nil), ("synced", Brand.pink), (".", nil)],
+    ],
+    "sv": [
+        [("Bara ", nil), ("prata", Brand.amber), (".\nI ", nil), ("alla appar", Brand.pink), (".", nil)],
+        [("Namn", Brand.amber), (" stavade\n", nil), ("som du vill", Brand.pink), (".", nil)],
+        [("Varje ord ", nil), ("sparat", Brand.amber), ("\noch ", nil), ("synkat", Brand.pink), (".", nil)],
+    ],
 ]
+
+guard let localized = headlines[locale] else { fail("compose.swift has no headlines for \(locale)") }
+let screens = [("1-keyboard", "keyboard"), ("2-dictionary", "dictionary"), ("3-home", "transcripts")]
+let slides = zip(screens, localized).map { screen, headline in (screen.0, Slide(headline: headline, screen: screen.1)) }
 
 MainActor.assumeIsolated {
     var drawn = Set<Data>()

@@ -5,12 +5,14 @@
 ID fails with the valid list. The app reaches screens through its real root,
 waits for stable frames and signals the driver to take real Simulator
 screenshots, with the status bar pinned to 9:41 and the Dynamic Island and
-corners masked. Previews default to dark; App Store captures use light.
+corners masked. Previews default to dark and English; App Store captures use
+light, once per listing locale.
 
 ```bash
 just ui-previews
 just ui-previews transcripts account keyboard
 just ui-previews --appearance light transcripts account
+just ui-previews --locale sv
 just ui-previews-stop
 ```
 

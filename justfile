@@ -60,7 +60,7 @@ test-access-live: packages
 screenshots: packages
     Apple/AppStore/capture app-store
 
-# Render iOS screens in the shared simulator: pass IDs and optionally --appearance light|dark (default dark).
+# Render iOS screens in the shared simulator: pass IDs and optionally --appearance light|dark (default dark) and --locale sv.
 [positional-arguments]
 ui-previews *screens: packages
     Apple/AppStore/capture previews "$@"

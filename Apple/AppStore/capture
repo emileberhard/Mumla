@@ -23,7 +23,11 @@ APP_STORE_DISPLAYS = {
 }
 PREVIEW_DEVICE = "iPhone 18 Pro"
 SHARED_SIMULATORS = Path.home() / "Library" / "Caches" / "ui-previews"
-LOCALE = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+LISTING = ROOT / "Apple/AppStore/listing"
+LOCALES = {
+    "en-US": ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"],
+    "sv": ["-AppleLanguages", "(sv)", "-AppleLocale", "sv_SE"],
+}
 STATUS_BAR = ["--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active", "--wifiBars", "3",
               "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "charged", "--batteryLevel", "100"]
 
@@ -58,7 +62,15 @@ def build():
     return run("plutil", "-extract", "CFBundleIdentifier", "raw", APP / "Info.plist")
 
 
-def capture(udid, bundle, output, screens, appearance, timeout):
+def listing_locales():
+    locales = sorted(path.name for path in LISTING.iterdir() if path.is_dir())
+    unknown = sorted(set(locales) - set(LOCALES))
+    if unknown:
+        raise SystemExit(f"Add the app language for the App Store locales {', '.join(unknown)} to LOCALES.")
+    return locales
+
+
+def capture(udid, bundle, output, screens, appearance, locale, timeout):
     shutil.rmtree(output, ignore_errors=True)
     output.mkdir(parents=True)
     run("xcrun", "simctl", "status_bar", udid, "override", *STATUS_BAR)
@@ -66,7 +78,7 @@ def capture(udid, bundle, output, screens, appearance, timeout):
            "SIMCTL_CHILD_MUMLA_CAPTURE_APPEARANCE": appearance}
     if screens:
         env["SIMCTL_CHILD_MUMLA_CAPTURE_SCREENS"] = ",".join(screens)
-    launch = ["xcrun", "simctl", "launch", "--terminate-running-process", "--console-pty", udid, bundle, *LOCALE]
+    launch = ["xcrun", "simctl", "launch", "--terminate-running-process", "--console-pty", udid, bundle, *LOCALES[locale]]
     ready = output / "ready"
     console = output / "console.log"
     deadline = time.monotonic() + timeout
@@ -149,14 +161,14 @@ def warm_simulator():
         yield udid
 
 
-def previews(screens, appearance):
+def previews(screens, appearance, locale):
     started = time.monotonic()
     bundle = build()
     built = time.monotonic()
     with warm_simulator() as udid:
         run("xcrun", "simctl", "install", udid, APP)
         with simulator_appearance(udid, appearance):
-            ids = capture(udid, bundle, PREVIEWS, screens, appearance=appearance, timeout=90)
+            ids = capture(udid, bundle, PREVIEWS, screens, appearance=appearance, locale=locale, timeout=90)
     print(json.dumps({
         "sheet": str(PREVIEWS / "sheet.jpg"),
         "screens": [{"id": id, "png": str(PREVIEWS / f"{id}.png"), "jpg": str(PREVIEWS / "jpg" / f"{id}.jpg")}
@@ -174,22 +186,24 @@ def stop():
 
 
 def app_store():
+    locales = listing_locales()
     runtime = latest_runtime(list(APP_STORE_DISPLAYS.values()))
     bundle = build()
+    shutil.rmtree(ROOT / ".local/screenshots", ignore_errors=True)
     for display, device in APP_STORE_DISPLAYS.items():
         udid = run("xcrun", "simctl", "create", "Mumla Screenshots", device, runtime)
         try:
             run("xcrun", "simctl", "bootstatus", udid, "-b")
             run("xcrun", "simctl", "install", udid, APP)
-            raw = ROOT / ".local/screenshot-captures" / display
-            with simulator_appearance(udid, "light"):
-                capture(udid, bundle, raw, APP_STORE_SCREENS, appearance="light", timeout=300)
-            output = ROOT / ".local/screenshots" / display
-            shutil.rmtree(output, ignore_errors=True)
-            output.mkdir(parents=True)
-            run("xcrun", "swift", ROOT / "Apple/AppStore/compose.swift", raw, output)
-            for slide in sorted(output.glob("*.png")):
-                print(slide, flush=True)
+            for locale in locales:
+                raw = ROOT / ".local/screenshot-captures" / locale / display
+                with simulator_appearance(udid, "light"):
+                    capture(udid, bundle, raw, APP_STORE_SCREENS, appearance="light", locale=locale, timeout=300)
+                output = ROOT / ".local/screenshots" / locale / display
+                output.mkdir(parents=True)
+                run("xcrun", "swift", ROOT / "Apple/AppStore/compose.swift", raw, output, locale)
+                for slide in sorted(output.glob("*.png")):
+                    print(slide, flush=True)
         finally:
             subprocess.run(["xcrun", "simctl", "shutdown", udid], capture_output=True)
             deletion = subprocess.run(["xcrun", "simctl", "delete", udid], capture_output=True)
@@ -204,13 +218,14 @@ def main():
     previews_parser = commands.add_parser(
         "previews", help="capture screens into .local/ui-previews in the warm simulator this Mac's apps share")
     previews_parser.add_argument("--appearance", choices=("light", "dark"), default="dark")
+    previews_parser.add_argument("--locale", choices=sorted(LOCALES), default="en-US")
     previews_parser.add_argument("screens", nargs="*", help="CaptureScreen IDs from ios/MumlaiOS/Sources/Capture.swift; all when omitted")
     commands.add_parser("stop", help="shut down the shared warm simulator")
     args = parser.parse_args()
     if args.command == "app-store":
         app_store()
     elif args.command == "previews":
-        previews(args.screens, args.appearance)
+        previews(args.screens, args.appearance, args.locale)
     else:
         stop()
 
