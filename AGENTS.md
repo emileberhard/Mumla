@@ -43,22 +43,20 @@ for the owner. Machine-specific values belong in ignored local files.
 | `.local/GrantKit`, `scripts/prepare-packages`, `scripts/GrantKit.revision` | GrantKit, checked out by `just packages` at one revision; replace it with a symlink to your checkout for GrantKit work |
 | `Evaluations/RealtimeTranscription/` | Live-provider transcription evaluation corpus and tooling; its fixture manifest is canonical |
 | `scripts/sign-bundles`, `scripts/app-store-connect`, `.github/` | Release signing checks, App Store Connect automation, CI and release |
+| `Shared/Localization/`, `*/InfoPlist.xcstrings`, `Apple/AppStore/` | [Localization](docs/localization.md): String Catalogs, App Store listing and slides per locale |
 | `distribution/mumla-mbag/` | The download page source and metadata |
 | `.agents/skills/mumla-local-install/` | Replacing the locally installed macOS dev app |
 | `.xcode-version`, `scripts/select-xcode` | The Xcode that CI, the release and local `just` commands build with |
 
-`SpeechKit` is an exact-version-pinned public Swift package. GrantKit 0.1.1 is
-pinned by revision and fetched over public HTTPS, without a deploy key. It owns
-the guided permission flows: on macOS Microphone, Input Monitoring,
-Accessibility and Screen Recording (status, System Settings deep links, the
-drag-to-authorize panel, grant polling); on iOS the same `SystemPermission`,
-`PermissionGuide` and `PermissionMonitor` API for the microphone plus reusable
-onboarding UI (`PermissionStep`, `StepScaffold`, `HeroSymbol`). App wizards own
+`SpeechKit` is an exact-version-pinned public Swift package. GrantKit 0.2.0 is
+pinned by revision and fetched over public HTTPS. It owns the guided permission
+flows and their text (`SystemPermission`, `PermissionGuide`,
+`PermissionMonitor`): Microphone, Input Monitoring, Accessibility and Screen
+Recording on macOS, including the drag-to-authorize panel, and the microphone
+on iOS, plus reusable iOS onboarding UI (`PermissionStep`, `StepScaffold`,
+`HeroSymbol`). App wizards own
 step sequencing; GrantKit owns each permission's interaction. Keep GrantKit
 views theme-neutral: host apps supply button style, tint and spacing.
-
-If this file and the code disagree, inspect the implementation and fix the
-stale documentation in the same change.
 
 ## Invariants
 
@@ -71,6 +69,13 @@ stale documentation in the same change.
   verifying the App Store Connect and provisioning-profile consequences.
 - Minimum OS versions are iOS 26.0 and macOS 26.0; add no lower compatibility
   paths.
+
+### Localization
+
+English is the source and Swedish ships complete. User-facing text goes through
+`LocalizedStringKey`, `LocalizedStringResource` or `String(localized:)`;
+diagnostics, logs, CLI and agent output stay English. Add Swedish and plural
+forms in the same change.
 
 ### Onboarding
 
@@ -180,13 +185,9 @@ container `iCloud.emileberhard.WisprClone`.
   `$(TeamIdentifierPrefix)emileberhard.WisprClone.ios`, because Debug and
   Release bundle IDs differ.
 - The Production CloudKit schema is additive-only: add fields or record types,
-  never rename or remove deployed schema. After an additive change, use
-  `Shared/Core/AppCloudKitSchemaBootstrap.swift`: temporarily pin the macOS
-  Debug entitlement to `Development`, run `just bootstrap-cloudkit-schema`
-  (it installs without a normal launch, so real data cannot sync into
-  Development), deploy only the reviewed additive diff in CloudKit Console,
-  verify both environments' exports match, restore the `Production` pin and run
-  `just install-mac`. Never leave a Development-pinned app installed.
+  never rename or remove deployed schema. Deploy an additive change only
+  through the [schema procedure](docs/cloudkit-schema.md), and never leave a
+  Development-pinned app installed.
 - Never reset a CloudKit environment, bulk-delete records or run test cleanup
   against Production without the maintainer's explicit approval. Local history
   wipes do not delete CloudKit data and re-sync on the next signed launch.
@@ -264,9 +265,9 @@ container `iCloud.emileberhard.WisprClone`.
   bundle ID `emileberhard.WisprClone` and one access group. Both apps delete
   retired provider-key items at launch. The `security` CLI cannot see these
   items; `--delete-credentials` removes them.
-- Fresh-user testing: `just fresh-user-mac` wipes in order (kill, TCC,
-  defaults and history with backups, access session, installs; DMGs and iCloud
-  stay). `just reset-permissions-mac` works only while an app is installed.
+- `just fresh-user-mac` wipes in order (kill, TCC, defaults and history with
+  backups, access session, installs; DMGs and iCloud stay).
+  `just reset-permissions-mac` needs an installed app.
 
 ### iOS keyboard
 
@@ -395,11 +396,11 @@ container `iCloud.emileberhard.WisprClone`.
 | `just build-mac` | Compile the macOS app, signing disabled |
 | `just build-sim` | Compile `MumlaiOS` and the keyboard for the simulator |
 | `just test-keyboard` | Keyboard delivery tests on macOS |
-| `just test-access-live` | Live access acceptance from the signed Debug Mac app: CloudKit enrollment, proof replay, Transcribe Again, a paced 150 s stream, a stream stopped at a short grant's bound and a canceled stream |
+| `just test-access-live` | Live access acceptance from the signed Debug Mac app: enrollment, proof replay, Transcribe Again, and paced, grant-bounded and canceled streams |
 | `just realtime-eval` | Resume the provider evaluation from completed atomic run logs with adaptive concurrency |
 | `just install-mac` | Build signed Debug, replace `/Applications/Mumla Dev.app`, install the `mumla` CLI and launch; stamped with the latest version tag |
 | `just build-iphone`, `just install-iphone`, `just deliver-iphone <app>` | Signed development checkpoint for a physical iPhone and its delivery; development builds use marketing version `0.0.0` |
-| `just ui-previews [id…]` | All iOS screens in `.local/ui-previews/sheet.jpg` ([docs](docs/ui-previews.md)) |
+| `just ui-previews [--locale sv] [id…]` | All iOS screens in `.local/ui-previews/sheet.jpg` ([docs](docs/ui-previews.md)) |
 | `just keyboard-preview-*`, `just keyboard-layout-preview-*` | Real-host keyboard checks ([docs](docs/keyboard-previews.md)) |
 
 `just` lists every recipe. Signed recipes use the maintainer's signing and device
@@ -450,8 +451,9 @@ A pushed annotated `MAJOR.MINOR.PATCH` tag on `main`, higher than every other
 version tag, releases everything, and that tag is the version of every artifact:
 the access service, iOS TestFlight and the App Store, the Developer ID DMG and
 the GitHub release. The tag message lists user-visible changes, one short
-sentence per line, and becomes What to Test, What's New and the release notes.
-Choose the bump from the changes since the latest tag: patch fixes, minor adds,
+sentence per line, in English and then in a `[sv]` section
+([format](docs/localization.md#app-store)); English becomes What to Test and
+the release notes, each section its locale's What's New. Choose the bump from the changes since the latest tag: patch fixes, minor adds,
 major removes or changes what installs rely on.
 
 ```bash
@@ -462,14 +464,12 @@ git push origin x.y.z
 `.github/workflows/release.yml` (hosted runners, [Canonical build](docs/design/canonical-build.md))
 admits the tag after `ci.yml` passes on its commit and reserves build numbers.
 The iOS lane writes the `testflight` environment's `MUMLA_CLOUDKIT_API_TOKEN`
-into `Local.xcconfig`, signs bundles ad hoc with
-`Apple/Config/entitlements-ios.json`, exports with cloud signing and runs
-`scripts/sign-bundles check` and `scripts/check-access-configuration`. Its
-upload, the `Public Beta` review and the App Store submission wait up to 30
-minutes for the access service to report the tag's version and commit, and for
-`developer-id-archive` and `developer-id` (the notarized DMG), so a Mac failure
-ships no channel. The GitHub release rechecks the service and
-publishes `Mumla.dmg`.
+into `Local.xcconfig`, signs ad hoc with `Apple/Config/entitlements-ios.json`,
+cloud-signs the export and runs `scripts/sign-bundles check` and
+`scripts/check-access-configuration`. Upload, the `Public Beta` review and the
+App Store submission wait up to 30 minutes for the access service to report the
+tag's version and commit and for the notarized DMG, so a Mac failure ships no
+channel. The GitHub release rechecks the service and publishes `Mumla.dmg`.
 
 - Once the app has a release, the pipeline submits each version for App Review
   and withdraws an older one in review, except one with the first
@@ -507,4 +507,4 @@ Groups or CloudKit.
 Keep this file short and operational, within Codex's 32 KiB default, and move
 long reference material to `docs/`. Update it, the README, `PRIVACY.md` and
 `docs/` in the same change as the behavior, commands, release flow or paths
-they describe.
+they describe, and fix any that disagree with the code.
