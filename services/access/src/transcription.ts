@@ -314,6 +314,9 @@ export class TranscriptionUpload {
   get audioEndedAt() {
     return this.audioEnded;
   }
+  get diarized() {
+    return false;
+  }
 
   private async waitForClient<T>(operation: () => Promise<T>): Promise<T> {
     this.waitingSince ??= performance.now();

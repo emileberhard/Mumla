@@ -265,7 +265,7 @@ unchanged. Do not build a catalog endpoint, descriptors or plugin interfaces.
 
 | Rule | Initial contract |
 | --- | --- |
-| Transport | One WebSocket to `/v1/dictations/stream`: a `start` text message with `languages` and `vocabulary`, binary PCM16 frames, a `finish` text message; the service answers with one `result` or `error` message and closes. Older installs POST a multipart upload to `/vendors/azure-speech/speechtotext/transcriptions:transcribe` |
+| Transport | One WebSocket to `/v1/dictations/stream`: a `start` text message with `languages` and `vocabulary`, binary PCM16 frames, a `finish` text message; the service answers with one `result` or `error` message and closes. `start` may ask for speaker separation ([Only my voice](only-my-voice.md#service)). Older installs POST a multipart upload to `/vendors/azure-speech/speechtotext/transcriptions:transcribe` |
 | Model/options | `api-version=2025-10-15`, enhanced `MAI-Transcribe-2`, clean style, no diarization; accept omitted timestamps or `"none"` and forward explicit `"none"` |
 | Audio | PCM16 little-endian, mono, 16,000 Hz: non-empty, even-length binary frames on the stream, or exactly one canonical WAV on the HTTP route, which also accepts SpeechKit's streaming-header sentinel |
 | Other input | The stream's `start` message carries the language hints and the dictionary's leading terms, which clients cap at 128 KiB of the 256 KiB frame limit; the service builds the definition with SpeechKit's Azure rules: one hint becomes the locale, several leave detection to the provider, and the first 50 trimmed terms of at most 50 characters become phrase hints. The HTTP route takes one bounded definition before audio. No audio URLs, extra files or arbitrary prompts |

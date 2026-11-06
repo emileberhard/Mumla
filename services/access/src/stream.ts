@@ -11,6 +11,26 @@ const providerVocabularyTerms = 50;
 const providerTermLength = 50;
 const pauseBytes = 1024 * 1024;
 const resumeBytes = 256 * 1024;
+export const keptAudioSeconds = 600;
+export const keptAudioBudgetBytes = 128 * 1024 * 1024;
+
+export type Speakers = "onRequest" | "diarize";
+
+export class KeptAudioBudget {
+  private used = 0;
+
+  constructor(private readonly limitBytes: number) {}
+
+  reserve(bytes: number) {
+    if (this.used + bytes > this.limitBytes) return false;
+    this.used += bytes;
+    return true;
+  }
+
+  release(bytes: number) {
+    this.used -= bytes;
+  }
+}
 
 export interface StreamSocket {
   pause(): void;
@@ -23,7 +43,17 @@ function strings(value: unknown) {
   return (value as string[]).map((item) => item.trim()).filter(Boolean);
 }
 
-export function definition(languages: unknown, vocabulary: unknown) {
+function speakers(value: unknown): Speakers | undefined {
+  if (value === undefined || value === "onRequest" || value === "diarize")
+    return value;
+  throw new AccessError(400, "invalid_message");
+}
+
+export function definition(
+  languages: unknown,
+  vocabulary: unknown,
+  diarized = false,
+) {
   const hints = strings(languages);
   const phrases = strings(vocabulary)
     .filter((phrase) => [...phrase].length <= providerTermLength)
@@ -35,17 +65,58 @@ export function definition(languages: unknown, vocabulary: unknown) {
     enhancedMode: {
       enabled: true,
       model: "MAI-Transcribe-2",
-      modelOptions: { transcribeStyle: "clean", timestamps: "none" },
+      modelOptions: {
+        transcribeStyle: "clean",
+        timestamps: diarized ? "word" : "none",
+      },
     },
+    ...(diarized ? { diarization: { enabled: true } } : {}),
     ...(phrases.length ? { phraseList: { phrases } } : {}),
     ...(locale ? { locales: [locale] } : {}),
   });
 }
 
-function streamingWAVHeader() {
+export interface VoicePhrase {
+  speaker: number;
+  text: string;
+  words: [number, number][];
+}
+
+function nonNegativeInteger(value: unknown) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+    throw new Error("Invalid provider result");
+  return value;
+}
+
+export function voicePhrases(result: Record<string, unknown>): VoicePhrase[] {
+  if (!Array.isArray(result.phrases))
+    throw new Error("Invalid provider result");
+  return result.phrases.map((item) => {
+    const phrase = record(item);
+    const words = phrase.words ?? [];
+    if (typeof phrase.text !== "string" || !Array.isArray(words))
+      throw new Error("Invalid provider result");
+    return {
+      speaker: nonNegativeInteger(phrase.speaker),
+      text: phrase.text,
+      words: words.map((word) => {
+        const value = record(word);
+        return [
+          nonNegativeInteger(value.offsetMilliseconds),
+          nonNegativeInteger(value.durationMilliseconds),
+        ];
+      }),
+    };
+  });
+}
+
+export function wavHeader(dataBytes = 0xffff_ffff) {
   const header = Buffer.alloc(44);
   header.write("RIFF");
-  header.writeUInt32LE(0xffff_ffff, 4);
+  header.writeUInt32LE(
+    dataBytes === 0xffff_ffff ? dataBytes : 36 + dataBytes,
+    4,
+  );
   header.write("WAVEfmt ", 8);
   header.writeUInt32LE(16, 16);
   header.writeUInt16LE(1, 20);
@@ -55,7 +126,7 @@ function streamingWAVHeader() {
   header.writeUInt16LE(2, 32);
   header.writeUInt16LE(16, 34);
   header.write("data", 36);
-  header.writeUInt32LE(0xffff_ffff, 40);
+  header.writeUInt32LE(dataBytes, 40);
   return header;
 }
 
@@ -67,6 +138,7 @@ export class StreamUpload {
   private receivedBytes = 0;
   private audioBytes = 0;
   private definition: string | undefined;
+  private diarizedDefinition: string | undefined;
   private finished = false;
   private paused = false;
   private wake: (() => void) | undefined;
@@ -79,11 +151,17 @@ export class StreamUpload {
   private handedOff = false;
   private completed = false;
   private finishedAt: number | undefined;
+  private mode: Speakers | undefined;
+  private kept: Buffer[] | undefined;
+  private keptBytes = 0;
+  private readonly voices = Promise.withResolvers<void>();
+  private voicesWanted = false;
 
   constructor(
     private readonly socket: StreamSocket,
     private readonly limitSamples: number,
     signal: AbortSignal,
+    private readonly budget: KeptAudioBudget,
   ) {
     this.headerTimer = setTimeout(() => {
       if (!this.definition || this.receivedBytes < 2)
@@ -130,32 +208,77 @@ export class StreamUpload {
   get audioEndedAt() {
     return this.finishedAt;
   }
+  get speakers() {
+    return this.mode;
+  }
+  get diarized() {
+    return this.mode === "diarize";
+  }
+  get voicesRequest() {
+    return this.voices.promise;
+  }
+  get keptAudio() {
+    return this.kept;
+  }
+
+  get voicesDefinition() {
+    return this.diarizedDefinition;
+  }
 
   receive(message: string | Buffer) {
     try {
-      if (this.stopped.aborted) return;
-      if (typeof message !== "string") return this.append(message);
+      if (typeof message !== "string") {
+        if (!this.stopped.aborted) this.append(message);
+        return;
+      }
       const value = record(parseJSON(message));
-      if (value.type === "start" && this.definition === undefined) {
-        exactKeys(value, ["type", "languages", "vocabulary"]);
-        this.definition = definition(value.languages, value.vocabulary);
-      } else if (
-        value.type === "finish" &&
-        this.definition !== undefined &&
-        !this.finished
-      ) {
-        exactKeys(value, ["type"]);
-        this.finished = true;
-        this.finishedAt = performance.now();
-      } else throw new AccessError(400, "invalid_message");
-      this.signalInput();
+      if (value.type === "voices") this.requestVoices(value);
+      else if (!this.stopped.aborted) this.control(value);
     } catch (error) {
+      if (this.stopped.aborted) return;
       this.fail(
         error instanceof AccessError
           ? error
           : new AccessError(400, "invalid_message"),
       );
     }
+  }
+
+  private requestVoices(value: Record<string, unknown>) {
+    exactKeys(value, ["type"]);
+    if (this.mode !== "onRequest" || !this.finished || this.voicesWanted)
+      throw new AccessError(400, "invalid_message");
+    this.voicesWanted = true;
+    this.voices.resolve();
+  }
+
+  private control(value: Record<string, unknown>) {
+    if (value.type === "start" && this.definition === undefined) {
+      exactKeys(value, ["type", "languages", "vocabulary", "speakers"]);
+      this.mode = speakers(value.speakers);
+      this.definition = definition(
+        value.languages,
+        value.vocabulary,
+        this.diarized,
+      );
+      if (this.mode === "onRequest") {
+        this.diarizedDefinition = definition(
+          value.languages,
+          value.vocabulary,
+          true,
+        );
+        this.kept = [];
+      }
+    } else if (
+      value.type === "finish" &&
+      this.definition !== undefined &&
+      !this.finished
+    ) {
+      exactKeys(value, ["type"]);
+      this.finished = true;
+      this.finishedAt = performance.now();
+    } else throw new AccessError(400, "invalid_message");
+    this.signalInput();
   }
 
   private append(audio: Buffer) {
@@ -169,13 +292,31 @@ export class StreamUpload {
     this.receivedBytes += audio.length;
     if (this.receivedBytes > this.limitSamples * 2)
       throw new AccessError(413, "audio_limit_exceeded");
-    this.queue.push(Buffer.from(audio));
+    const copy = Buffer.from(audio);
+    this.queue.push(copy);
     this.queuedBytes += audio.length;
+    if (this.kept) this.keep(copy);
     if (this.queuedBytes >= pauseBytes && !this.paused) {
       this.paused = true;
       this.socket.pause();
     }
     this.signalInput();
+  }
+
+  private keep(audio: Buffer) {
+    if (
+      this.keptBytes + audio.length > keptAudioSeconds * sampleRate * 2 ||
+      !this.budget.reserve(audio.length)
+    )
+      return this.releaseKeptAudio();
+    this.kept?.push(audio);
+    this.keptBytes += audio.length;
+  }
+
+  releaseKeptAudio() {
+    this.budget.release(this.keptBytes);
+    this.keptBytes = 0;
+    this.kept = undefined;
   }
 
   private fail(error: AccessError) {
@@ -230,7 +371,7 @@ export class StreamUpload {
       Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="definition"\r\n\r\n${this.definition}\r\n--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="recording.wav"\r\nContent-Type: audio/wav\r\n\r\n`,
       ),
-      streamingWAVHeader(),
+      wavHeader(),
     ]);
     clearTimeout(this.headerTimer);
     const self = this;

@@ -23,7 +23,14 @@ import {
 } from "./protocol";
 import { checkRouter } from "./readiness";
 import type { AccessStore, Grant, Session } from "./store";
-import { StreamUpload } from "./stream";
+import {
+  KeptAudioBudget,
+  keptAudioBudgetBytes,
+  StreamUpload,
+  type VoicePhrase,
+  voicePhrases,
+  wavHeader,
+} from "./stream";
 import { TranscriptionUpload } from "./transcription";
 
 export interface ReleaseIdentity {
@@ -38,6 +45,7 @@ interface AudioInput {
   readonly isComplete: boolean;
   readonly interruptedWhileWaitingForClient: boolean;
   readonly audioEndedAt: number | undefined;
+  readonly diarized: boolean;
   prepare(onDispatch: () => void): Promise<{
     signal: AbortSignal;
     contentType: string;
@@ -71,6 +79,15 @@ interface StreamState {
   release: () => void;
   upload?: StreamUpload;
 }
+
+interface Transcript {
+  texts: string[];
+  phrases: VoicePhrase[] | undefined;
+}
+
+const voicesWaitMs = 5000;
+const voicesTimeoutMs = 30_000;
+const diarizedResultBytes = 4 * 1024 * 1024;
 
 interface Upgrader {
   upgrade(request: Request, options: { data: StreamState }): boolean;
@@ -151,6 +168,8 @@ export class AccessService {
   private fatalReported = false;
   private readonly pendingUploads = new Map<string, AbortController>();
   private readonly uploads = new Set<string>();
+  private voiceStreams = 0;
+  private readonly keptAudio = new KeptAudioBudget(keptAudioBudgetBytes);
   private readonly subjectRequests = new Map<string, { count: number }>();
   private readonly requestIncidents = new Map<string, number>();
   private readonly origins = new Map<
@@ -174,7 +193,7 @@ export class AccessService {
   }
 
   private active() {
-    return Number(this.backingUp) + this.uploads.size;
+    return Number(this.backingUp) + this.uploads.size + this.voiceStreams;
   }
 
   private rateLimit(limits: [string, number][], now: number) {
@@ -419,7 +438,7 @@ export class AccessService {
         )
           throw new AccessError(400, "unsupported_transcription");
         const grant = this.store.claim(bearer(request), now);
-        const phrases = await this.transcribe(
+        const transcript = await this.transcribe(
           grant,
           request.signal,
           (signal) =>
@@ -429,7 +448,9 @@ export class AccessService {
           randomUUID(),
           platform(request),
         );
-        return json({ combinedPhrases: phrases.map((text) => ({ text })) });
+        return json({
+          combinedPhrases: transcript.texts.map((text) => ({ text })),
+        });
       }
       if (url.search) throw new AccessError(400, "invalid_request");
       if (url.pathname === "/v1/access" && request.method === "GET" && session)
@@ -505,26 +526,67 @@ export class AccessService {
   private async stream(socket: ServerWebSocket<StreamState>) {
     const state = socket.data;
     const id = randomUUID();
+    const voicesAbort = new AbortController();
+    const voicesSignal = AbortSignal.any([
+      state.client.signal,
+      voicesAbort.signal,
+    ]);
+    let voices: Promise<Record<string, unknown>> | undefined;
+    let waitingForVoices = false;
     try {
-      const phrases = await this.transcribe(
+      const transcript = await this.transcribe(
         state.grant,
         state.client.signal,
         (signal) => {
-          state.upload = new StreamUpload(
+          const upload = new StreamUpload(
             socket,
             state.grant.limit_samples,
             signal,
+            this.keptAudio,
           );
-          return state.upload;
+          state.upload = upload;
+          void upload.voicesRequest.then(() => {
+            voices = this.voices(upload, voicesSignal, id);
+          });
+          return upload;
         },
         state.claimedAt,
         "stream",
         id,
         state.platform,
       );
-      socket.send(
-        JSON.stringify({ type: "result", text: phrases.join("\n"), id }),
-      );
+      const upload = state.upload;
+      const text = transcript.texts.join("\n");
+      if (upload?.diarized) {
+        socket.send(
+          JSON.stringify({
+            type: "voices",
+            text,
+            phrases: transcript.phrases,
+            id,
+          }),
+        );
+        return;
+      }
+      socket.send(JSON.stringify({ type: "result", text, id }));
+      if (upload?.speakers !== "onRequest") return;
+      this.voiceStreams++;
+      waitingForVoices = true;
+      const waited = AbortSignal.any([
+        voicesSignal,
+        AbortSignal.timeout(voicesWaitMs),
+      ]);
+      const requested = await Promise.race([
+        upload.voicesRequest.then(() => true),
+        new Promise<boolean>((resolve) => {
+          if (waited.aborted) resolve(false);
+          waited.addEventListener("abort", () => resolve(false), {
+            once: true,
+          });
+        }),
+      ]);
+      if (requested && voices)
+        socket.send(JSON.stringify({ ...(await voices), id }));
     } catch (error) {
       if (error instanceof RequestIncident) this.requestIncident(error);
       else if (!(error instanceof AccessError)) this.incident(error);
@@ -541,10 +603,107 @@ export class AccessService {
         }),
       );
     } finally {
+      voicesAbort.abort();
+      await voices;
+      state.upload?.releaseKeptAudio();
+      if (waitingForVoices) this.voiceStreams--;
       socket.close(1000);
       state.release();
       this.finishFailure();
     }
+  }
+
+  private async voices(
+    upload: StreamUpload,
+    signal: AbortSignal,
+    id: string,
+  ): Promise<Record<string, unknown>> {
+    const started = performance.now();
+    const audio = upload.keptAudio;
+    const definition = upload.voicesDefinition;
+    let code = "ok";
+    try {
+      if (!audio?.length || !definition) throw new Error("voices_unavailable");
+      if (!this.admissionOpen || !this.healthy)
+        throw new Error("service_unavailable");
+      const bytes = audio.reduce((total, chunk) => total + chunk.length, 0);
+      const boundary = randomUUID();
+      const response = await fetch(
+        `${this.config.routerOrigin}${transcriptionPath}?api-version=2025-10-15`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.config.routerKey}`,
+            "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          },
+          body: Buffer.concat([
+            Buffer.from(
+              `--${boundary}\r\nContent-Disposition: form-data; name="definition"\r\n\r\n${definition}\r\n--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="recording.wav"\r\nContent-Type: audio/wav\r\n\r\n`,
+            ),
+            wavHeader(bytes),
+            ...audio,
+            Buffer.from(`\r\n--${boundary}--\r\n`),
+          ]),
+          signal: AbortSignal.any([
+            signal,
+            AbortSignal.timeout(voicesTimeoutMs),
+          ]),
+          redirect: "error",
+        },
+      );
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new Error(`upstream_${response.status}`);
+      }
+      const result = record(
+        parseJSON(
+          new TextDecoder("utf-8", { fatal: true }).decode(
+            await boundedBytes(response.body, diarizedResultBytes, signal),
+          ),
+        ),
+      );
+      const transcript = this.transcript(result, true);
+      return {
+        type: "voices",
+        text: transcript.texts.join("\n"),
+        phrases: transcript.phrases,
+      };
+    } catch (error) {
+      code = signal.aborted
+        ? "client_closed"
+        : error instanceof Error && /^[a-z0-9_]+$/.test(error.message)
+          ? error.message
+          : "voices_failed";
+      return { type: "voices_unavailable" };
+    } finally {
+      console.log(
+        JSON.stringify({
+          event: "voices",
+          id,
+          code,
+          ms: Math.round(performance.now() - started),
+        }),
+      );
+    }
+  }
+
+  private transcript(
+    result: Record<string, unknown>,
+    diarized: boolean,
+  ): Transcript {
+    if (
+      !Array.isArray(result.combinedPhrases) ||
+      result.combinedPhrases.some(
+        (phrase) => typeof record(phrase).text !== "string",
+      )
+    )
+      throw new Error("Invalid provider result");
+    return {
+      texts: (result.combinedPhrases as unknown[]).map(
+        (phrase) => record(phrase).text as string,
+      ),
+      phrases: diarized ? voicePhrases(result) : undefined,
+    };
   }
 
   private async verifying<T>(
@@ -657,7 +816,7 @@ export class AccessService {
     route: "stream" | "upload",
     id: string,
     origin: Platform,
-  ): Promise<string[]> {
+  ): Promise<Transcript> {
     const phases = new Phases();
     let upload: AudioInput | undefined;
     let result: { status: number; code: string } = { status: 200, code: "ok" };
@@ -709,7 +868,7 @@ export class AccessService {
     now: number,
     phases: Phases,
     origin: Platform,
-  ): Promise<string[]> {
+  ): Promise<Transcript> {
     const abort = new AbortController();
     this.pendingUploads.set(grant.hash, abort);
     const deadline = AbortSignal.timeout(Math.max(1, grant.deadline - now));
@@ -753,33 +912,27 @@ export class AccessService {
         inputRejected = [400, 422].includes(response.status);
         throw new AccessError(502, "transcription_failed");
       }
-      let result: Record<string, unknown>;
+      let transcript: Transcript;
       try {
         const bytes = await boundedBytes(
           response.body,
-          1024 * 1024,
+          upload.diarized ? diarizedResultBytes : 1024 * 1024,
           uploadSignal,
         );
-        result = record(
-          parseJSON(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
+        transcript = this.transcript(
+          record(
+            parseJSON(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
+          ),
+          upload.diarized,
         );
-        if (
-          !Array.isArray(result.combinedPhrases) ||
-          result.combinedPhrases.some(
-            (phrase) => typeof record(phrase).text !== "string",
-          ) ||
-          !upload.isComplete
-        )
-          throw new Error("Invalid provider result");
+        if (!upload.isComplete) throw new Error("Invalid provider result");
       } catch (error) {
         if (client.aborted) throw error;
         upstreamRefused = true;
         throw new AccessError(502, "transcription_failed");
       }
       charge = true;
-      return (result.combinedPhrases as unknown[]).map(
-        (phrase) => record(phrase).text as string,
-      );
+      return transcript;
     } catch (error) {
       const clientFailure =
         client.aborted ||

@@ -36,6 +36,17 @@ to SpeechKit or llm-router.
   HTTP WAV route stays for installs before 1.1, bounded to 120 seconds. No other
   upgrades, URLs, arbitrary prompts or generic proxy routes.
 
+- `start` may set `speakers`. `diarize` makes the one request diarized with
+  word timings and answers `voices` instead of `result`. `onRequest` keeps the
+  stream's audio in memory, at most 600 seconds per stream and 128 MiB across
+  streams, and after `finish` accepts one `voices` message that sends the kept
+  audio again, diarized, uncharged; the socket then answers `result` followed
+  by `voices` or `voices_unavailable`, and closes 5 seconds after `result` when
+  no `voices` came. Kept audio never leaves memory and is released when the
+  socket closes. Streams waiting for or running that request count as live for
+  the drain. Older services reject `speakers`, so this version is the rollback
+  floor for apps that send it.
+
 - Start fenced on every boot. The private deploy owner waits for live idle with
   admission open, takes a consistent backup, fences only when idle, replaces and
   checks before reopening. Enrollments have eight separate slots, a two-second

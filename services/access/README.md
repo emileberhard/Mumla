@@ -203,7 +203,7 @@ locally. Pro raises the same month's limit; it never resets used samples.
 ## Diagnostics and usage analytics
 
 Each transcription logs one JSON line to the journal: `event` `dictation`, a
-random `id` that the client also receives in its `result` or `error` reply, the
+random `id` that the client also receives in its `result`, `voices` or `error` reply, the
 `route` (`stream` or `upload`), `status` and `code` (the operator's code, which
 can be more specific than the client's, or `499` `client_closed` when the client
 left first, such as a canceled dictation), `audio_ms`, and milliseconds from the
@@ -212,7 +212,8 @@ body bytes), `audio_end` (the client's last audio), `upstream` (the router
 answered) and `settled`. `upstream - audio_end` is the provider's finalization
 plus the router hop. The router's vendor rows add `request_body_ms` and
 `response_headers_ms`; they carry no dictation ID, so match them by time. The
-line carries no subject, session or address. The service unit's journal rate
+line carries no subject, session or address. A requested speaker pass adds one
+`voices` line with the same `id`, its `code` and its `ms`. The service unit's journal rate
 limit and the poller's batch bound both count these lines; raise them with the
 dictation rate.
 
