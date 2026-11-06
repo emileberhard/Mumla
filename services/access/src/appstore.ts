@@ -21,11 +21,6 @@ export interface SignedTransaction {
   signed: number;
 }
 
-export interface PurchaseVerifier {
-  transaction(jws: string): Promise<SignedTransaction>;
-  notification(signedPayload: string): Promise<SignedTransaction | null>;
-}
-
 export interface AppStoreApp {
   appStoreBundleId: string;
   appStoreAppId: number;
@@ -71,7 +66,7 @@ function instant(value: unknown) {
   return value;
 }
 
-export class AppStoreVerifier implements PurchaseVerifier {
+export class AppStoreVerifier {
   private readonly verifiers: Record<StoreEnvironment, SignedDataVerifier>;
 
   constructor(
