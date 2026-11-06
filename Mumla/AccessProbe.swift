@@ -61,8 +61,8 @@ enum AccessProbe {
             labels = outcome?.labelCount ?? 0
             dropped = outcome?.droppedCount ?? 0
             keptUser = ["coffee", "bakery"].allSatisfy(delivered.contains)
-            droppedOther = !delivered.contains("radiator")
-            keptEveryone = everyone.contains("radiator") && everyone.contains("coffee")
+            droppedOther = !delivered.contains("charger")
+            keptEveryone = everyone.contains("charger") && everyone.contains("coffee")
             self.failures = failures
         }
     }
@@ -162,7 +162,7 @@ enum AccessProbe {
         }
         var twoVoices = try await providerPCM(of: fixtures.appending(path: "en-short-long-rushed.wav"))
         twoVoices.append(Data(repeating: 0, count: AccessGrant.sampleRate * 2))
-        twoVoices.append(try await providerPCM(of: fixtures.appending(path: "en-landlord-email.wav")).prefix(12 * AccessGrant.sampleRate * 2))
+        twoVoices.append(try await providerPCM(of: fixtures.appending(path: "en-teen-note.wav")))
         twoVoices.append(Data(repeating: 0, count: AccessGrant.sampleRate * 2))
         receipt.voicesOnRequest = try await streamVoices(twoVoices, access: access, voice: voice, failures: failures)
         let batch = try await AccessTranscriber(access: access, voice: { voice })
@@ -197,6 +197,8 @@ enum AccessProbe {
         return Data(try await OriginalAudio.providerWAV(from: original, fileType: .caf).dropFirst(PCM16WAVHeader.byteCount))
     }
 
+    private struct UntrustedSyntheticVoice: Error {}
+
     private static func syntheticVoice(
         speaking fixture: URL, directory: URL, onFailure: @escaping @Sendable (VoiceFilterStage, DiagnosticError) -> Void
     ) async throws -> OnlyMyVoice {
@@ -205,12 +207,12 @@ enum AccessProbe {
         let embedder = try SpeakerEmbedder(modelURL: modelURL)
         let store = VoiceProfileStore(accountDirectory: directory)
         let window = 6 * AccessGrant.sampleRate
-        var profile = try await store.profile(forgottenAt: nil)
-        for start in stride(from: 0, through: samples.count - window, by: window / 2) where !profile.isTrusted {
+        var profile = try await store.profile()
+        for start in stride(from: 0, through: samples.count - window, by: 5 * AccessGrant.sampleRate / 2) where !profile.isTrusted {
             try await store.learn(try await embedder.embedding(of: Array(samples[start..<start + window])), startedAt: .now)
-            profile = try await store.profile(forgottenAt: nil)
+            profile = try await store.profile()
         }
-        guard profile.isTrusted else { throw VoiceFilterError.profileNotReady }
+        guard profile.isTrusted else { throw UntrustedSyntheticVoice() }
         return OnlyMyVoice(profile: profile, store: store, modelURL: modelURL, startedAt: .now, onFailure: onFailure)
     }
 

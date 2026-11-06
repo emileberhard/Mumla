@@ -233,8 +233,8 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
     private enum VoiceCheck {
         case idle
         case checking(Task<Void, Never>)
-        case requested(VoiceRecording)
-        case notHeard
+        case requested(VoiceRecording, profile: SpeakerEmbedding)
+        case decided(VoiceFilterOutcome)
         case failed(any Error)
     }
 
@@ -287,16 +287,18 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         try await stream.finish()
         timing.finishSentAt = .now
         watch?.finish()
-        guard let watch, voice?.speakers == .onRequest, !isDelivered else { return }
+        guard let watch, let profile = voice?.profile.trustedMean, !isDelivered else { return }
         voiceCheck = .checking(Task { [weak self] in
             do {
                 let recording = try await watch.recording
                 try Task.checkCancellation()
-                if recording.isComplete, recording.otherVoiceHeard {
+                if !recording.isComplete {
+                    await self?.decide(.decided(.tooLong))
+                } else if recording.otherVoiceHeard {
+                    guard await self?.decide(.requested(recording, profile: profile)) == true else { return }
                     try await stream.requestVoices()
-                    await self?.decide(.requested(recording))
                 } else {
-                    await self?.decide(.notHeard)
+                    await self?.decide(.decided(.notHeard))
                 }
             } catch {
                 await self?.decide(.failed(error))
@@ -317,9 +319,11 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         stream = nil
     }
 
-    private func decide(_ check: VoiceCheck) {
-        guard case .checking = voiceCheck else { return }
+    @discardableResult
+    private func decide(_ check: VoiceCheck) -> Bool {
+        guard case .checking = voiceCheck else { return false }
         voiceCheck = check
+        return true
     }
 
     private func complete(_ reply: AccessStreamReply) async {
@@ -331,20 +335,20 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         case .idle:
             voices = voice?.speakers == nil ? nil : .undecided
         case .checking(let task):
+            voiceCheck = .decided(.undecided)
             task.cancel()
-            voiceCheck = .notHeard
             voices = .undecided
-        case .notHeard:
-            voices = .notHeard
+        case .decided(let outcome):
+            voices = outcome
         case .failed(let error):
             fail(voiceFilter: error)
-        case .requested(let recording):
+        case .requested(let recording, let profile):
             do {
-                guard let profile = voice?.profile.trustedMean else { throw VoiceFilterError.profileNotReady }
                 let filtered = try await Self.filter(stream, everyone: reply.text, audio: recording.audio, profile: profile)
                 text = filtered.text
                 voices = filtered.outcome
             } catch {
+                guard !isDisconnected else { return }
                 fail(voiceFilter: error)
             }
         }
@@ -408,8 +412,8 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
 }
 
 nonisolated enum VoiceFilterError: Error, Equatable, StructuredDiagnosticError {
-    case profileNotReady
     case voicesUnavailable
+    case profileUnreadable
     case deadlineExceeded
     case modelMissing
 
@@ -417,8 +421,8 @@ nonisolated enum VoiceFilterError: Error, Equatable, StructuredDiagnosticError {
 
     var diagnosticKind: String {
         switch self {
-        case .profileNotReady: "profile_not_ready"
         case .voicesUnavailable: "voices_unavailable"
+        case .profileUnreadable: "profile_unreadable"
         case .deadlineExceeded: "deadline_exceeded"
         case .modelMissing: "model_missing"
         }
@@ -482,8 +486,9 @@ struct AccessTranscriber {
 
     @concurrent nonisolated private static func filter(_ reply: AccessStreamReply, pcm: Data, voice: OnlyMyVoice, profile: SpeakerEmbedding) async -> AccessTranscript {
         do {
+            guard let phrases = reply.phrases else { throw VoiceFilterError.voicesUnavailable }
             let audio = SpeakerAudio(embedder: try SpeakerEmbedder(modelURL: voice.modelURL), pcm: PCM16Audio(pcm))
-            let everyone = reply.phrases.map(VoiceFilter.text(of:)).flatMap { $0.isEmpty ? nil : $0 } ?? reply.text
+            let everyone = VoiceFilter.text(of: phrases)
             let filtered = try await VoiceFilter.apply(reply, everyone: everyone, audio: audio, profile: profile)
             return AccessTranscript(text: filtered.text, voices: filtered.outcome)
         } catch {

@@ -294,14 +294,17 @@ final class DictationCoordinator {
            let synced = VoiceSelection(rawValue: preferenceSync.string(forKey: SharedPreferenceKey.voices)), synced != voices {
             voices = synced
         }
+        if shouldSync(SharedPreferenceKey.voiceForgottenAt) { applyForgottenVoice() }
     }
 
     // MARK: - Only my voice
 
+    private var voiceProfiles: VoiceProfiles { VoiceProfiles(preferences: preferenceSync, dataStore: dataStore) }
+
     private func onlyMyVoice() async -> OnlyMyVoice? {
         guard voices == .onlyMine else { return nil }
         do {
-            return try await dataStore.onlyMyVoice(forgottenAt: preferenceSync.date(forKey: SharedPreferenceKey.voiceForgottenAt)) { stage, error in
+            return try await voiceProfiles.voice { stage, error in
                 CrashReporting.capture(message: "Voice filter failed; delivering everyone", context: "voice_filter", error: error,
                                        metadata: ["voice_filter_stage": stage.rawValue])
             }
@@ -312,17 +315,23 @@ final class DictationCoordinator {
     }
 
     func voiceProfileStatus() async -> VoiceProfileStatus? {
-        guard let profile = try? await dataStore.voiceProfiles?.profile(forgottenAt: preferenceSync.date(forKey: SharedPreferenceKey.voiceForgottenAt)) else {
+        do { return try await voiceProfiles.status() } catch {
+            CrashReporting.capture(message: "Voice profile unavailable", context: "voice_filter", error: error)
             return nil
         }
-        return VoiceProfileStatus(profile)
     }
 
     func forgetMyVoice() async {
-        let now = Date.now
-        preferenceSync.set(now, forKey: SharedPreferenceKey.voiceForgottenAt)
-        do { try await dataStore.voiceProfiles?.forget(at: now) } catch {
+        do { try await voiceProfiles.forget() } catch {
             reportError(String(localized: "Couldn't forget your voice. Try again."), error: error)
+        }
+    }
+
+    private func applyForgottenVoice() {
+        Task {
+            do { try await voiceProfiles.applyForget() } catch {
+                CrashReporting.capture(message: "Voice profile could not be forgotten", context: "voice_filter", error: error)
+            }
         }
     }
 
@@ -895,13 +904,14 @@ final class DictationCoordinator {
                 break
             }
         }
+        async let voice = onlyMyVoice()
         let originalAudio = try await dataStore.makeOriginalAudioWriter(context: .prose)
         let plan = originalAudio.dictationPlan
         let providerConfiguration = RealtimeDictationProviderConfiguration(
             grant: grant,
             customVocabulary: plan?.dictionary ?? customVocabulary,
             languageHints: plan?.languages ?? dictationLanguages,
-            voice: await onlyMyVoice(),
+            voice: await voice,
             onAudioLimitReached: { [weak self] in
                 Task { @MainActor in self?.requestDictationStop(capture: capture) }
             }

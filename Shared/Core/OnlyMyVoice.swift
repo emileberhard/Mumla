@@ -31,6 +31,40 @@ nonisolated struct OnlyMyVoice: Sendable {
     var speakers: AccessSpeakers? { profile.isTrusted ? .onRequest : nil }
 }
 
+struct VoiceProfiles {
+    let preferences: CloudPreferenceStore
+    let dataStore: MumlaDataStore
+
+    func voice(onFailure: @escaping @Sendable (VoiceFilterStage, DiagnosticError) -> Void) async throws -> OnlyMyVoice? {
+        guard let store = try await forgettingStore() else { return nil }
+        guard let modelURL = SpeakerEmbedder.bundledModelURL else { throw VoiceFilterError.modelMissing }
+        return OnlyMyVoice(profile: try await store.profile(), store: store, modelURL: modelURL, startedAt: .now, onFailure: onFailure)
+    }
+
+    func status() async throws -> VoiceProfileStatus? {
+        guard let store = try await forgettingStore() else { return nil }
+        return VoiceProfileStatus(try await store.profile())
+    }
+
+    func forget() async throws {
+        let date = max(forgottenAt ?? .distantPast, .now)
+        preferences.set(date, forKey: SharedPreferenceKey.voiceForgottenAt)
+        try await dataStore.voiceProfiles?.forget(createdBefore: date)
+    }
+
+    func applyForget() async throws {
+        _ = try await forgettingStore()
+    }
+
+    private var forgottenAt: Date? { preferences.date(forKey: SharedPreferenceKey.voiceForgottenAt) }
+
+    private func forgettingStore() async throws -> VoiceProfileStore? {
+        guard let store = dataStore.voiceProfiles else { return nil }
+        if let forgottenAt { try await store.forget(createdBefore: forgottenAt) }
+        return store
+    }
+}
+
 nonisolated enum VoiceProfileStatus: Sendable {
     case learning
     case learned
@@ -53,6 +87,7 @@ nonisolated enum VoiceFilterStage: String, Sendable {
 nonisolated struct VoiceFilterOutcome: Sendable {
     enum Path: String, Sendable {
         case notHeard = "not_heard"
+        case tooLong = "too_long"
         case undecided
         case keptEveryone = "kept_everyone"
         case filtered
@@ -65,6 +100,7 @@ nonisolated struct VoiceFilterOutcome: Sendable {
     let unfilteredText: String?
 
     static let notHeard = Self(path: .notHeard, labelCount: 0, droppedCount: 0, unfilteredText: nil)
+    static let tooLong = Self(path: .tooLong, labelCount: 0, droppedCount: 0, unfilteredText: nil)
     static let undecided = Self(path: .undecided, labelCount: 0, droppedCount: 0, unfilteredText: nil)
     static let failed = Self(path: .failed, labelCount: 0, droppedCount: 0, unfilteredText: nil)
 

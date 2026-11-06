@@ -599,15 +599,6 @@ final class MumlaDataStore {
         ]
     }
 
-    func onlyMyVoice(
-        forgottenAt: Date?, onFailure: @escaping @Sendable (VoiceFilterStage, DiagnosticError) -> Void
-    ) async throws -> OnlyMyVoice? {
-        guard let store = voiceProfiles else { return nil }
-        guard let modelURL = SpeakerEmbedder.bundledModelURL else { throw VoiceFilterError.modelMissing }
-        return OnlyMyVoice(profile: try await store.profile(forgottenAt: forgottenAt), store: store, modelURL: modelURL,
-                           startedAt: .now, onFailure: onFailure)
-    }
-
     func makeOriginalAudioWriter(context: DictationContext) async throws -> OriginalAudioWriter {
         let partition = partitionID
         let target = container
@@ -1064,7 +1055,7 @@ final class MumlaDataStore {
         let task = Task {
             try await library.refreshCatalog()
             guard lease.isActive else { throw LibraryAgentError.accountChanged }
-            try await projection.apply(library.entries, lease: lease)
+            try await projection.apply(library.entries, unfilteredTexts: library.unfilteredTexts, lease: lease)
         }
         sharedHistoryTask = task
         sharedHistoryTaskID = taskID

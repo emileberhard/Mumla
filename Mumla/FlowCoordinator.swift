@@ -243,14 +243,17 @@ final class FlowCoordinator {
            let synced = VoiceSelection(rawValue: preferenceSync.string(forKey: SharedPreferenceKey.voices)), synced != voices {
             voices = synced
         }
+        if shouldSync(SharedPreferenceKey.voiceForgottenAt) { applyForgottenVoice() }
     }
 
     // MARK: - Only my voice
 
+    private var voiceProfiles: VoiceProfiles { VoiceProfiles(preferences: preferenceSync, dataStore: dataStore) }
+
     private func onlyMyVoice() async -> OnlyMyVoice? {
         guard voices == .onlyMine else { return nil }
         do {
-            return try await dataStore.onlyMyVoice(forgottenAt: preferenceSync.date(forKey: SharedPreferenceKey.voiceForgottenAt)) { stage, error in
+            return try await voiceProfiles.voice { stage, error in
                 Task { @MainActor in
                     AppDiagnostics.error("Voice filter failed; delivering everyone", category: "voice_filter",
                                          metadata: ["voice_filter_stage": stage.rawValue], error: error)
@@ -263,18 +266,24 @@ final class FlowCoordinator {
     }
 
     func voiceProfileStatus() async -> VoiceProfileStatus? {
-        guard let profile = try? await dataStore.voiceProfiles?.profile(forgottenAt: preferenceSync.date(forKey: SharedPreferenceKey.voiceForgottenAt)) else {
+        do { return try await voiceProfiles.status() } catch {
+            AppDiagnostics.error("Voice profile unavailable", category: "voice_filter", error: error)
             return nil
         }
-        return VoiceProfileStatus(profile)
     }
 
     func forgetMyVoice() async {
-        let now = Date.now
-        preferenceSync.set(now, forKey: SharedPreferenceKey.voiceForgottenAt)
-        do { try await dataStore.voiceProfiles?.forget(at: now) } catch {
+        do { try await voiceProfiles.forget() } catch {
             AppDiagnostics.error("Voice profile could not be deleted", category: "voice_filter", error: error)
             showError(String(localized: "Couldn't forget your voice. Try again."))
+        }
+    }
+
+    private func applyForgottenVoice() {
+        Task {
+            do { try await voiceProfiles.applyForget() } catch {
+                AppDiagnostics.error("Voice profile could not be forgotten", category: "voice_filter", error: error)
+            }
         }
     }
 
@@ -728,6 +737,7 @@ final class FlowCoordinator {
         realtimeCaptureID = captureID
         let access = access
         let grant = Task { try await access.grant(maximumAudioSeconds: AccessGrant.maximumAudioSeconds) }
+        let voice = Task { [weak self] in await self?.onlyMyVoice() }
         let controller = RealtimeDictationController(
             makeProviderConfiguration: { [weak self] original in
                 let plan = original.dictationPlan
@@ -735,7 +745,7 @@ final class FlowCoordinator {
                     grant: grant,
                     customVocabulary: plan?.dictionary ?? vocabulary,
                     languageHints: plan?.languages ?? languages,
-                    voice: await self?.onlyMyVoice(),
+                    voice: await voice.value,
                     onAudioLimitReached: { Task { @MainActor in self?.stopRecording(captureID: captureID) } }
                 )
             },

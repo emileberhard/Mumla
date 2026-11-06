@@ -35,7 +35,7 @@ actor SharedHistoryProjection {
         }
     }
 
-    func apply(_ entries: [DictationArchiveEntry], lease: AccountPartitionLease) throws {
+    func apply(_ entries: [DictationArchiveEntry], unfilteredTexts: [UUID: String], lease: AccountPartitionLease) throws {
         try Task.checkCancellation()
         guard lease.isActive else { throw LibraryAgentError.accountChanged }
         let changed = entries.filter { projected[$0.id] != $0 }
@@ -69,19 +69,19 @@ actor SharedHistoryProjection {
                 let resultIDs = Set(results.map(\.id))
                 let texts = Set(results.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) })
                 var hiddenTexts = Set<String>()
-                var unfilteredTexts: [String: String] = [:]
+                var carriedUnfiltered: [String: String] = [:]
                 for (_, existing) in byCapture[capture.id] ?? [] where !resultIDs.contains(existing.id) {
                     let text = existing.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard texts.contains(text) else { continue }
                     if existing.isHidden { hiddenTexts.insert(text) }
-                    if let unfiltered = existing.unfilteredText { unfilteredTexts[text] = unfiltered }
+                    if let unfiltered = existing.unfilteredText { carriedUnfiltered[text] = unfiltered }
                     context.delete(existing)
                     byID.removeValue(forKey: existing.id)
                 }
                 for result in results {
                     let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     let hidden = hiddenTexts.contains(trimmed)
-                    let unfiltered = unfilteredTexts[trimmed]
+                    let unfiltered = carriedUnfiltered[trimmed] ?? unfilteredTexts[result.id]
                     if let existing = byID[result.id] {
                         guard existing.text.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed,
                               existing.audioRecordingID == capture.id else { throw AudioArchiveError.conflictingRecording }

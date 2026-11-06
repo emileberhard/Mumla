@@ -96,6 +96,8 @@ nonisolated final class VoiceWatch: Sendable {
         listening = Task { try await Self.listen(to: stream, modelURL: modelURL) }
     }
 
+    deinit { cancel() }
+
     func append(_ pcm16: Data) { input.yield(pcm16) }
 
     func finish() { input.finish() }
@@ -139,7 +141,6 @@ nonisolated final class VoiceWatch: Sendable {
 }
 
 nonisolated struct VoiceRecording: Sendable {
-    static let detectionThreshold: Float = 0.3
     private static let minimumLearningSamples = 5 * KaldiFilterbank.sampleRate
 
     let audio: SpeakerAudio
@@ -154,7 +155,7 @@ nonisolated struct VoiceRecording: Sendable {
             guard let reference = SpeakerEmbedding.mean(of: others.map(\.embedding), weights: others.map { Float($0.samples.count) }) else {
                 return false
             }
-            return pieces[index].embedding.similarity(to: reference) < Self.detectionThreshold
+            return pieces[index].embedding.similarity(to: reference) < VoiceFilter.sameVoiceThreshold
         }
     }
 

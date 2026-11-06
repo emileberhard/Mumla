@@ -6,7 +6,7 @@ nonisolated struct VoiceProfile: Codable, Equatable, Sendable {
     static let maximumExemplars = 24
     private static let updateMatches = 3
     private static let recentWindow = 10
-    private static let trustedMatches = 8
+    private static let resetMisses = 8
 
     let modelVersion: String
     let createdAt: Date
@@ -19,8 +19,7 @@ nonisolated struct VoiceProfile: Codable, Equatable, Sendable {
         self.createdAt = createdAt
     }
 
-    var isReady: Bool { !exemplars.isEmpty }
-    var isTrusted: Bool { recentMatches.count(where: \.self) >= Self.trustedMatches }
+    var isTrusted: Bool { recentMatches.count == Self.recentWindow && !recentMatches.contains(false) }
     var isFrozen: Bool { exemplars.count >= Self.maximumExemplars }
     var mean: SpeakerEmbedding? { SpeakerEmbedding.mean(of: exemplars) }
     var trustedMean: SpeakerEmbedding? { isTrusted ? mean : nil }
@@ -28,7 +27,7 @@ nonisolated struct VoiceProfile: Codable, Equatable, Sendable {
     mutating func learn(_ candidate: SpeakerEmbedding, at date: Date) {
         guard let mean else { return collect(candidate) }
         recentMatches = Array((recentMatches + [candidate.similarity(to: mean) >= VoiceFilter.sameVoiceThreshold]).suffix(Self.recentWindow))
-        if recentMatches.count(where: { !$0 }) >= Self.trustedMatches {
+        if recentMatches.count(where: { !$0 }) >= Self.resetMisses {
             self = VoiceProfile(modelVersion: modelVersion, createdAt: date)
             return
         }
@@ -63,11 +62,8 @@ actor VoiceProfileStore {
         url = accountDirectory.appendingPathComponent("VoiceProfile.json", isDirectory: false)
     }
 
-    func profile(forgottenAt latest: Date?) throws -> VoiceProfile {
-        let profile = try loaded()
-        guard let latest, profile.createdAt < latest else { return profile }
-        try forget(at: latest)
-        return try loaded()
+    func profile() throws -> VoiceProfile {
+        try loaded()
     }
 
     func learn(_ candidate: SpeakerEmbedding, startedAt: Date) throws {
@@ -80,22 +76,31 @@ actor VoiceProfileStore {
         cached = profile
     }
 
-    func forget(at date: Date) throws {
+    func forget(createdBefore date: Date) throws {
         forgottenAt = max(forgottenAt ?? date, date)
-        cached = VoiceProfile(modelVersion: SpeakerEmbedder.modelVersion, createdAt: date)
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        try FileManager.default.removeItem(at: url)
+        guard try loaded().createdAt < date else { return }
+        try discard(createdAt: date)
     }
 
     private func loaded() throws -> VoiceProfile {
         if let cached { return cached }
         guard FileManager.default.fileExists(atPath: url.path) else { return remember(VoiceProfile(modelVersion: SpeakerEmbedder.modelVersion, createdAt: .now)) }
-        let stored = try JSONDecoder().decode(VoiceProfile.self, from: Data(contentsOf: url))
+        let data = try Data(contentsOf: url)
+        guard let stored = try? JSONDecoder().decode(VoiceProfile.self, from: data) else {
+            try discard(createdAt: .now)
+            throw VoiceFilterError.profileUnreadable
+        }
         guard stored.modelVersion == SpeakerEmbedder.modelVersion else {
-            try FileManager.default.removeItem(at: url)
-            return remember(VoiceProfile(modelVersion: SpeakerEmbedder.modelVersion, createdAt: .now))
+            try discard(createdAt: .now)
+            return try loaded()
         }
         return remember(stored)
+    }
+
+    private func discard(createdAt date: Date) throws {
+        cached = VoiceProfile(modelVersion: SpeakerEmbedder.modelVersion, createdAt: date)
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.removeItem(at: url)
     }
 
     private func remember(_ profile: VoiceProfile) -> VoiceProfile {
