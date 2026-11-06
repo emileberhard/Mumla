@@ -468,16 +468,17 @@ into `Local.xcconfig`, signs bundles ad hoc with
 `scripts/sign-bundles check` and `scripts/check-access-configuration`. Its
 upload, the `Public Beta` review and the App Store submission wait up to 30
 minutes for the access service to report the tag's version and commit, and for
-`developer-id-archive` (unsigned) and `developer-id` (signed, notarized DMG),
-so a Mac failure ships no channel. The GitHub release rechecks the service and
+`developer-id-archive` and `developer-id` (the notarized DMG), so a Mac failure
+ships no channel. The GitHub release rechecks the service and
 publishes `Mumla.dmg`.
 
 - Once the app has a release, the pipeline submits each version for App Review
-  and withdraws an older version still in review. The first submission and the
-  App Store release stay with the maintainer.
+  and withdraws an older version still in review. The first submission, the
+  first with subscriptions (website-only) and the App Store release stay with
+  the maintainer.
 - Every channel carries the tag's version; Developer ID and TestFlight build
   numbers may differ. A published version is immutable: its DMG is never
-  replaced, and the download never rolls back to an older version.
+  replaced, and the download never rolls back.
 - Retry with "Re-run failed jobs" in the tag's own run while that tag is the
   newest. Retries reuse the uploaded builds and the published DMG, whose
   digest a retry must match. Re-running all jobs builds a different DMG that

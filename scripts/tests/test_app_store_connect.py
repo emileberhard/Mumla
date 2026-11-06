@@ -304,6 +304,35 @@ class ReviewPolicyTests(unittest.TestCase):
                           "appStoreVersion": {"data": {"type": "appStoreVersions", "id": "version"}}}, writes[1][2]["relationships"])
         self.assertEqual({"submitted": True}, writes[2][2]["attributes"])
 
+class FirstSubscriptionTests(unittest.TestCase):
+    def submits(self, states):
+        def api(method, path, data=None, **params):
+            if path == "apps/app/assetLibrary":
+                return {"id": "library"}
+            if path == "apps/app/subscriptionGroups":
+                return [{"id": "group"}]
+            if path == "subscriptionGroups/group/subscriptions":
+                return [{"attributes": {"state": state}} for state in states]
+            return []
+
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(asc, "draft_version", return_value=("draft", True)), \
+                patch.object(asc, "api", side_effect=api), \
+                patch.object(asc, "wait", return_value="build"), \
+                patch.object(asc, "submit_for_review") as submit:
+            asc.app_store("app", "MAC_OS", "1.2.0", "9105", temporary, "notes")
+        return submit.called
+
+    def test_the_first_subscriptions_leave_the_version_for_the_website(self):
+        self.assertFalse(self.submits(["READY_TO_SUBMIT", "READY_TO_SUBMIT"]))
+
+    def test_an_app_with_an_approved_subscription_submits_the_version(self):
+        self.assertTrue(self.submits(["APPROVED", "READY_TO_SUBMIT"]))
+
+    def test_an_app_without_subscriptions_to_submit_submits_the_version(self):
+        self.assertTrue(self.submits(["MISSING_METADATA"]))
+
+
 class UploadCleanupTests(unittest.TestCase):
     def test_a_failed_transfer_reclaims_its_reserved_image(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -19,6 +19,8 @@ EDITABLE = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADAT
 IN_REVIEW = {"WAITING_FOR_REVIEW", "IN_REVIEW"}
 OPEN_SUBMISSIONS = "READY_FOR_REVIEW,WAITING_FOR_REVIEW,IN_REVIEW,UNRESOLVED_ISSUES,CANCELING"
 RELEASED = {"READY_FOR_DISTRIBUTION", "PROCESSING_FOR_DISTRIBUTION", "REPLACED_WITH_NEW_VERSION"}
+SUBSCRIPTIONS_TO_SUBMIT = {"READY_TO_SUBMIT", "DEVELOPER_ACTION_NEEDED", "REJECTED"}
+SUBSCRIPTIONS_APPROVED = {"APPROVED", "DEVELOPER_REMOVED_FROM_SALE", "REMOVED_FROM_SALE"}
 IN_BETA = {"WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW", "BETA_APPROVED", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING"}
 DEADLINE = time.monotonic() + 40 * 60
 
@@ -148,6 +150,12 @@ def withdraw(app, platform, version_id, name):
         sys.exit(f"App Store version {name} is in review, but its review submission is {state or 'missing'}; inspect App Review.")
     wait(f"Removing {name} from review", lambda: api("GET", f"appStoreVersions/{version_id}")["attributes"]["appVersionState"] in EDITABLE or None)
     print(f"Removed App Store version {name} from review.", file=sys.stderr)
+
+
+def awaits_first_subscriptions(app):
+    states = {subscription["attributes"]["state"] for group in api("GET", f"apps/{app}/subscriptionGroups", limit=200)
+              for subscription in api("GET", f"subscriptionGroups/{group['id']}/subscriptions", limit=200)}
+    return bool(states & SUBSCRIPTIONS_TO_SUBMIT) and not states & SUBSCRIPTIONS_APPROVED
 
 
 def submit_for_review(app, platform, version_id, version):
@@ -348,10 +356,12 @@ def app_store(app, platform, version, number, screenshots, notes):
     build = wait(f"The {platform} {version} build", lambda: processed_build(app, version, number, platform))
     api("PATCH", f"appStoreVersions/{version_id}/relationships/build", {"type": "builds", "id": build})
     wait("The screenshots", lambda: processed_screenshots(placements))
-    if released:
-        submit_for_review(app, platform, version_id, version)
-    else:
+    if not released:
         print(f"::notice::App Store version {version} for {platform} is ready for the app's first App Review submission, which stays manual.", file=sys.stderr)
+    elif awaits_first_subscriptions(app):
+        print(f"::notice::App Store version {version} for {platform} is ready to submit with the app's first subscriptions, which App Store Connect accepts only on its website.", file=sys.stderr)
+    else:
+        submit_for_review(app, platform, version_id, version)
 
 
 def main(command, *arguments):
