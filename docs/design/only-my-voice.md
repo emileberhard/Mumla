@@ -271,19 +271,14 @@ one unknown kind fails the whole archive listing on older clients.
 
 Transcribe Again follows the current setting and profile, with one diarized request.
 
-### Consent, setting and history UI
+### Setting and history UI
 
-- **Consent:** choosing Only Mine is the consent, so there is no separate flag
-  that could disagree with the picker. A biometric template needs explicit
-  consent (App Review 5.1.1(ii); GDPR treats voice used for identification as
-  biometric data), so nothing is preselected.
-  - New users choose Only My Voice or Everyone as an onboarding step in both
-    wizards, derived from persistent state like the other steps.
-  - Existing users stay on Everyone until they choose Only Mine on a one-time
-    card.
-  - The choice syncs through KVS, so choosing on one device starts learning on
-    the user's other devices; `PRIVACY.md` says so.
-- **Settings:** Settings has the same Voices picker and Forget My Voice.
+- **Default:** Only Mine is the default for new and existing users, and the
+  profile learns silently from ordinary one-voice dictations; there is no
+  consent step (maintainer decision, 2026-11-06). The profile never leaves the
+  device, `PRIVACY.md` describes it, and Forget My Voice deletes it. The
+  choice syncs through KVS, so it applies on all of the user's devices.
+- **Settings:** a Voices picker (Only Mine, Everyone) and Forget My Voice.
 - **History:** an entry with `unfilteredText` shows that other voices were left
   out, with Show Everyone and Copy Everything.
 - **Elsewhere:** nothing changes in the keyboard.
@@ -339,8 +334,11 @@ their attribution to `THIRD_PARTY_NOTICES.md` and `LICENSES/`.
   5 of 36. One owned conversion is less to trust.
 - **Keychain storage.** Not synced, but its items survive uninstall and are
   restored from device backups.
-- **Silent learning without consent.** No friction, but it builds a biometric
-  template unasked.
+- **Asking before learning.** Choosing Only Mine as the consent, in onboarding
+  and on a one-time card, is the conservative reading of GDPR and Illinois
+  BIPA for voice templates. The maintainer chose silent learning: the template
+  is on-device only, Apple's privacy definitions count as collected only data
+  that leaves the device, and Forget My Voice deletes it.
 - **Target-speaker extraction (VoxLock).** It handles overlap, but at about
   80 MB and slower than real time. Revisit it later.
 
@@ -380,12 +378,11 @@ their attribution to `THIRD_PARTY_NOTICES.md` and `LICENSES/`.
    fixture for the response cap. Older services reject the new field, so the rollback floor is
    this version; record it in the service README.
 5. **App.** Add `VoiceWatch`, `VoiceFilter`, `SpeakerEmbedder`,
-   `VoiceProfileStore`, the consent step in both onboarding wizards and the
-   card, settings and history UI, `unfilteredText` on `HistoryEntry` with its
+   `VoiceProfileStore`, settings and history UI, `unfilteredText` on `HistoryEntry` with its
    schema deploy, and Swedish strings. A test checks that an older build
    re-saving a history record keeps the new CloudKit field. Update
    `PRIVACY.md`, the notices, this repository's agent instructions,
-   `onboarding.md`, `mumla-access-service.md`, `unified-dictation.md` and
+   `mumla-access-service.md`, `unified-dictation.md` and
    `library-agent-tools.md`. Swift Testing covers the filter with fixed
    embeddings: a split user, a TV ad, someone else dictating, labels under
    2 s and no ready profile. The live gate runs the real stream, watcher, filter
