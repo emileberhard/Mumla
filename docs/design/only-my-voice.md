@@ -14,6 +14,8 @@ happens on the device.
   a leaked "Yeah?" from someone else costs less than a missing sentence.
 - Single-voice dictations, almost all of them, get exactly today's text and pay
   no on-device work before delivery.
+- Everyone keeps today's text, including the model's line breaks between
+  speakers.
 - The added latency between stop and delivery stays small: the provider's
   diarization cost plus a few tens of milliseconds on device.
 - The voice profile is a biometric template. It never leaves the device: no
@@ -99,9 +101,11 @@ one embedding per label and the profile to the set of user labels:
    from the same recording at the same-speaker threshold, and dropped
    otherwise. The stored profile does not keep labels: other people scored up to
    0.49 against it while the user's own muffled label scored 0.29.
-5. If nothing is dropped, deliver `text` unchanged. Otherwise deliver the kept
-   phrases joined by a space. Azure phrases are sentences with their own
-   capitalization and punctuation, so the seams need no repair.
+5. Deliver the kept phrases joined by a space, even when every label is kept.
+   The combined `text` is the same phrases, but the model writes line breaks at
+   some speaker changes, which would split the user's own sentence when
+   diarization gives the user two labels. Azure phrases are sentences with
+   their own capitalization and punctuation, so the seams need no repair.
 
 The starting values are a same-speaker threshold of 0.5, the middle of the
 measured gap, and a presence floor of 0.25. Validation sets both, and they are
