@@ -58,75 +58,61 @@ struct TranscriptRow: View {
     let entry: HistoryEntry
     let open: () -> Void
     @Environment(DictationCoordinator.self) private var coordinator
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var flash = false
+    @State private var copies = 0
 
     private var isCopied: Bool { coordinator.copiedTranscript?.id == entry.id }
 
     var body: some View {
-        Button(action: copy) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(entry.text)
-                    .lineLimit(3)
-                    .foregroundStyle(.primary)
-                HStack(spacing: 8) {
+        HStack(spacing: 4) {
+            Button(action: open) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.text)
+                        .lineLimit(3)
+                        .foregroundStyle(.primary)
                     Text(entry.createdAt, format: .dateTime.hour().minute())
+                        .font(.subheadline)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
-                    if isCopied {
-                        Group {
-                            if dynamicTypeSize.isAccessibilitySize {
-                                Image(systemName: "checkmark")
-                            } else {
-                                Label("Copied", systemImage: "checkmark")
-                            }
-                        }
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.tint)
-                        .transition(.symbolEffect(.drawOn))
-                    }
                 }
-                .font(.subheadline)
-                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(.rect)
-            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+            .buttonStyle(.plain)
+            .accessibilityLabel(accessibilityLabel)
+            Button(action: copy) {
+                Label(isCopied ? "Copied" : "Copy", systemImage: isCopied ? "checkmark" : "doc.on.doc")
+                    .labelStyle(.iconOnly)
+                    .font(.body.weight(.medium))
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 44, height: 44)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.tint)
+            .animation(.smooth(duration: 0.3), value: isCopied)
+            .sensoryFeedback(.impact(weight: .light), trigger: copies)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Copies the transcript")
+        .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         .padding(.vertical, 4)
-        .listRowBackground(Color.accentColor.opacity(flash ? 0.16 : 0))
-        .animation(.smooth(duration: 0.3), value: isCopied)
-        .sensoryFeedback(.impact(weight: .light), trigger: flash) { _, new in new }
         .contextMenu {
             Button("Copy", systemImage: "doc.on.doc", action: copy)
             ShareLink(item: entry.text)
-            Button("Show Transcript", systemImage: "text.page", action: open)
             Button("Delete", systemImage: "trash", role: .destructive, action: delete)
         }
         .swipeActions {
             Button("Delete", systemImage: "trash", role: .destructive, action: delete)
         }
-        .accessibilityAction(named: "Show Transcript", open)
     }
 
     private var accessibilityLabel: Text {
         let preview = entry.text.count > 120 ? String(entry.text.prefix(120)) + "…" : entry.text
         let time = entry.createdAt.formatted(date: .omitted, time: .shortened)
-        return isCopied ? Text("\(preview), \(time), copied") : Text("\(preview), \(time)")
+        return Text("\(preview), \(time)")
     }
 
     private func copy() {
         coordinator.copy(entry)
-        withAnimation(.easeIn(duration: 0.08)) {
-            flash = true
-        } completion: {
-            withAnimation(.easeOut(duration: 0.6)) {
-                flash = false
-            }
-        }
+        copies += 1
         AccessibilityNotification.Announcement("Copied").post()
     }
 
