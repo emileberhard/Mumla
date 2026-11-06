@@ -7,6 +7,13 @@ import { transcriptionPath } from "../src/protocol";
 import { AccessService } from "../src/server";
 import { AccessStore } from "../src/store";
 import { TranscriptionUpload } from "../src/transcription";
+import {
+  notification,
+  sign,
+  syntheticPolicy,
+  syntheticVerifier,
+  transaction,
+} from "./appstore-fixture";
 
 const resources: (() => void | Promise<void>)[] = [];
 afterEach(async () => {
@@ -84,6 +91,7 @@ async function setup(
     operatorToken: "synthetic-operator-token-with-32-characters",
     freeMonthlySeconds: 60,
     subjectOverrides: {},
+    ...syntheticPolicy,
   };
   const store = new AccessStore(config.database, config, "initialize");
   resources.push(() => store.close());
@@ -98,6 +106,7 @@ async function setup(
         return "verified-apple-identity";
       },
     },
+    syntheticVerifier(),
     store,
     { version: "1.2.3", commit: "abc123" },
     onFatal,
@@ -1581,4 +1590,63 @@ test("a ready client is not timed out or charged while the upstream stops consum
     fetchSpy.mockRestore();
     clock.mockRestore();
   }
+});
+
+test("purchases and App Store notifications raise the account's plan over HTTP", async () => {
+  const { call, session, config } = await setup(async () => new Response());
+  const free = await (await call("/v1/access", "GET", session.token)).json();
+  expect(free.allowance).toMatchObject({
+    plan: "free",
+    limit_seconds: 60,
+    pro_limit_seconds: 108_000,
+  });
+  const invalid = await call("/v1/purchases", "POST", session.token, {
+    signed_transaction: "a.b.c",
+  });
+  expect(invalid.status).toBe(400);
+  expect(await invalid.json()).toEqual({ error: { code: "invalid_purchase" } });
+  expect(
+    (
+      await call("/v1/purchases", "POST", session.token, {
+        signed_transaction: sign(transaction()),
+        extra: true,
+      })
+    ).status,
+  ).toBe(400);
+  const owned = await call("/v1/purchases", "POST", session.token, {
+    signed_transaction: sign(
+      transaction({ appAccountToken: "00000000-0000-4000-8000-000000000000" }),
+    ),
+  });
+  expect(owned.status).toBe(409);
+  expect(await owned.json()).toEqual({
+    error: { code: "purchase_owned_elsewhere" },
+  });
+  const notify = (signedPayload: string) =>
+    call("/v1/app-store/notifications", "POST", undefined, { signedPayload });
+  expect((await notify(notification(undefined))).status).toBe(200);
+  expect((await notify("a.b.c")).status).toBe(400);
+  const renewal = sign(
+    transaction({
+      transactionId: "2000000000000002",
+      purchaseDate: Date.now(),
+      appAccountToken: session.subject,
+    }),
+  );
+  expect((await notify(notification(renewal))).status).toBe(200);
+  const pro = await (await call("/v1/access", "GET", session.token)).json();
+  expect(pro.allowance).toMatchObject({
+    plan: "pro",
+    limit_seconds: 7200,
+    pro_limit_seconds: 108_000,
+  });
+  const submitted = await call("/v1/purchases", "POST", session.token, {
+    signed_transaction: renewal,
+  });
+  expect(submitted.status).toBe(200);
+  expect((await submitted.json()).allowance.plan).toBe("pro");
+  expect(
+    (await call("/internal/fence", "POST", config.operatorToken)).status,
+  ).toBe(200);
+  expect((await notify(notification(renewal))).status).toBe(503);
 });

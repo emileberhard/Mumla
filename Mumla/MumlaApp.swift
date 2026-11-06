@@ -148,7 +148,9 @@ private struct AllowanceMenuItem: View {
         case .checking:
             EmptyView()
         case .available(let allowance):
-            if allowance.isExhausted {
+            if allowance.showsProBadge {
+                Text("Mumla Pro")
+            } else if allowance.isExhausted {
                 Text("No minutes left until \(allowance.resetsAt, format: .dateTime.month(.wide).day())")
             } else {
                 Text("\(allowance.remaining.wholeMinutes) of \(allowance.limit.wholeMinutes) min left")
@@ -214,6 +216,7 @@ struct GeneralSettingsTab: View {
         Form {
             Section {
                 AllowanceView(access: coordinator.access)
+                ProStatusRow(access: coordinator.access)
             }
 
             ShortcutSettingsSection(coordinator: coordinator)

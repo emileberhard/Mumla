@@ -11,6 +11,7 @@ struct AccountView: View {
             Form {
                 Section {
                     AllowanceView(access: coordinator.access)
+                    ProPlanRows()
                 }
 
                 Section {
@@ -146,6 +147,7 @@ private struct AboutView: View {
         Form {
             Section {
                 LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                Link("Privacy Policy", destination: MumlaPro.privacyPolicyURL)
                 NavigationLink("Third-party Notices") {
                     ThirdPartyNoticesView()
                 }

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { AccessConfig } from "../src/config";
 import { transcriptionPath } from "../src/protocol";
 import { AccessStore } from "../src/store";
+import { syntheticPolicy } from "./appstore-fixture";
 
 const main = new URL("../src/main.ts", import.meta.url).pathname;
 const preload = new URL("fixtures/cloudkit-preload.ts", import.meta.url)
@@ -40,6 +41,7 @@ async function fixture(upstream: (request: Request) => Promise<Response>) {
     operatorToken: "synthetic-operator-token-with-32-characters",
     freeMonthlySeconds: 60,
     subjectOverrides: {},
+    ...syntheticPolicy,
   };
   const store = new AccessStore(config.database, config, "initialize");
   const session = store.enroll("synthetic-account", Date.now());

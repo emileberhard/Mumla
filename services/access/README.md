@@ -40,17 +40,22 @@ previous executable against the snapshot before fencing production.
 
 Configuration is a required JSON object; no operator defaults are committed:
 
-| Field                | Contract                                                      |
-| -------------------- | ------------------------------------------------------------- |
-| `listenPort`         | Unprivileged loopback port                                    |
-| `database`           | Absolute private SQLite path; parent directory already exists |
-| `cloudKitContainer`  | Existing containing-app container, Production                 |
-| `cloudKitAPIToken`   | Container API token; also an app release input                |
-| `routerOrigin`       | HTTP loopback origin with no path or credentials              |
-| `routerKey`          | Server-only restricted transcription key                      |
-| `operatorToken`      | At least 32 random characters; operator endpoints only        |
-| `freeMonthlySeconds` | Initially 3600; service-owned policy                          |
-| `subjectOverrides`   | Object from verified subject UUIDs to monthly seconds         |
+| Field                      | Contract                                                           |
+| -------------------------- | ------------------------------------------------------------------ |
+| `listenPort`               | Unprivileged loopback port                                         |
+| `database`                 | Absolute private SQLite path; parent directory already exists      |
+| `cloudKitContainer`        | Existing containing-app container, Production                      |
+| `cloudKitAPIToken`         | Container API token; also an app release input                     |
+| `routerOrigin`             | HTTP loopback origin with no path or credentials                   |
+| `routerKey`                | Server-only restricted transcription key                           |
+| `operatorToken`            | At least 32 random characters; operator endpoints only             |
+| `freeMonthlySeconds`       | Initially 3600; service-owned policy                               |
+| `proMonthlySeconds`        | Pro's monthly limit for Production purchases (30 hours)            |
+| `sandboxProMonthlySeconds` | Pro's monthly limit for Sandbox purchases (App Review, TestFlight) |
+| `subjectOverrides`         | Object from verified subject UUIDs to monthly seconds              |
+| `appStoreBundleId`         | The iOS app's bundle ID that signed transactions must carry        |
+| `appStoreAppId`            | The app's App Store Apple ID, checked on Production payloads       |
+| `subscriptionGroupId`      | The Mumla Pro subscription group                                   |
 
 The apps take the origin from `MumlaAccessOrigin` in their Info.plists and the
 CloudKit API token from the release environment's `MUMLA_CLOUDKIT_API_TOKEN`.
@@ -133,7 +138,11 @@ copies the published snapshot plus private configuration, verifies the hash
 and SQLite integrity, and retains the latest two recovery points. It never copies
 a live WAL database or restores old usage during executable rollback. No identity
 secret exists. The initial schema is version 1 and rollback-readable; future
-schema changes need an explicit compatibility transition.
+schema changes need an explicit compatibility transition. Pro is a
+forward-only boundary: the pre-Pro executable rejects Pro's configuration and
+ignores purchases, so it is never a rollback target once Pro ships. The first
+Pro deploy's fallback restores the previous executable together with its
+previous configuration.
 
 The private poller prepares/checks while open, waits at most 900 seconds for idle,
 fences atomically, replaces, validates status, then reopens. Failure before fencing
@@ -154,7 +163,8 @@ Only identity hashes, stable random subject UUIDs, hashed sessions/grants and
 monthly sample aggregates persist. No audio, dictionary, transcript or CloudKit
 token is stored. Keep the current and previous two months of aggregates; expired
 sessions and unused grants are pruned. Subject mappings remain for account and
-future purchase ownership. SQLite pages are capped at 192 MiB; WAL checkpoints
+purchase ownership. One row per App Store subscription keeps its latest signed
+state and owner, bounded by the number of subscriptions. SQLite pages are capped at 192 MiB; WAL checkpoints
 and bounded pruning keep transient state small. The private supervisor caps
 logs, the poller retains two executable artifacts and recovery points. The
 one-MiB page reserve raises a fatal capacity incident before the page cap.
@@ -186,5 +196,25 @@ supplies 16,000 samples/second; batch uploads are faster. A completed upload
 waiting for its result has no progress timer. Response-read cancellation retains
 client-failure charging. Recovery transcription is a new admitted attempt.
 Periods are UTC calendar months; clients render the returned reset instant
-locally. The future Pro ceiling belongs in the same service policy; no StoreKit
-purchase handling is implemented here.
+locally. Pro raises the same month's limit; it never resets used samples.
+
+## Purchases
+
+[Mumla Pro](../../docs/design/mumla-pro.md) owns the ownership policy. Apps
+submit signed transactions to `POST /v1/purchases` with their session; Apple
+posts App Store Server Notifications V2 to the public
+`POST /v1/app-store/notifications`. Both verify offline against the committed
+Apple Root CA - G3 and apply one idempotent store operation. Allow only Apple's
+`17.0.0.0/8` on the notification path at the Cloudflare edge.
+
+After any period the notification endpoint was unreachable or answered 5xx, or
+on a report of a missing renewal or refund, replay Apple's notification history
+from a checkout:
+
+```sh
+MUMLA_IAP_KEY_PATH=<private .p8> MUMLA_IAP_KEY_ID=<id> MUMLA_IAP_ISSUER_ID=<id> \
+  bun scripts/replay-notifications.ts <Production|Sandbox> <since ISO 8601> <service origin>
+```
+
+History covers 180 days in Production and 30 in the Sandbox. Replays are safe:
+older signed state never replaces newer.

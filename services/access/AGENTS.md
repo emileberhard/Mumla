@@ -72,6 +72,14 @@ to SpeechKit or llm-router.
   first preamble bytes and Busboy's first closing delimiter, requiring CRLF then
   EOF.
 
+- Pro entitlements come only from Apple-signed transactions verified offline
+  against the pinned Apple Root CA - G3, through `POST /v1/purchases` and App
+  Store Server Notifications. One row per subscription holds its latest signed
+  state and owner; never let a client assert a plan, and keep the ownership
+  rules in [Mumla Pro](../../docs/design/mumla-pro.md). Sandbox purchases get
+  their own smaller limit. Pro is a forward-only boundary: never roll back to
+  a pre-Pro executable once it ships.
+
 - Keep config, operator values, real identity proofs and recovery snapshots
   private. Logs contain fixed codes and counts only. Do not log requests or
   URLs.

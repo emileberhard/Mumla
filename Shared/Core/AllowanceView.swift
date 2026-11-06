@@ -36,7 +36,7 @@ extension MumlaAccess.Allowance {
         remaining <= .seconds(600)
     }
 
-    static let placeholder = MumlaAccess.Allowance(limit: .seconds(3600), used: .zero, resetsAt: .now)
+    static let placeholder = MumlaAccess.Allowance(limit: .seconds(3600), used: .zero, resetsAt: .now, plan: .notOffered)
 }
 
 extension Duration {
@@ -80,7 +80,9 @@ private struct AllowanceMeter: View {
     }
 
     private var headline: LocalizedStringKey {
-        if allowance.isExhausted {
+        if allowance.showsProBadge {
+            "Mumla Pro"
+        } else if allowance.isExhausted {
             "No minutes left"
         } else if allowance.remaining < .seconds(60) {
             "Less than a minute left"

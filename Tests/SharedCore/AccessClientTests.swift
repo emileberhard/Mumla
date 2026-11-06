@@ -32,7 +32,7 @@ struct AccessClientTests {
         service.reply("POST /v1/dictations", 401, #"{"error":{"code":"invalid_session"}}"#)
         service.reply("POST /v1/sessions", 201, StubAccessService.session("s1", days: 30))
         service.reply("POST /v1/dictations", 201, StubAccessService.grant("g1", samples: 16_000))
-        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: FakeAccessIdentity.account))
+        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: FakeAccessIdentity.account, subject: FakeAccessIdentity.subject))
 
         let (grant, _) = try await service.client(store: store).reserve(maximumAudioSeconds: 1)
 
@@ -74,7 +74,7 @@ struct AccessClientTests {
         let service = StubAccessService()
         service.reply("POST /v1/sessions", 201, StubAccessService.session("s1", days: 30))
         service.reply("GET /v1/access", 200, StubAccessService.allowance)
-        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: "previous-account"))
+        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: "previous-account", subject: FakeAccessIdentity.subject))
 
         _ = try await service.client(store: store).allowance()
 
@@ -88,7 +88,7 @@ struct AccessClientTests {
         let service = StubAccessService()
         service.reply("POST /v1/session/renew", 200, StubAccessService.session("s2", days: 30))
         service.reply("GET /v1/access", 200, StubAccessService.allowance)
-        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + daysLeft * 86_400, account: FakeAccessIdentity.account))
+        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + daysLeft * 86_400, account: FakeAccessIdentity.account, subject: FakeAccessIdentity.subject))
 
         _ = try await service.client(store: store).allowance()
 
@@ -104,10 +104,54 @@ struct AccessClientTests {
     func refusedReservationsReportTheirReason(status: Int, body: String, failure: AccessFailure) async throws {
         let service = StubAccessService()
         service.reply("POST /v1/dictations", status, body)
-        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: FakeAccessIdentity.account))
+        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: FakeAccessIdentity.account, subject: FakeAccessIdentity.subject))
 
         await #expect(throws: failure) {
             try await service.client(store: store).reserve(maximumAudioSeconds: 110)
+        }
+        #expect(service.requests.count == 1)
+    }
+
+    @Test(arguments: [
+        (allowance: #""limit_seconds":3600,"used_seconds":0,"resets_at":"2026-12-01T00:00:00Z""#, plan: MumlaAccess.Plan.notOffered),
+        (allowance: #""plan":"free","limit_seconds":3600,"pro_limit_seconds":108000,"used_seconds":0,"resets_at":"2026-12-01T00:00:00Z""#, plan: .free(proLimit: .seconds(108_000))),
+        (allowance: #""plan":"pro","limit_seconds":108000,"pro_limit_seconds":108000,"used_seconds":0,"resets_at":"2026-12-01T00:00:00Z""#, plan: .pro),
+    ])
+    func theAllowanceCarriesThePlanTheServiceReports(allowance: String, plan: MumlaAccess.Plan) async throws {
+        let service = StubAccessService()
+        service.reply("GET /v1/access", 200, #"{"allowance":{\#(allowance)}}"#)
+        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: FakeAccessIdentity.account, subject: FakeAccessIdentity.subject))
+
+        #expect(try await service.client(store: store).allowance().plan == plan)
+    }
+
+    @Test func aPurchaseIsSubmittedUnderTheVerifiedAccountsSessionAndRaisesThePlan() async throws {
+        let service = StubAccessService()
+        service.reply("POST /v1/sessions", 201, StubAccessService.session("s1", days: 30))
+        service.reply("POST /v1/purchases", 200, #"{"allowance":{"plan":"pro","limit_seconds":108000,"pro_limit_seconds":108000,"used_seconds":3600,"resets_at":"2026-12-01T00:00:00Z"}}"#)
+        let client = service.client()
+
+        #expect(try await client.accountToken() == FakeAccessIdentity.subject)
+        let allowance = try await client.submitPurchase(signedTransaction: "header.payload.signature")
+
+        #expect(allowance.plan == .pro)
+        #expect(allowance.used == .seconds(3_600))
+        #expect(service.requests.map(\.route) == ["POST /v1/sessions", "POST /v1/purchases"])
+        #expect(service.requests[1].authorization == "Bearer s1")
+        #expect(try service.requests[1].json([String: String].self) == ["signed_transaction": "header.payload.signature"])
+    }
+
+    @Test(arguments: [
+        (status: 400, body: #"{"error":{"code":"invalid_purchase"}}"#, rejection: PurchaseRejection.invalid),
+        (status: 409, body: #"{"error":{"code":"purchase_owned_elsewhere"}}"#, rejection: .ownedElsewhere),
+    ])
+    func refusedPurchasesReportWhyTheyAreFinal(status: Int, body: String, rejection: PurchaseRejection) async throws {
+        let service = StubAccessService()
+        service.reply("POST /v1/purchases", status, body)
+        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: FakeAccessIdentity.account, subject: FakeAccessIdentity.subject))
+
+        await #expect(throws: rejection) {
+            try await service.client(store: store).submitPurchase(signedTransaction: "header.payload.signature")
         }
         #expect(service.requests.count == 1)
     }
@@ -124,7 +168,7 @@ struct AccessClientTests {
     @Test func endingTheSessionForgetsAndRevokesIt() async throws {
         let service = StubAccessService()
         service.reply("DELETE /v1/session", 204, "")
-        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: FakeAccessIdentity.account))
+        let store = MemoryAccessSessionStore(.init(token: "s0", expiresAt: .now + 20 * 86_400, account: FakeAccessIdentity.account, subject: FakeAccessIdentity.subject))
 
         await service.client(store: store).endSession()
 
@@ -149,6 +193,7 @@ nonisolated final class MemoryAccessSessionStore: AccessSessionStore {
 
 nonisolated final class FakeAccessIdentity: AccessIdentity {
     static let account = "synthetic-account"
+    static let subject = UUID(uuidString: "6F9619FF-8B86-4011-B42D-00C04FC964FF")!
     private let status: CKAccountStatus
     private let proofs = Mutex(0)
 
@@ -178,7 +223,7 @@ nonisolated final class StubAccessService: Sendable {
 
     static func session(_ token: String, days: Double) -> String {
         let expiry = Date.now.addingTimeInterval(days * 86_400).ISO8601Format()
-        return #"{"token":"\#(token)","expires_at":"\#(expiry)","subject":"synthetic","allowance":{"limit_seconds":3600,"used_seconds":0,"in_flight_seconds":0,"reserved_seconds":0,"resets_at":"2026-12-01T00:00:00.000Z"}}"#
+        return #"{"token":"\#(token)","expires_at":"\#(expiry)","subject":"\#(FakeAccessIdentity.subject.uuidString.lowercased())","allowance":{"limit_seconds":3600,"used_seconds":0,"in_flight_seconds":0,"reserved_seconds":0,"resets_at":"2026-12-01T00:00:00.000Z"}}"#
     }
 
     static func grant(_ token: String, samples: Int) -> String {

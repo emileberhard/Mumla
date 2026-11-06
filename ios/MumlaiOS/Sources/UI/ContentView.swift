@@ -14,6 +14,7 @@ enum TranscriptRoute: Hashable {
 enum ContentSheet: Identifiable {
     case dictation
     case account
+    case pro
 
     var id: Self { self }
 }
@@ -58,6 +59,8 @@ struct ContentView: View {
                     .navigationTransition(.zoom(sourceID: DictationStrip.transitionID, in: dictationTransition))
             case .account:
                 AccountView()
+            case .pro:
+                ProOfferView()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in

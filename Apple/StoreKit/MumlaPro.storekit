@@ -1,0 +1,94 @@
+{
+  "identifier" : "4E5A0B6C-2D41-4F3B-9C8E-5A7D1F2B3C40",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6779234657",
+    "_developerTeamID" : "NNP2B278S6",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "22248259",
+      "localizations" : [
+        {
+          "description" : "",
+          "displayName" : "Mumla Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "Mumla Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6792479392",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "30 hours of dictation each month",
+              "displayName" : "Mumla Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "emileberhard.WisprClone.ios.subscription.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Mumla Pro Monthly",
+          "subscriptionGroupID" : "22248259",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "49.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6831377958",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "30 hours of dictation each month",
+              "displayName" : "Mumla Pro Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "emileberhard.WisprClone.ios.subscription.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Mumla Pro Yearly",
+          "subscriptionGroupID" : "22248259",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

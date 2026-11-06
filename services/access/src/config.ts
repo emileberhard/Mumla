@@ -10,7 +10,12 @@ export interface AccessConfig {
   routerKey: string;
   operatorToken: string;
   freeMonthlySeconds: number;
+  proMonthlySeconds: number;
+  sandboxProMonthlySeconds: number;
   subjectOverrides: Record<string, number>;
+  appStoreBundleId: string;
+  appStoreAppId: number;
+  subscriptionGroupId: string;
 }
 
 export async function readConfig(path: string): Promise<AccessConfig> {
@@ -26,7 +31,12 @@ export async function readConfig(path: string): Promise<AccessConfig> {
     "routerKey",
     "operatorToken",
     "freeMonthlySeconds",
+    "proMonthlySeconds",
+    "sandboxProMonthlySeconds",
     "subjectOverrides",
+    "appStoreBundleId",
+    "appStoreAppId",
+    "subscriptionGroupId",
   ]);
   for (const key of [
     "database",
@@ -35,6 +45,8 @@ export async function readConfig(path: string): Promise<AccessConfig> {
     "routerOrigin",
     "routerKey",
     "operatorToken",
+    "appStoreBundleId",
+    "subscriptionGroupId",
   ]) {
     if (typeof value[key] !== "string" || !value[key].trim()) {
       throw new Error(`Invalid configuration: ${key}`);
@@ -53,7 +65,9 @@ export async function readConfig(path: string): Promise<AccessConfig> {
     origin.password ||
     origin.search ||
     origin.hash ||
-    (value.operatorToken as string).length < 32
+    (value.operatorToken as string).length < 32 ||
+    !/^[A-Za-z0-9.-]+$/.test(value.appStoreBundleId as string) ||
+    !/^[0-9]+$/.test(value.subscriptionGroupId as string)
   ) {
     throw new Error("Invalid configuration boundary");
   }
@@ -75,6 +89,15 @@ export async function readConfig(path: string): Promise<AccessConfig> {
     routerKey: value.routerKey as string,
     operatorToken: value.operatorToken as string,
     freeMonthlySeconds: integer(value.freeMonthlySeconds, 1, 31 * 24 * 3600),
+    proMonthlySeconds: integer(value.proMonthlySeconds, 1, 31 * 24 * 3600),
+    sandboxProMonthlySeconds: integer(
+      value.sandboxProMonthlySeconds,
+      1,
+      31 * 24 * 3600,
+    ),
     subjectOverrides: overrides,
+    appStoreBundleId: value.appStoreBundleId as string,
+    appStoreAppId: integer(value.appStoreAppId, 1, Number.MAX_SAFE_INTEGER),
+    subscriptionGroupId: value.subscriptionGroupId as string,
   };
 }

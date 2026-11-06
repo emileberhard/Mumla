@@ -116,6 +116,11 @@ struct DictationStrip: View {
         coordinator.access.state.blocksDictation ? DictationBlock(coordinator.access.state) : nil
     }
 
+    private var offersPro: Bool {
+        guard case .available(let allowance) = coordinator.access.state else { return false }
+        return allowance.isExhausted && allowance.offersPro
+    }
+
     private var accessibilityLabel: Text {
         switch coordinator.phase {
         case .recording: Text("Recording")
@@ -145,7 +150,7 @@ struct DictationStrip: View {
         case .processing:
             break
         case .idle where blocked != nil, .success where blocked != nil:
-            coordinator.presentedSheet = .account
+            coordinator.presentedSheet = offersPro ? .pro : .account
         case .idle, .success, .error:
             let canRecord = coordinator.microphoneAuthorized
             coordinator.startDictation()

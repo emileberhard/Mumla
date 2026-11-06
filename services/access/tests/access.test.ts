@@ -14,7 +14,12 @@ function database(seconds: number) {
   const directory = mkdtempSync(join(tmpdir(), "mumla-access-test-"));
   resources.push(() => rmSync(directory, { recursive: true, force: true }));
   const path = join(directory, "access.sqlite");
-  const policy = { freeMonthlySeconds: seconds, subjectOverrides: {} };
+  const policy = {
+    freeMonthlySeconds: seconds,
+    proMonthlySeconds: 108_000,
+    sandboxProMonthlySeconds: 7200,
+    subjectOverrides: {},
+  };
   new AccessStore(path, policy, "initialize").close();
   return { path, policy };
 }
