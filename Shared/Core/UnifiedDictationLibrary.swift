@@ -406,7 +406,7 @@ final class UnifiedDictationLibrary {
         let wav = try await OriginalAudio.providerWAV(from: original(for: id), fileType: .caf)
         try await store.validateAccountSession(session)
         try Task.checkCancellation()
-        let text = try await transcriber.transcribe(wav: wav, languageHints: plan.languages, customVocabulary: plan.dictionary)
+        let text = try await transcriber.transcribe(wav: wav, languageHints: plan.languages, customVocabulary: plan.dictionary).text
         try await recordProviderResult(destination: destination, captureID: id, text: text, model: TranscriptionProviderType.dictation.batchResultModelID, plan: plan)
         try await store.validateAccountSession(session)
         try Task.checkCancellation()

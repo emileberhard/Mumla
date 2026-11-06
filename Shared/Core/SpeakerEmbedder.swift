@@ -40,7 +40,6 @@ nonisolated enum KaldiFilterbank {
         sampleCount < windowLength ? 0 : 1 + (sampleCount - windowLength) / hopLength
     }
 
-    /// Log mel energies, frame-major, matching torchaudio's Kaldi `fbank` with dither 0 on input scaled by 2^15.
     static func features(of samples: [Float]) throws -> [Float] {
         let frames = frameCount(sampleCount: samples.count)
         guard frames > 0 else { return [] }
@@ -72,7 +71,6 @@ nonisolated enum KaldiFilterbank {
         return energies.map { log(max($0, floor)) }
     }
 
-    /// Triangular mel filters, spectrum-major (`spectrumLength` × `binCount`), with the Nyquist row zero as in Kaldi.
     private static func makeBanks() -> [Float] {
         func mel(_ frequency: Double) -> Double { 1127 * log(1 + frequency / 700) }
         let low = mel(20), high = mel(Double(sampleRate) / 2)
@@ -91,7 +89,6 @@ nonisolated enum KaldiFilterbank {
     }
 }
 
-/// Owns the bundled speaker model. Inference runs on the CPU so it stays available in the background.
 actor SpeakerEmbedder {
     static let modelVersion = "wespeaker-voxceleb-resnet34-LM-f0c48c2-pal8"
     static let windowSamples = 10 * KaldiFilterbank.sampleRate
@@ -109,7 +106,6 @@ actor SpeakerEmbedder {
         Bundle.main.url(forResource: "SpeakerModel", withExtension: "mlmodelc")
     }
 
-    /// The embedding of 16 kHz mono speech, tiled or cut to the model's 10 s window.
     func embedding(of samples: [Float]) throws -> SpeakerEmbedding {
         guard !samples.isEmpty else { throw SpeakerEmbedderError.emptyAudio }
         var window = samples

@@ -19,6 +19,7 @@ nonisolated final class HistoryEntry {
     var deviceName: String = ""
     var audioRecordingID: UUID?
     var isHidden: Bool = false
+    var unfilteredText: String?
 
     #Index<HistoryEntry>([\.createdAt], [\.id])
 
@@ -158,6 +159,7 @@ final class MumlaDataStore {
     private(set) var cloudDeletionNeedsDecision = false
     private var accountLease: AccountPartitionLease?
     private(set) var library: UnifiedDictationLibrary?
+    private(set) var voiceProfiles: VoiceProfileStore?
     private var captureContexts: [UUID: ModelContainer] = [:]
     private struct CaptureDestination {
         let recordingID: UUID?
@@ -381,6 +383,7 @@ final class MumlaDataStore {
         cloudDeletionNeedsDecision = false
         cloudSync = nil
         let directory = AccountPartition.directory(root: rootDirectory, ownerID: ownerID)
+        voiceProfiles = ownerID.map { _ in VoiceProfileStore(accountDirectory: directory) }
         container = Self.makeContainer(directory: directory, onPersistenceError: onPersistenceError)
         container.mainContext.autosaveEnabled = false
         audioArchive = AudioArchive(
@@ -596,6 +599,15 @@ final class MumlaDataStore {
         ]
     }
 
+    func onlyMyVoice(
+        forgottenAt: Date?, onFailure: @escaping @Sendable (VoiceFilterStage, DiagnosticError) -> Void
+    ) async throws -> OnlyMyVoice? {
+        guard let store = voiceProfiles else { return nil }
+        guard let modelURL = SpeakerEmbedder.bundledModelURL else { throw VoiceFilterError.modelMissing }
+        return OnlyMyVoice(profile: try await store.profile(forgottenAt: forgottenAt), store: store, modelURL: modelURL,
+                           startedAt: .now, onFailure: onFailure)
+    }
+
     func makeOriginalAudioWriter(context: DictationContext) async throws -> OriginalAudioWriter {
         let partition = partitionID
         let target = container
@@ -617,6 +629,7 @@ final class MumlaDataStore {
     func record(
         text: String,
         audioRecordingID: UUID? = nil,
+        unfilteredText: String? = nil,
         createdAt: Date = .now
     ) -> UUID? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -627,7 +640,7 @@ final class MumlaDataStore {
             if sharedProjectionWrites[result.id] == nil {
                 sharedProjectionWrites[result.id] = Task {
                     defer { sharedProjectionWrites.removeValue(forKey: result.id) }
-                    do { try await projection.insert(result, deviceName: Self.deviceName, lease: lease) }
+                    do { try await projection.insert(result, deviceName: Self.deviceName, unfilteredText: unfilteredText, lease: lease) }
                     catch { onPersistenceError?(error) }
                 }
             }
@@ -636,6 +649,7 @@ final class MumlaDataStore {
         if let audioRecordingID, let captureContainer = captureContexts[audioRecordingID] {
             let entry = HistoryEntry(text: text, createdAt: createdAt, providerDisplayName: TranscriptionProviderType.dictationDisplayName,
                                      deviceName: Self.deviceName, audioRecordingID: audioRecordingID)
+            entry.unfilteredText = unfilteredText
             let destination = captureContainer.mainContext
             do {
                 destination.insert(entry)
@@ -654,6 +668,7 @@ final class MumlaDataStore {
             deviceName: Self.deviceName,
             audioRecordingID: audioRecordingID
         )
+        entry.unfilteredText = unfilteredText
         do {
             if try !Self.isUnifiedRecording(audioRecordingID, in: context) {
                 try enqueueSyncChange(for: entry.id, kind: .save)

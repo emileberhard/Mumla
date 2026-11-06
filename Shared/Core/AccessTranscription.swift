@@ -63,6 +63,12 @@ nonisolated enum AccessStreamFailure: Error, Equatable, StructuredDiagnosticErro
 nonisolated struct AccessStreamReply: Equatable, Sendable {
     let text: String
     let dictationID: String?
+    let phrases: [VoicePhrase]?
+}
+
+nonisolated enum AccessSpeakers: String, Encodable, Sendable {
+    case onRequest
+    case diarize
 }
 
 nonisolated final class AccessStream: Sendable {
@@ -77,7 +83,7 @@ nonisolated final class AccessStream: Sendable {
         reply = Task { try await Self.awaitReply(on: socket) }
     }
 
-    static func open(_ grant: AccessGrant, languages: [String], vocabulary: [String]) async throws -> AccessStream {
+    static func open(_ grant: AccessGrant, languages: [String], vocabulary: [String], speakers: AccessSpeakers?) async throws -> AccessStream {
         var components = URLComponents(url: grant.origin.appending(path: "/v1/dictations/stream"), resolvingAgainstBaseURL: false)
         components?.scheme = grant.origin.scheme == "http" ? "ws" : "wss"
         guard let url = components?.url else { throw AccessFailure.serviceUnavailable }
@@ -89,7 +95,7 @@ nonisolated final class AccessStream: Sendable {
         socket.resume()
         let stream = AccessStream(socket: socket)
         do {
-            let start = try JSONEncoder().encode(Start(languages: languages, vocabulary: leadingTerms(of: vocabulary)))
+            let start = try JSONEncoder().encode(Start(languages: languages, vocabulary: leadingTerms(of: vocabulary), speakers: speakers))
             try await stream.deliver(.string(String(decoding: start, as: UTF8.self)))
         } catch {
             stream.cancel()
@@ -115,6 +121,23 @@ nonisolated final class AccessStream: Sendable {
         try await deliver(.string(#"{"type":"finish"}"#))
     }
 
+    func requestVoices() async throws {
+        try await deliver(.string(#"{"type":"voices"}"#))
+    }
+
+    var voices: AccessStreamReply? {
+        get async throws {
+            _ = try await result
+            return try await withTaskCancellationHandler {
+                switch try await Self.receiveReply(on: socket) {
+                case .unavailable: nil
+                case .reply(let reply) where reply.phrases != nil: reply
+                case .reply: throw AccessStreamFailure.invalidReply
+                }
+            } onCancel: { cancel() }
+        }
+    }
+
     var result: AccessStreamReply {
         get async throws {
             try await withTaskCancellationHandler { try await reply.value } onCancel: { cancel() }
@@ -137,13 +160,29 @@ nonisolated final class AccessStream: Sendable {
     }
 
     private static func awaitReply(on socket: URLSessionWebSocketTask) async throws -> AccessStreamReply {
+        guard case .reply(let reply) = try await receiveReply(on: socket) else { throw AccessStreamFailure.invalidReply }
+        return reply
+    }
+
+    enum Received: Equatable {
+        case reply(AccessStreamReply)
+        case unavailable
+    }
+
+    private static func receiveReply(on socket: URLSessionWebSocketTask) async throws -> Received {
         let message: URLSessionWebSocketTask.Message
         do { message = try await socket.receive() } catch { throw failure(error, on: socket) }
-        guard case .string(let text) = message, let reply = try? JSONDecoder().decode(Reply.self, from: Data(text.utf8)) else {
-            throw AccessStreamFailure.invalidReply
-        }
+        guard case .string(let text) = message else { throw AccessStreamFailure.invalidReply }
+        return try parse(text)
+    }
+
+    static func parse(_ text: String) throws -> Received {
+        guard let reply = try? JSONDecoder().decode(Reply.self, from: Data(text.utf8)) else { throw AccessStreamFailure.invalidReply }
         switch (reply.type, reply.text, reply.status) {
-        case ("result", let text?, _): return AccessStreamReply(text: text, dictationID: reply.id)
+        case ("result", let text?, _): return .reply(AccessStreamReply(text: text, dictationID: reply.id, phrases: nil))
+        case ("voices", let text?, _) where reply.phrases != nil:
+            return .reply(AccessStreamReply(text: text, dictationID: reply.id, phrases: reply.phrases))
+        case ("voices_unavailable", _, _): return .unavailable
         case ("error", _, let status?): throw AccessStreamFailure.refused(status: status, dictationID: reply.id)
         default: throw AccessStreamFailure.invalidReply
         }
@@ -158,6 +197,7 @@ nonisolated final class AccessStream: Sendable {
         let type = "start"
         let languages: [String]
         let vocabulary: [String]
+        let speakers: AccessSpeakers?
     }
 
     private struct Reply: Decodable {
@@ -165,6 +205,7 @@ nonisolated final class AccessStream: Sendable {
         let text: String?
         let status: Int?
         let id: String?
+        let phrases: [VoicePhrase]?
     }
 }
 
@@ -176,25 +217,41 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
     private let languageHints: [String]
     private let customVocabulary: [String]
     private let onAudioLimitReached: @Sendable () -> Void
+    private let voice: OnlyMyVoice?
+    private let watch: VoiceWatch?
     private var stream: AccessStream?
     private var continuation: AsyncThrowingStream<RealtimeTranscriptionEvent, any Error>.Continuation?
     private var outcome: Task<Void, Never>?
+    private var voiceCheck: VoiceCheck = .idle
     private var budget = AudioSampleBudget(samples: 0)
     private var reportedLimit = false
     private var isDisconnected = false
+    private var isDelivered = false
     private(set) var timing = DictationTiming(captureStartedAt: .now)
+    private(set) var voices: VoiceFilterOutcome?
 
-    init(grant: Task<AccessGrant, any Error>, languageHints: [String], customVocabulary: [String], onAudioLimitReached: @escaping @Sendable () -> Void) {
+    private enum VoiceCheck {
+        case idle
+        case checking(Task<Void, Never>)
+        case requested(VoiceRecording)
+        case notHeard
+        case failed(any Error)
+    }
+
+    init(grant: Task<AccessGrant, any Error>, languageHints: [String], customVocabulary: [String], voice: OnlyMyVoice?,
+         onAudioLimitReached: @escaping @Sendable () -> Void) {
         self.grant = grant
         self.languageHints = languageHints
         self.customVocabulary = customVocabulary
+        self.voice = voice
         self.onAudioLimitReached = onAudioLimitReached
+        watch = voice.map { VoiceWatch(modelURL: $0.modelURL) }
     }
 
     func connectTranscription() async throws -> AsyncThrowingStream<RealtimeTranscriptionEvent, any Error> {
         let grant = try await grant.value
         guard !isDisconnected else { throw CancellationError() }
-        let stream = try await AccessStream.open(grant, languages: languageHints, vocabulary: customVocabulary)
+        let stream = try await AccessStream.open(grant, languages: languageHints, vocabulary: customVocabulary, speakers: voice?.speakers)
         guard !isDisconnected, !Task.isCancelled else {
             stream.cancel()
             throw CancellationError()
@@ -218,7 +275,10 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
     func sendAudioChunk(_ audioData: Data) async throws {
         guard let stream, !isDisconnected else { throw CancellationError() }
         let chunk = budget.admit(audioData)
-        if !chunk.isEmpty { try await stream.send(chunk) }
+        if !chunk.isEmpty {
+            watch?.append(chunk)
+            try await stream.send(chunk)
+        }
         if budget.isSpent { reportLimit() }
     }
 
@@ -226,6 +286,22 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         guard let stream, !isDisconnected else { throw CancellationError() }
         try await stream.finish()
         timing.finishSentAt = .now
+        watch?.finish()
+        guard let watch, voice?.speakers == .onRequest, !isDelivered else { return }
+        voiceCheck = .checking(Task { [weak self] in
+            do {
+                let recording = try await watch.recording
+                try Task.checkCancellation()
+                if recording.isComplete, recording.otherVoiceHeard {
+                    try await stream.requestVoices()
+                    await self?.decide(.requested(recording))
+                } else {
+                    await self?.decide(.notHeard)
+                }
+            } catch {
+                await self?.decide(.failed(error))
+            }
+        })
     }
 
     func disconnect() async {
@@ -233,18 +309,86 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         grant.cancel()
         outcome?.cancel()
         outcome = nil
+        if case .checking(let task) = voiceCheck { task.cancel() }
+        if !isDelivered { watch?.cancel() }
         continuation?.finish()
         continuation = nil
         stream?.cancel()
         stream = nil
     }
 
-    private func complete(_ reply: AccessStreamReply) {
-        guard !isDisconnected else { return }
+    private func decide(_ check: VoiceCheck) {
+        guard case .checking = voiceCheck else { return }
+        voiceCheck = check
+    }
+
+    private func complete(_ reply: AccessStreamReply) async {
+        guard !isDisconnected, let stream else { return }
         timing.resultReceivedAt = .now
         timing.serviceDictationID = reply.dictationID
-        continuation?.yield(.committedTranscript(reply.text))
+        var text = reply.text
+        switch voiceCheck {
+        case .idle:
+            voices = voice?.speakers == nil ? nil : .undecided
+        case .checking(let task):
+            task.cancel()
+            voiceCheck = .notHeard
+            voices = .undecided
+        case .notHeard:
+            voices = .notHeard
+        case .failed(let error):
+            fail(voiceFilter: error)
+        case .requested(let recording):
+            do {
+                guard let profile = voice?.profile.trustedMean else { throw VoiceFilterError.profileNotReady }
+                let filtered = try await Self.filter(stream, everyone: reply.text, audio: recording.audio, profile: profile)
+                text = filtered.text
+                voices = filtered.outcome
+            } catch {
+                fail(voiceFilter: error)
+            }
+        }
+        guard !isDisconnected else { return }
+        isDelivered = true
+        continuation?.yield(.committedTranscript(text))
         continuation?.yield(.finalizationCompleted)
+        learn()
+    }
+
+    nonisolated private static func filter(_ stream: AccessStream, everyone: String, audio: SpeakerAudio, profile: SpeakerEmbedding)
+        async throws -> (text: String, outcome: VoiceFilterOutcome)
+    {
+        try await withThrowingTaskGroup(of: (text: String, outcome: VoiceFilterOutcome).self) { group in
+            group.addTask {
+                guard let voices = try await stream.voices else { throw VoiceFilterError.voicesUnavailable }
+                return try await VoiceFilter.apply(voices, everyone: everyone, audio: audio, profile: profile)
+            }
+            group.addTask {
+                try await Task.sleep(for: VoiceFilter.deadline(forSamples: audio.pcm.sampleCount))
+                throw VoiceFilterError.deadlineExceeded
+            }
+            defer { group.cancelAll() }
+            return try await group.next()!
+        }
+    }
+
+    private func fail(voiceFilter error: any Error) {
+        voices = .failed
+        voice?.onFailure(.filter, DiagnosticError(error))
+    }
+
+    private func learn() {
+        guard let watch, let voice else { return }
+        if case .failed = voiceCheck { return }
+        Task {
+            do {
+                guard let candidate = try await watch.recording.learningCandidate() else { return }
+                try await voice.store.learn(candidate, startedAt: voice.startedAt)
+            } catch is CancellationError {
+            } catch {
+                voice.onFailure(.learning, DiagnosticError(error))
+            }
+        }
     }
 
     private func fail(_ error: any Error) {
@@ -260,6 +404,24 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         guard !reportedLimit else { return }
         reportedLimit = true
         onAudioLimitReached()
+    }
+}
+
+nonisolated enum VoiceFilterError: Error, Equatable, StructuredDiagnosticError {
+    case profileNotReady
+    case voicesUnavailable
+    case deadlineExceeded
+    case modelMissing
+
+    var diagnosticCode: Int? { nil }
+
+    var diagnosticKind: String {
+        switch self {
+        case .profileNotReady: "profile_not_ready"
+        case .voicesUnavailable: "voices_unavailable"
+        case .deadlineExceeded: "deadline_exceeded"
+        case .modelMissing: "model_missing"
+        }
     }
 }
 
@@ -279,6 +441,11 @@ nonisolated struct AudioSampleBudget: Equatable {
     }
 }
 
+nonisolated struct AccessTranscript: Sendable {
+    let text: String
+    let voices: VoiceFilterOutcome?
+}
+
 @MainActor
 struct AccessTranscriber {
     static let maximumAttempts = 3
@@ -286,40 +453,57 @@ struct AccessTranscriber {
     private static let serviceMargin: Duration = .seconds(90)
 
     let access: MumlaAccess
+    let voice: @MainActor () async -> OnlyMyVoice?
 
-    func transcribe(wav: Data, languageHints: [String], customVocabulary: [String]) async throws -> String {
+    func transcribe(wav: Data, languageHints: [String], customVocabulary: [String]) async throws -> AccessTranscript {
         guard let samples = PCM16WAVHeader.sampleCount(of: wav, sampleRate: AccessGrant.sampleRate), samples > 0 else {
             throw AccessTranscriptionError.unsupportedAudio
         }
         let seconds = (samples + AccessGrant.sampleRate - 1) / AccessGrant.sampleRate
         guard seconds <= AccessGrant.maximumAudioSeconds else { throw AccessTranscriptionError.recordingTooLong }
         let pcm = wav.dropFirst(PCM16WAVHeader.byteCount)
+        let voice = samples <= VoiceWatch.maximumSamples ? await self.voice() : nil
+        let profile = voice?.profile.trustedMean
         defer { access.refreshInBackground() }
         var attempt = 1
         while true {
             let grant = try await access.grant(maximumAudioSeconds: seconds)
             guard grant.audioLimitSamples >= samples else { throw AccessTranscriptionError.notEnoughAllowance }
             do {
-                return try await Self.upload(pcm, grant: grant, languages: languageHints, vocabulary: customVocabulary,
-                                             deadline: .seconds(seconds) + Self.serviceMargin)
+                let reply = try await Self.upload(pcm, grant: grant, languages: languageHints, vocabulary: customVocabulary,
+                                                  speakers: profile == nil ? nil : .diarize, deadline: .seconds(seconds) + Self.serviceMargin)
+                guard let voice, let profile else { return AccessTranscript(text: reply.text, voices: nil) }
+                return await Self.filter(reply, pcm: pcm, voice: voice, profile: profile)
             } catch where attempt < Self.maximumAttempts && TranscriptionRecovery.isUndispatched(error) {
                 attempt += 1
             }
         }
     }
 
+    @concurrent nonisolated private static func filter(_ reply: AccessStreamReply, pcm: Data, voice: OnlyMyVoice, profile: SpeakerEmbedding) async -> AccessTranscript {
+        do {
+            let audio = SpeakerAudio(embedder: try SpeakerEmbedder(modelURL: voice.modelURL), pcm: PCM16Audio(pcm))
+            let everyone = reply.phrases.map(VoiceFilter.text(of:)).flatMap { $0.isEmpty ? nil : $0 } ?? reply.text
+            let filtered = try await VoiceFilter.apply(reply, everyone: everyone, audio: audio, profile: profile)
+            return AccessTranscript(text: filtered.text, voices: filtered.outcome)
+        } catch {
+            voice.onFailure(.filter, DiagnosticError(error))
+            return AccessTranscript(text: reply.text, voices: .failed)
+        }
+    }
+
     nonisolated private static func upload(
-        _ pcm: Data, grant: AccessGrant, languages: [String], vocabulary: [String], deadline: Duration
-    ) async throws -> String {
-        try await withThrowingTaskGroup(of: String.self) { group in
+        _ pcm: Data, grant: AccessGrant, languages: [String], vocabulary: [String], speakers: AccessSpeakers?, deadline: Duration
+    ) async throws -> AccessStreamReply {
+        try await withThrowingTaskGroup(of: AccessStreamReply.self) { group in
             group.addTask {
-                let stream = try await AccessStream.open(grant, languages: languages, vocabulary: vocabulary)
+                let stream = try await AccessStream.open(grant, languages: languages, vocabulary: vocabulary, speakers: speakers)
                 defer { stream.cancel() }
                 for offset in stride(from: pcm.startIndex, to: pcm.endIndex, by: chunkBytes) {
                     try await stream.send(Data(pcm[offset..<min(offset + chunkBytes, pcm.endIndex)]))
                 }
                 try await stream.finish()
-                return try await stream.result.text
+                return try await stream.result
             }
             group.addTask {
                 try await Task.sleep(for: deadline)

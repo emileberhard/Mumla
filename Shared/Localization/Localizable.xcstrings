@@ -1000,6 +1000,16 @@
         }
       }
     },
+    "Copy Everything" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiera allt"
+          }
+        }
+      }
+    },
     "Could not configure the microphone audio format." : {
       "localizations" : {
         "sv" : {
@@ -1046,6 +1056,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kunde inte återställa köp"
+          }
+        }
+      }
+    },
+    "Couldn't forget your voice. Try again." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Det gick inte att glömma din röst. Försök igen."
           }
         }
       }
@@ -1260,6 +1280,16 @@
         }
       }
     },
+    "Everyone" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alla"
+          }
+        }
+      }
+    },
     "Export" : {
       "localizations" : {
         "sv" : {
@@ -1326,6 +1356,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Avsluta diktering"
+          }
+        }
+      }
+    },
+    "Forget My Voice" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glöm min röst"
           }
         }
       }
@@ -1557,6 +1597,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Öppna vid inloggning"
+          }
+        }
+      }
+    },
+    "Learned" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inlärd"
+          }
+        }
+      }
+    },
+    "Learning" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lär sig"
           }
         }
       }
@@ -1797,6 +1857,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mumla lyssnar bara medan du dikterar."
+          }
+        }
+      }
+    },
+    "Mumla will learn your voice again from your next dictations." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mumla lär sig din röst igen från dina nästa dikteringar."
           }
         }
       }
@@ -2081,6 +2151,16 @@
         }
       }
     },
+    "Only Mine" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bara min"
+          }
+        }
+      }
+    },
     "Only originals fully acknowledged by iCloud will be removed. An iCloud upload does not confirm an independent backup." : {
       "localizations" : {
         "sv" : {
@@ -2197,6 +2277,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Originalljud utan resultat"
+          }
+        }
+      }
+    },
+    "Other voices left out" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andra röster utelämnade"
           }
         }
       }
@@ -2881,6 +2971,16 @@
         }
       }
     },
+    "Show Everyone" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visa alla"
+          }
+        }
+      }
+    },
     "Shows Mumla Pro" : {
       "localizations" : {
         "sv" : {
@@ -3361,6 +3461,16 @@
         }
       }
     },
+    "Transcribe" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribera"
+          }
+        }
+      }
+    },
     "Transcribe Again" : {
       "localizations" : {
         "sv" : {
@@ -3541,6 +3651,16 @@
         }
       }
     },
+    "Voices" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Röster"
+          }
+        }
+      }
+    },
     "Waiting to upload" : {
       "localizations" : {
         "sv" : {
@@ -3597,6 +3717,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Allt är klart"
+          }
+        }
+      }
+    },
+    "Your Voice" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Din röst"
           }
         }
       }

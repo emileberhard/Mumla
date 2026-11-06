@@ -69,10 +69,16 @@ struct TranscriptRow: View {
                     Text(entry.text)
                         .lineLimit(3)
                         .foregroundStyle(.primary)
-                    Text(entry.createdAt, format: .dateTime.hour().minute())
-                        .font(.subheadline)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Text(entry.createdAt, format: .dateTime.hour().minute())
+                            .monospacedDigit()
+                        if entry.unfilteredText != nil {
+                            Image(systemName: "person.2.slash")
+                                .accessibilityLabel("Other voices left out")
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(.rect)
@@ -126,6 +132,7 @@ struct TranscriptView: View {
     @Environment(\.dismiss) private var dismiss
     @Query private var matches: [HistoryEntry]
     @State private var copies = 0
+    @State private var showsEveryone = false
 
     init(id: UUID) {
         _matches = Query(filter: #Predicate<HistoryEntry> { $0.id == id })
@@ -143,16 +150,30 @@ struct TranscriptView: View {
 
     private func content(_ entry: HistoryEntry, recordingID: UUID?) -> some View {
         let isCopied = coordinator.copiedTranscript?.id == entry.id
+        let shown = showsEveryone ? entry.unfilteredText ?? entry.text : entry.text
         return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text(entry.text)
-                    .font(entry.text.count > 280 ? .body : .title2)
+                Text(shown)
+                    .font(shown.count > 280 ? .body : .title2)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if let recordingID {
-                    ListenButton(recordingID: recordingID, dataStore: coordinator.dataStore)
-                        .buttonStyle(.bordered)
+                    .contentTransition(.opacity)
+                    .animation(.smooth, value: showsEveryone)
+                HStack {
+                    if let recordingID {
+                        ListenButton(recordingID: recordingID, dataStore: coordinator.dataStore)
+                    }
+                    if entry.unfilteredText != nil {
+                        Toggle(isOn: $showsEveryone) {
+                            Label("Show Everyone", systemImage: "person.2")
+                        }
+                        .toggleStyle(.button)
+                        .onChange(of: showsEveryone) { _, shows in
+                            if shows { CrashReporting.breadcrumb("Showed everyone's words", category: "voice_filter") }
+                        }
+                    }
                 }
+                .buttonStyle(.bordered)
                 Text(details(entry))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -167,6 +188,12 @@ struct TranscriptView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu("More", systemImage: "ellipsis") {
                     ShareLink(item: entry.text)
+                    if let everyone = entry.unfilteredText {
+                        Button("Copy Everything", systemImage: "doc.on.doc") {
+                            UIPasteboard.general.string = everyone
+                            CrashReporting.breadcrumb("Copied everyone's words", category: "voice_filter")
+                        }
+                    }
                     if let recordingID {
                         ExportAudioLink(recordingID: recordingID, dataStore: coordinator.dataStore)
                     }
@@ -197,6 +224,9 @@ struct TranscriptView: View {
         var parts = [String(localized: "\(words) words")]
         if !entry.deviceName.isEmpty {
             parts.append(entry.deviceName)
+        }
+        if entry.unfilteredText != nil {
+            parts.append(String(localized: "Other voices left out"))
         }
         return parts.joined(separator: " · ")
     }

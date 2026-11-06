@@ -46,7 +46,7 @@
 	<key>MumlaCloudKitAPIToken</key>
 	<string>$(MUMLA_CLOUDKIT_API_TOKEN)</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Mumla needs microphone access to record audio for transcription.</string>
+	<string>Mumla needs microphone access to record audio for transcription and to recognize your voice on this Mac.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

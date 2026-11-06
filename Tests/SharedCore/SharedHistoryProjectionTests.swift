@@ -12,12 +12,14 @@ struct SharedHistoryProjectionTests {
         let store = MumlaDataStore(directoryURL: root, cloudSyncEnabled: false)
         let entry = try fixture()
         let result = try #require(entry.results.first)
-        store.container.mainContext.insert(HistoryEntry(text: result.text + " ", providerDisplayName: "Provider", deviceName: "Device", audioRecordingID: entry.id))
+        let local = HistoryEntry(text: result.text + " ", providerDisplayName: "Provider", deviceName: "Device", audioRecordingID: entry.id)
+        local.unfilteredText = "Synthetic everyone"
+        store.container.mainContext.insert(local)
         try store.container.mainContext.save()
         let projection = SharedHistoryProjection(container: store.container)
         let lease = AccountPartitionLease(ownerID: "synthetic")
         try await projection.apply([entry], lease: lease)
-        try await projection.insert(result, deviceName: "Device", lease: lease)
+        try await projection.insert(result, deviceName: "Device", unfilteredText: nil, lease: lease)
         try await projection.apply([entry], lease: lease)
         let reader = ModelContext(store.container)
         let history = try reader.fetch(FetchDescriptor<HistoryEntry>())
@@ -25,6 +27,7 @@ struct SharedHistoryProjectionTests {
         #expect(try store.container.mainContext.fetch(FetchDescriptor<HistoryEntry>()).map(\.id) == [result.id])
         #expect(history.first?.text == result.text)
         #expect(history.first?.audioRecordingID == entry.id)
+        #expect(history.first?.unfilteredText == "Synthetic everyone")
         let audio = try #require(reader.fetch(FetchDescriptor<AudioRecording>()).first)
         #expect(audio.info?.source == "unified/RemoteCoder")
         #expect(audio.info?.sha256 == entry.capture.originalSHA256)
@@ -45,7 +48,7 @@ struct SharedHistoryProjectionTests {
         let result = try #require(entry.results.first)
         let projection = SharedHistoryProjection(container: store.container)
         let lease = AccountPartitionLease(ownerID: "synthetic")
-        async let local: Void = projection.insert(result, deviceName: "Device", lease: lease)
+        async let local: Void = projection.insert(result, deviceName: "Device", unfilteredText: nil, lease: lease)
         async let remote: Void = projection.apply([entry], lease: lease)
         try await local
         try await remote

@@ -26,13 +26,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Mumla needs microphone access to record audio for transcription."
+            "value" : "Mumla needs microphone access to record audio for transcription and to recognize your voice on this Mac."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mumla behöver åtkomst till mikrofonen för att spela in ljud som ska transkriberas."
+            "value" : "Mumla behöver åtkomst till mikrofonen för att spela in ljud som ska transkriberas och för att känna igen din röst på den här Macen."
           }
         }
       }

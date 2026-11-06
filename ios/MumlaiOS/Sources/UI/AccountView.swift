@@ -20,6 +20,11 @@ struct AccountView: View {
                         row("Languages", systemImage: "globe", color: .blue, value: languageSummary)
                     }
                     NavigationLink {
+                        VoicesView()
+                    } label: {
+                        row("Voices", systemImage: "person.wave.2.fill", color: .indigo, value: String(localized: coordinator.voices.title))
+                    }
+                    NavigationLink {
                         KeyboardSessionView()
                     } label: {
                         row("Keyboard", systemImage: "keyboard", color: .gray, value: sessionSummary)
@@ -110,6 +115,46 @@ private struct KeyboardSessionView: View {
             }
         }
         .navigationTitle("Keyboard")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct VoicesView: View {
+    @Environment(DictationCoordinator.self) private var coordinator
+    @State private var confirmsForgetting = false
+    @State private var status: VoiceProfileStatus?
+
+    var body: some View {
+        @Bindable var coordinator = coordinator
+        Form {
+            Section {
+                Picker("Voices", selection: $coordinator.voices) {
+                    ForEach(VoiceSelection.allCases) { selection in
+                        Label { Text(selection.title) } icon: { Image(systemName: selection.systemImage) }
+                            .tag(selection)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            }
+            Section {
+                if let status {
+                    LabeledContent("Your Voice") { Text(status.title) }
+                }
+                Button("Forget My Voice", role: .destructive) { confirmsForgetting = true }
+                    .confirmationDialog("Mumla will learn your voice again from your next dictations.",
+                                        isPresented: $confirmsForgetting, titleVisibility: .visible) {
+                        Button("Forget My Voice", role: .destructive) {
+                            Task {
+                                await coordinator.forgetMyVoice()
+                                status = await coordinator.voiceProfileStatus()
+                            }
+                        }
+                    }
+            }
+        }
+        .task { status = await coordinator.voiceProfileStatus() }
+        .navigationTitle("Voices")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

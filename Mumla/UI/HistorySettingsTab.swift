@@ -121,6 +121,9 @@ private struct HistoryEntryRow: View {
     @Bindable var coordinator: FlowCoordinator
     let entry: HistoryEntry
     @State private var justCopied = false
+    @State private var showsEveryone = false
+
+    private var shown: String { showsEveryone ? entry.unfilteredText ?? entry.text : entry.text }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -130,10 +133,15 @@ private struct HistoryEntryRow: View {
                 Text(entry.deviceName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if entry.unfilteredText != nil {
+                    Label("Other voices left out", systemImage: "person.2.slash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
             }
 
-            Text(entry.text)
+            Text(shown)
                 .font(.body)
                 .lineLimit(4)
                 .textSelection(.enabled)
@@ -141,7 +149,7 @@ private struct HistoryEntryRow: View {
             HStack {
                 Button {
                     NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(entry.text, forType: .string)
+                    NSPasteboard.general.setString(shown, forType: .string)
                     justCopied = true
                     Task {
                         try? await Task.sleep(for: .seconds(1.5))
@@ -149,6 +157,16 @@ private struct HistoryEntryRow: View {
                     }
                 } label: {
                     Label(justCopied ? "Copied" : "Copy", systemImage: justCopied ? "checkmark" : "doc.on.doc")
+                }
+
+                if entry.unfilteredText != nil {
+                    Toggle(isOn: $showsEveryone) {
+                        Label("Show Everyone", systemImage: "person.2")
+                    }
+                    .toggleStyle(.button)
+                    .onChange(of: showsEveryone) { _, shows in
+                        if shows { AppDiagnostics.info("Showed everyone's words", category: "voice_filter") }
+                    }
                 }
 
                 Spacer()
