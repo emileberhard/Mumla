@@ -190,8 +190,8 @@ labels to keep.
    is accepted.
 
 One same-voice threshold, 0.35 on mean-normalized ResNet34-LM embeddings,
-serves the detector and the filter, so every voice the filter would drop is
-also detected. Calibration on 300 random dictations of up to 10 minutes, a
+serves the detector and the filter, so a voice the filter would drop is
+rarely missed by the detector; a miss keeps everyone's words. Calibration on 300 random dictations of up to 10 minutes, a
 third each under 15 s, 15–60 s and over 60 s, set it:
 
 - **The user's words:** no label of the user scored below 0.519 against the
@@ -207,7 +207,10 @@ third each under 15 s, 15–60 s and over 60 s, set it:
 - **Azure splits:** 6 of 300 dictations had two labels, all the user, and every
   one was kept.
 
-It is the only tunable value besides the learning threshold.
+It is the only tunable value besides the learning threshold. A held-out set
+recorded after this design was not collected: the margin above (0.519
+against 0.35), every miss keeping everyone's words, and Show Everyone
+warnings in Sentry stand in for it.
 
 ### Embeddings
 
@@ -257,9 +260,11 @@ Forget My Voice.
 - **Trust:** a ready profile also records whether each of the last 10
   candidates reached the same-voice threshold against it. Filtering and the
   `speakers` modes use it only once all 10 did, so a profile learned from
-  someone else, or on a device two people share, never drops the person
-  dictating; such a device stays Learning and filters nothing. When 8 of the
-  last 10 miss, the profile starts over.
+  someone else is never used, and a device two people share is rarely
+  trusted: about a third of the time when the other person makes 10% of the
+  one-voice dictations, 3% at 30%. While it is trusted, a dictation by the
+  other person in which the owner is audible keeps the owner's words and drops
+  theirs. When 8 of the last 10 miss, the profile starts over.
 - **Deletion** happens on Forget My Voice and when the model version changes;
   learning then starts again. Forget My Voice writes its time to the KVS key
   `voiceForgottenAt`, and every device deletes a profile created before it and
@@ -288,7 +293,9 @@ instead of re-encoding them, so a downgraded install cannot strip the field and
 then hit `contentConflict`. A new `DictationResultKind` was rejected, because
 one unknown kind fails the whole archive listing on older clients.
 
-Transcribe Again follows the current setting and profile, with one diarized request.
+Transcribe Again follows the current setting and profile, with one diarized
+request, and writes its history row with everyone's words as it records the
+result.
 
 ### Setting and history UI
 
@@ -349,7 +356,18 @@ hands the filter the phrases, one embedding per label and the profile.
 would keep several profiles by person ID; `VoiceFilter.keptSpeakers`, which
 would keep labels matching any selected profile; a per-person forget date;
 and the Voices setting. Tagged profiles come from labels the user names, never
-from silent learning, which stays the user's own.
+from silent learning, which stays the user's own. Four constraints apply:
+
+- History keeps no labels, so naming a voice in a past dictation needs a new,
+  charged diarized request over its original.
+- Each kept profile needs its own anchor, so a tagged person whom Azure splits
+  into two labels keeps both.
+- Older builds read an unknown `voices` value as Only Mine and would drop
+  tagged people's words, so `voices` stays two-valued and the selection gets a
+  new key. Several profiles go in a new file beside `VoiceProfile.json`.
+- Profiles stay on their device, so each device learns a tagged person
+  separately; forgetting one person everywhere needs a synced person ID,
+  which `PRIVACY.md` must then describe.
 
 ## Alternatives considered
 
