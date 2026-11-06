@@ -2,8 +2,8 @@
 
 Mumla is voice-to-text for macOS and iOS: a menu bar app, an iOS app, and a
 keyboard extension. Preserve dictation UX, keyboard reliability, the release
-pipeline and the shared `SpeechKit` integration. `CLAUDE.md` is a
-symlink to this file; it is the canonical agent context for the repository.
+pipeline and the shared `SpeechKit` integration. This is the canonical agent
+context; `CLAUDE.md` links to it.
 
 ## Public repository
 
@@ -32,7 +32,7 @@ for the owner. Machine-specific values belong in ignored local files.
 | --- | --- |
 | `services/access/` | Mumla identity, sessions, sample allowance and bounded transcription adapter; its own AGENTS and README define the private operator contract |
 | `Mumla/` | macOS menu bar app; `FlowCoordinator` routes dictation, paste and permission UX; `Onboarding.swift` is the first-run wizard |
-| `ios/MumlaiOS/` | iOS containing app; `DictationCoordinator` owns sessions, dictation and audio notifications; `UI/OnboardingView.swift` and `UI/OnboardingStyle.swift` own the iOS wizard and its visual rules |
+| `ios/MumlaiOS/` | iOS containing app; `DictationCoordinator` owns sessions, dictation and audio notifications; `UI/ContentView.swift` owns the tabs and sheets; `UI/OnboardingView.swift` and `UI/OnboardingStyle.swift` own the iOS wizard and its visual rules |
 | `ios/MumlaKeyboard/` | iOS keyboard extension |
 | `ios/Shared/` | Code shared only by the iOS app and keyboard: `DictationBridge.swift` (App Group IPC), `DarwinNotifications.swift`, `CrashReporting.swift` |
 | `ios/MumlaiOS/Sources/Services/SessionAudioEngine.swift`, `AudioRouteValidationPolicy.swift` | iOS audio session and microphone routing |
@@ -227,7 +227,7 @@ container `iCloud.emileberhard.WisprClone`.
   originals through the running app, on the Mac or a trusted connected
   iPhone (`--device <UDID>`). Private bounded request files authorize commands;
   `mumla://agent/<UUID>` only wakes the exact app. Library ownership and sync
-  controls never belong in History or the composer.
+  controls never belong in Transcripts or the composer.
 - The signed macOS binary answers `--dictation-library list|search|audio`
   before normal app initialization, as JSON with account, freshness and errors.
   `MUMLA_LIBRARY_PROBE=1` exercises the real library with synthetic data and

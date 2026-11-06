@@ -110,16 +110,34 @@ final class DictationCoordinator {
     private(set) var keyboardHasBeenActive = DictationBridge.keyboardHasBeenActive
 #endif
     private(set) var showSwipeBackHint = false
-    /// Settable: ContentView binds it to its navigation stack.
-    var navigationPath: [MainRoute] = []
+    /// Settable: ContentView binds them to its tab view and the Transcripts stack.
+    var selectedTab: MainTab = .transcripts
+    var transcriptsPath: [TranscriptRoute] = []
 
     /// When false, the app root presents onboarding instead of the main view.
     var setupComplete: Bool {
         microphoneAuthorized && keyboardHasBeenActive
     }
 
+    var microphoneLevel: Double {
+        audioEngine.currentLevel
+    }
+
+    private(set) var copiedTranscript: CopiedTranscript?
+
+    func copy(_ entry: HistoryEntry) {
+        UIPasteboard.general.string = entry.text
+        copiedTranscript = CopiedTranscript(id: entry.id, changeCount: UIPasteboard.general.changeCount)
+    }
+
+    func refreshCopiedTranscript() {
+        if copiedTranscript?.changeCount != UIPasteboard.general.changeCount {
+            copiedTranscript = nil
+        }
+    }
+
 #if MUMLA_SCREENSHOTS
-    var captureShowsRecordings = false
+    var captureSheet: ContentSheet?
 
     func setCapturePhase(_ phase: DictationPhase) {
         self.phase = phase
@@ -282,6 +300,7 @@ final class DictationCoordinator {
         DictationBridge.setAppIsBackgrounded(false)
         microphoneAuthorized = AVAudioApplication.shared.recordPermission == .granted
         refreshKeyboardAccess()
+        refreshCopiedTranscript()
         access.refreshInBackground()
         dataStore.fetchRemoteChanges()
         CrashReporting.breadcrumb(
@@ -340,7 +359,8 @@ final class DictationCoordinator {
                 category: "lifecycle",
                 metadata: diagnosticMetadata()
             )
-            navigationPath = [.history]
+            selectedTab = .transcripts
+            transcriptsPath = []
             return
         }
         guard DictationBridge.isStartSessionURL(url) else { return }
@@ -992,8 +1012,8 @@ final class DictationCoordinator {
                     phase = .idle
                     return
                 }
-                dataStore.record(text: text, audioRecordingID: recordingID)
-                publishTranscript(text)
+                let entryID = dataStore.record(text: text, audioRecordingID: recordingID)
+                publishTranscript(text, entryID: entryID)
                 phase = .success
                 CrashReporting.breadcrumb(
                     "Realtime transcription succeeded",
@@ -1077,9 +1097,10 @@ final class DictationCoordinator {
         DarwinNotifications.post(DictationBridge.Event.stateChanged)
     }
 
-    private func publishTranscript(_ text: String) {
+    private func publishTranscript(_ text: String, entryID: UUID?) {
         transcript = text
         UIPasteboard.general.setObjects([text], localOnly: false, expirationDate: nil)
+        copiedTranscript = entryID.map { CopiedTranscript(id: $0, changeCount: UIPasteboard.general.changeCount) }
 
         guard let defaults = DictationBridge.sharedDefaults else { return }
         let transcriptID = UUID().uuidString
@@ -1749,4 +1770,9 @@ private struct ProbeSchedule {
 private struct IdleSessionRecovery {
     let probes: ProbeSchedule
     var lastFailure: any Error
+}
+
+struct CopiedTranscript: Equatable {
+    let id: UUID
+    let changeCount: Int
 }
