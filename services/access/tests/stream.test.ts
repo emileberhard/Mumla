@@ -507,6 +507,42 @@ test("a failed voices pass still delivers the result first", async () => {
   ]);
 });
 
+test("a voices pass with unusable speaker phrases answers voices_unavailable", async () => {
+  const { grant, open } = await setup(async (request) => {
+    const received = await multipartAudio(request);
+    return Response.json(
+      received.definition.diarization
+        ? {
+            combinedPhrases: [{ text: "Everyone." }],
+            phrases: [{ speaker: "a", text: "Everyone.", words: [] }],
+          }
+        : { combinedPhrases: [{ text: "Everyone." }] },
+    );
+  });
+  const { socket, opened, closed } = open((await grant(30)).token);
+  await opened;
+  socket.send(
+    JSON.stringify({
+      type: "start",
+      languages: [],
+      vocabulary: [],
+      speakers: "onRequest",
+    }),
+  );
+  socket.send(pcm(1_600));
+  socket.send(JSON.stringify({ type: "finish" }));
+  socket.send(JSON.stringify({ type: "voices" }));
+  const messages = await closed;
+  expect(messages).toEqual([
+    { type: "result", text: "Everyone.", id: expect.any(String) },
+    { type: "voices_unavailable", id: expect.any(String) },
+  ]);
+  const [result] = messages as { id: string }[];
+  expect(
+    logged.find((entry) => entry.event === "voices" && entry.id === result?.id),
+  ).toMatchObject({ code: "phrases_invalid" });
+});
+
 test("diarize mode answers with speaker phrases in one charged request", async () => {
   const definitions: unknown[] = [];
   const { grant, used, open } = await setup(async (request) => {
