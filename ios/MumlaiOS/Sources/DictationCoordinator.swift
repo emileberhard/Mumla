@@ -890,6 +890,7 @@ final class DictationCoordinator {
         dictationStartedAt = nil
 
         let controller = realtimeDictationController
+        let grant = realtimeCapture?.grant
         realtimeCapture = nil
         let diagnosticsSessionID = controller?.diagnosticsSessionID ?? "missing"
         phase = .processing
@@ -942,7 +943,16 @@ final class DictationCoordinator {
                     metadata: captureMetadata.merging(["reason": "too_short_or_empty"]) { _, new in new }
                 )
                 await controller?.cancel()
-                phase = .idle
+                grant?.cancel()
+                if case .failure(let failure as AccessFailure)? = await grant?.result {
+                    reportError(
+                        TranscriptionFailureMessage.text(for: failure, allowance: access.state),
+                        error: failure,
+                        metadata: ["reason": "access_grant_failed"]
+                    )
+                } else {
+                    phase = .idle
+                }
                 return
             }
 
