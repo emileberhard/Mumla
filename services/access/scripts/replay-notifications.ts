@@ -13,7 +13,7 @@ const environments: Record<string, Environment> = {
 
 function usage(): never {
   console.error(
-    "Usage: MUMLA_IAP_KEY_PATH=… MUMLA_IAP_KEY_ID=… MUMLA_IAP_ISSUER_ID=… bun scripts/replay-notifications.ts <Production|Sandbox> <since ISO 8601> <service origin>",
+    "Usage: MUMLA_IAP_KEY_PATH=… MUMLA_IAP_KEY_ID=… MUMLA_IAP_ISSUER_ID=… bun scripts/replay-notifications.ts <Production|Sandbox> <since ISO 8601> <loopback service origin>",
   );
   process.exit(2);
 }
@@ -27,6 +27,18 @@ async function retrying<T>(work: () => Promise<T>) {
       if (attempt === 5 || (status !== 429 && status < 500)) throw error;
       await Bun.sleep(2 ** attempt * 1000 * (0.5 + Math.random()));
     }
+  }
+}
+
+async function posting(signedPayload: string | undefined) {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signedPayload }),
+    });
+    if (response.status !== 503 || attempt === 5) return response;
+    await Bun.sleep(2 ** attempt * 1000 * (0.5 + Math.random()));
   }
 }
 
@@ -45,6 +57,7 @@ if (
 )
   usage();
 const endpoint = new URL("/v1/app-store/notifications", origin);
+if (!["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname)) usage();
 const client = new AppStoreServerAPIClient(
   await Bun.file(MUMLA_IAP_KEY_PATH).text(),
   MUMLA_IAP_KEY_ID,
@@ -62,11 +75,7 @@ do {
     client.getNotificationHistory(token, request),
   );
   for (const { signedPayload } of page.notificationHistory ?? []) {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ signedPayload }),
-    });
+    const response = await posting(signedPayload);
     if (response.ok) posted++;
     else {
       failed++;
