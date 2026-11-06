@@ -51,6 +51,7 @@ receipt = json.loads(sys.argv[4]) | {'schemaVersion': 1, 'sourceCommit': subproc
 print(json.dumps(receipt))
 PY
 fi
+scripts/check-access-configuration "$app_path/Info.plist" >&2
 if [[ "$build_only" = false ]]; then
     mkdir -p "$common_root/.local/iphone-deliveries"
     receipt="$common_root/.local/iphone-deliveries/$(uuidgen).json"
