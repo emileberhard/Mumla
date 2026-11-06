@@ -616,6 +616,13 @@ final class MumlaDataStore {
         return writer
     }
 
+    func retranscribe(_ id: UUID, using transcriber: AccessTranscriber) async throws {
+        guard let library, let lease = accountLease, lease.isActive else { throw DictationLibraryError.accountUnavailable }
+        let retranscribed = try await library.retranscribe(id, using: transcriber)
+        try await sharedHistoryProjection.insert(retranscribed.result, deviceName: retranscribed.source,
+                                                 unfilteredText: retranscribed.unfilteredText, lease: lease)
+    }
+
     @discardableResult
     func record(
         text: String,
@@ -1055,7 +1062,7 @@ final class MumlaDataStore {
         let task = Task {
             try await library.refreshCatalog()
             guard lease.isActive else { throw LibraryAgentError.accountChanged }
-            try await projection.apply(library.entries, unfilteredTexts: library.unfilteredTexts, lease: lease)
+            try await projection.apply(library.entries, lease: lease)
         }
         sharedHistoryTask = task
         sharedHistoryTaskID = taskID

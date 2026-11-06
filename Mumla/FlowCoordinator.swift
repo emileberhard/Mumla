@@ -391,7 +391,7 @@ final class FlowCoordinator {
             do {
                 if try dataStore.recordingInfo(for: id).source.hasPrefix("unified/"), let library = dataStore.library {
                     try await library.refreshArchive()
-                    try await library.retranscribe(id, using: transcriber)
+                    try await dataStore.retranscribe(id, using: transcriber)
                     recoveryStatusMessage = String(localized: "A new result was saved in the shared library.")
                     retryingRecoveryRecordingID = nil
                     return

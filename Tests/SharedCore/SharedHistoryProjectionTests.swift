@@ -18,9 +18,9 @@ struct SharedHistoryProjectionTests {
         try store.container.mainContext.save()
         let projection = SharedHistoryProjection(container: store.container)
         let lease = AccountPartitionLease(ownerID: "synthetic")
-        try await projection.apply([entry], unfilteredTexts: [:], lease: lease)
+        try await projection.apply([entry], lease: lease)
         try await projection.insert(result, deviceName: "Device", unfilteredText: nil, lease: lease)
-        try await projection.apply([entry], unfilteredTexts: [:], lease: lease)
+        try await projection.apply([entry], lease: lease)
         let reader = ModelContext(store.container)
         let history = try reader.fetch(FetchDescriptor<HistoryEntry>())
         #expect(history.map(\.id) == [result.id])
@@ -36,18 +36,20 @@ struct SharedHistoryProjectionTests {
         #expect(try reader.fetchCount(FetchDescriptor<AudioSyncChange>()) == 0)
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("AudioArchive/" + entry.id.uuidString + ".caf").path))
         let restarted = SharedHistoryProjection(container: store.container)
-        try await restarted.apply([entry], unfilteredTexts: [:], lease: lease)
+        try await restarted.apply([entry], lease: lease)
         #expect(try ModelContext(store.container).fetchCount(FetchDescriptor<HistoryEntry>()) == 1)
     }
 
-    @Test func aRetranscribedResultKeepsEveryonesWords() async throws {
+    @Test func everyonesWordsReachARowTheRefreshProjectedFirst() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = MumlaDataStore(directoryURL: root, cloudSyncEnabled: false)
         let entry = try fixture()
         let result = try #require(entry.results.first)
-        try await SharedHistoryProjection(container: store.container)
-            .apply([entry], unfilteredTexts: [result.id: "Synthetic everyone"], lease: AccountPartitionLease(ownerID: "synthetic"))
+        let lease = AccountPartitionLease(ownerID: "synthetic")
+        let projection = SharedHistoryProjection(container: store.container)
+        try await projection.apply([entry], lease: lease)
+        try await projection.insert(result, deviceName: entry.capture.source, unfilteredText: "Synthetic everyone", lease: lease)
         #expect(try ModelContext(store.container).fetch(FetchDescriptor<HistoryEntry>()).map(\.unfilteredText) == ["Synthetic everyone"])
     }
 
@@ -60,7 +62,7 @@ struct SharedHistoryProjectionTests {
         let projection = SharedHistoryProjection(container: store.container)
         let lease = AccountPartitionLease(ownerID: "synthetic")
         async let local: Void = projection.insert(result, deviceName: "Device", unfilteredText: nil, lease: lease)
-        async let remote: Void = projection.apply([entry], unfilteredTexts: [:], lease: lease)
+        async let remote: Void = projection.apply([entry], lease: lease)
         try await local
         try await remote
         #expect(try store.container.mainContext.fetch(FetchDescriptor<HistoryEntry>()).map(\.id) == [result.id])
@@ -73,20 +75,20 @@ struct SharedHistoryProjectionTests {
         let entry = try fixture()
         let result = try #require(entry.results.first)
         let lease = AccountPartitionLease(ownerID: "synthetic")
-        try await SharedHistoryProjection(container: store.container).apply([entry], unfilteredTexts: [:], lease: lease)
+        try await SharedHistoryProjection(container: store.container).apply([entry], lease: lease)
         let visible = try #require(store.container.mainContext.fetch(FetchDescriptor<HistoryEntry>()).first)
         store.delete(visible)
         #expect(try store.container.mainContext.fetchCount(FetchDescriptor<HistoryEntry>(predicate: #Predicate { !$0.isHidden })) == 0)
         let cleanup = DictationResultVersion(id: UUID(), captureID: entry.id, createdAt: result.createdAt.addingTimeInterval(1), kind: .cleanup,
             text: "A separately saved cleanup result", model: "synthetic-cleanup", contextWasUsed: false, parentResultID: result.id, plan: result.plan)
         let updated = DictationArchiveEntry(capture: entry.capture, results: [result, cleanup], originalURL: nil, published: true)
-        try await SharedHistoryProjection(container: store.container).apply([updated], unfilteredTexts: [:], lease: lease)
+        try await SharedHistoryProjection(container: store.container).apply([updated], lease: lease)
         let reader = ModelContext(store.container)
         #expect(try reader.fetch(FetchDescriptor<HistoryEntry>(predicate: #Predicate { !$0.isHidden })).map(\.id) == [cleanup.id])
         #expect(try reader.fetchCount(FetchDescriptor<AudioRecording>()) == 1)
         #expect(try reader.fetchCount(FetchDescriptor<HistorySyncChange>()) == 0)
         store.clear()
-        try await SharedHistoryProjection(container: store.container).apply([updated], unfilteredTexts: [:], lease: lease)
+        try await SharedHistoryProjection(container: store.container).apply([updated], lease: lease)
         #expect(try ModelContext(store.container).fetchCount(FetchDescriptor<HistoryEntry>(predicate: #Predicate { !$0.isHidden })) == 0)
     }
 
@@ -97,7 +99,7 @@ struct SharedHistoryProjectionTests {
         let lease = AccountPartitionLease(ownerID: "synthetic")
         lease.invalidate()
         await #expect(throws: LibraryAgentError.self) {
-            try await SharedHistoryProjection(container: store.container).apply([fixture()], unfilteredTexts: [:], lease: lease)
+            try await SharedHistoryProjection(container: store.container).apply([fixture()], lease: lease)
         }
         #expect(try store.container.mainContext.fetchCount(FetchDescriptor<HistoryEntry>()) == 0)
     }

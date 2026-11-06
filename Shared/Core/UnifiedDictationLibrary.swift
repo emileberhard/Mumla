@@ -57,7 +57,6 @@ final class UnifiedDictationLibrary {
     }
     private var captures: [UUID: DictationCaptureWriter] = [:]
     private var historyResults: [UUID: DictationResultVersion] = [:]
-    private(set) var unfilteredTexts: [UUID: String] = [:]
     private var plans: [UUID: (plan: DictationPlan, session: DictationAccountSession?)] = [:]
     private var archivalConsentKnown = UserDefaults.standard.bool(forKey: "dictationArchiveConsent")
     private(set) var accountSession: DictationAccountSession?
@@ -145,7 +144,6 @@ final class UnifiedDictationLibrary {
         accountSession = session
         profile = nil
         historyResults = [:]
-        unfilteredTexts = [:]
         profileState = .unverified
         entries = []
         archiveRefreshedAt = nil
@@ -396,7 +394,9 @@ final class UnifiedDictationLibrary {
         try Task.checkCancellation()
     }
 
-    func retranscribe(_ id: UUID, using transcriber: AccessTranscriber) async throws {
+    func retranscribe(_ id: UUID, using transcriber: AccessTranscriber) async throws
+        -> (result: DictationResultVersion, source: String, unfilteredText: String?)
+    {
         guard let session = accountSession else { throw DictationLibraryError.accountUnavailable }
         try await store.validateAccountSession(session)
         let destination: ResultDestination
@@ -413,10 +413,10 @@ final class UnifiedDictationLibrary {
         let transcript = try await transcriber.transcribe(wav: wav, languageHints: plan.languages, customVocabulary: plan.dictionary)
         let result = try await recordProviderResult(destination: destination, captureID: id, text: transcript.text,
                                                     model: TranscriptionProviderType.dictation.batchResultModelID, plan: plan)
-        unfilteredTexts[result.id] = transcript.voices?.unfilteredText
         try await store.validateAccountSession(session)
         try Task.checkCancellation()
         try await refreshArchive()
+        return (result, entry.capture.source, transcript.voices?.unfilteredText)
     }
 
     func reseedRetainedLibrary() async throws {

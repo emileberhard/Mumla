@@ -17,11 +17,15 @@ actor SharedHistoryProjection {
         try Task.checkCancellation()
         guard lease.isActive else { throw LibraryAgentError.accountChanged }
         let id = result.id
-        if let existing = try context.fetch(FetchDescriptor<HistoryEntry>(predicate: #Predicate { $0.id == id })).first {
-            guard existing.text == result.text, existing.audioRecordingID == result.captureID else { throw AudioArchiveError.conflictingRecording }
-            return
-        }
         do {
+            if let existing = try context.fetch(FetchDescriptor<HistoryEntry>(predicate: #Predicate { $0.id == id })).first {
+                guard existing.text == result.text, existing.audioRecordingID == result.captureID else { throw AudioArchiveError.conflictingRecording }
+                guard existing.unfilteredText == nil, let unfilteredText else { return }
+                existing.unfilteredText = unfilteredText
+                guard lease.isActive else { throw LibraryAgentError.accountChanged }
+                try context.save()
+                return
+            }
             let entry = HistoryEntry(id: result.id, text: result.text, createdAt: result.createdAt,
                 providerDisplayName: TranscriptionProviderType.displayName(libraryModelID: result.model),
                 deviceName: deviceName, audioRecordingID: result.captureID)
@@ -35,7 +39,7 @@ actor SharedHistoryProjection {
         }
     }
 
-    func apply(_ entries: [DictationArchiveEntry], unfilteredTexts: [UUID: String], lease: AccountPartitionLease) throws {
+    func apply(_ entries: [DictationArchiveEntry], lease: AccountPartitionLease) throws {
         try Task.checkCancellation()
         guard lease.isActive else { throw LibraryAgentError.accountChanged }
         let changed = entries.filter { projected[$0.id] != $0 }
@@ -69,19 +73,19 @@ actor SharedHistoryProjection {
                 let resultIDs = Set(results.map(\.id))
                 let texts = Set(results.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) })
                 var hiddenTexts = Set<String>()
-                var carriedUnfiltered: [String: String] = [:]
+                var unfilteredTexts: [String: String] = [:]
                 for (_, existing) in byCapture[capture.id] ?? [] where !resultIDs.contains(existing.id) {
                     let text = existing.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard texts.contains(text) else { continue }
                     if existing.isHidden { hiddenTexts.insert(text) }
-                    if let unfiltered = existing.unfilteredText { carriedUnfiltered[text] = unfiltered }
+                    if let unfiltered = existing.unfilteredText { unfilteredTexts[text] = unfiltered }
                     context.delete(existing)
                     byID.removeValue(forKey: existing.id)
                 }
                 for result in results {
                     let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     let hidden = hiddenTexts.contains(trimmed)
-                    let unfiltered = carriedUnfiltered[trimmed] ?? unfilteredTexts[result.id]
+                    let unfiltered = unfilteredTexts[trimmed]
                     if let existing = byID[result.id] {
                         guard existing.text.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed,
                               existing.audioRecordingID == capture.id else { throw AudioArchiveError.conflictingRecording }
