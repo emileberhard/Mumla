@@ -39,6 +39,20 @@ extension MumlaAccess.Allowance {
     static let placeholder = MumlaAccess.Allowance(limit: .seconds(3600), used: .zero, resetsAt: .now, plan: .notOffered)
 }
 
+extension MumlaAccess.Allowance {
+    var remainingShortText: String {
+        let minutes = remaining.wholeMinutes
+        guard minutes > 99 else { return minutes.formatted() }
+        return Duration.seconds(minutes / 60 * 3600).formatted(.units(allowed: [.hours], width: .narrow))
+    }
+
+    var remainingSpokenText: String {
+        let minutes = remaining.wholeMinutes
+        let allowed: Set<Duration.UnitsFormatStyle.Unit> = minutes > 99 ? [.hours] : [.minutes]
+        return String(localized: "\(Duration.seconds(minutes * 60).formatted(.units(allowed: allowed, width: .wide, fractionalPart: .hide))) left")
+    }
+}
+
 extension Duration {
     var wholeMinutes: Int {
         Int(components.seconds / 60)
@@ -54,8 +68,10 @@ private struct AllowanceMeter: View {
             Gauge(value: fractionLeft) {
                 Text("Minutes left")
             } currentValueLabel: {
-                Text(allowance.remaining.wholeMinutes, format: .number)
-                    .contentTransition(.numericText(countsDown: true))
+                if !allowance.showsProBadge {
+                    Text(allowance.remainingShortText)
+                        .contentTransition(.numericText(countsDown: true))
+                }
             }
             .gaugeStyle(.accessoryCircularCapacity)
             .tint(tint)
@@ -75,6 +91,7 @@ private struct AllowanceMeter: View {
     }
 
     private var fractionLeft: Double {
+        guard !allowance.showsProBadge else { return 1 }
         guard allowance.limit > .zero else { return 0 }
         return allowance.remaining / allowance.limit
     }
@@ -92,7 +109,11 @@ private struct AllowanceMeter: View {
     }
 
     private var resets: LocalizedStringKey {
-        "Resets \(allowance.resetsAt, format: .dateTime.month(.wide).day())"
+        if allowance.showsProBadge {
+            "\(allowance.limit.wholeMinutes / 60) hours a month"
+        } else {
+            "Resets \(allowance.resetsAt, format: .dateTime.month(.wide).day())"
+        }
     }
 
     private var tint: Color {

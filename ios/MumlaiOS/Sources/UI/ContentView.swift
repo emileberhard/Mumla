@@ -104,7 +104,7 @@ private struct AccountButton: View {
 
     private var accessibilityValue: Text {
         guard case .available(let allowance) = access.state else { return Text(verbatim: "") }
-        return Text("\(allowance.remaining.wholeMinutes) minutes left")
+        return allowance.showsProBadge ? Text("Mumla Pro") : Text(allowance.remainingSpokenText)
     }
 }
 
@@ -132,13 +132,13 @@ private struct AllowanceRing: View {
     }
 
     private var fractionLeft: Double {
+        guard !allowance.showsProBadge else { return 1 }
         guard allowance.limit > .zero else { return 0 }
         return allowance.remaining / allowance.limit
     }
 
     private var label: String {
-        let minutes = allowance.remaining.wholeMinutes
-        return minutes > 99 ? "\(minutes / 60)h" : "\(minutes)"
+        allowance.showsProBadge ? String(localized: "PRO") : allowance.remainingShortText
     }
 
     private var tint: AnyShapeStyle {

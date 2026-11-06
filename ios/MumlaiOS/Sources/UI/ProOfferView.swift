@@ -73,6 +73,7 @@ struct ProOfferView: View {
             ProOfferHeader(hours: pro.plan?.proHours)
         }
         .storeButton(.visible, for: .restorePurchases)
+        .storeButton(.visible, for: .cancellation)
         .subscriptionStorePolicyDestination(url: MumlaPro.privacyPolicyURL, for: .privacyPolicy)
         .subscriptionStorePolicyDestination(url: MumlaPro.termsOfUseURL, for: .termsOfService)
         .inAppPurchaseOptions { _ in [.appAccountToken(token)] }
@@ -166,7 +167,7 @@ struct ProPlanRows<Allowance: View>: View {
                     if let hours = pro.plan?.proHours {
                         Text("\(hours) hours of dictation a month")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.secondary)
                     }
                 }
             }
