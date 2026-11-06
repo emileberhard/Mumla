@@ -8,6 +8,7 @@ struct RealtimeDictationResult: Sendable {
     let fallbackReason: String?
     let failure: (any Error)?
     let timing: DictationTiming?
+    let voices: VoiceFilterOutcome?
 }
 
 nonisolated struct DictationTiming: Equatable, Sendable {
@@ -63,6 +64,7 @@ struct RealtimeDictationProviderConfiguration: Sendable {
     let grant: Task<AccessGrant, any Error>
     let customVocabulary: [String]
     let languageHints: [String]
+    let voice: OnlyMyVoice?
     let onAudioLimitReached: @Sendable () -> Void
 
     func makeSession() -> GrantedRealtimeTranscriptionSession {
@@ -70,6 +72,7 @@ struct RealtimeDictationProviderConfiguration: Sendable {
             grant: grant,
             languageHints: languageHints,
             customVocabulary: customVocabulary,
+            voice: voice,
             onAudioLimitReached: onAudioLimitReached
         )
     }

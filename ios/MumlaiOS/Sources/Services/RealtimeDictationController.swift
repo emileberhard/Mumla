@@ -35,11 +35,12 @@ final class RealtimeDictationController {
 
     func stop(recordingDurationMilliseconds: Int) async -> RealtimeDictationResult {
         let completion = await RealtimeDictationCompletion.finish(dictation)
+        let voices = await session?.voices
         let metadata = diagnosticsMetadata(extra: [
             "fallback_reason": completion.fallbackReason ?? "none",
             "recording_duration_ms": String(recordingDurationMilliseconds),
             "final_character_count": String(completion.text?.count ?? 0),
-        ])
+        ].merging(voices?.metadata ?? [:]) { _, new in new })
         if completion.error != nil {
             CrashReporting.capture(
                 message: "Realtime transcription failed; using saved audio",
@@ -55,7 +56,8 @@ final class RealtimeDictationController {
             originalAudio: nil,
             fallbackReason: completion.fallbackReason,
             failure: completion.error,
-            timing: await session?.timing
+            timing: await session?.timing,
+            voices: voices
         )
     }
 

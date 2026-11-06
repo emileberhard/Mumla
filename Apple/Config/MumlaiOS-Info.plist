@@ -38,7 +38,7 @@
 	<key>MumlaCloudKitAPIToken</key>
 	<string>$(MUMLA_CLOUDKIT_API_TOKEN)</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Mumla records your voice to transcribe it into text.</string>
+	<string>Mumla records your voice to transcribe it into text and learns to recognize it on this device.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

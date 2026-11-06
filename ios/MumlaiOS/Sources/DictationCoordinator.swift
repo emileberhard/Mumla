@@ -30,11 +30,11 @@ enum SessionDuration: Int, CaseIterable, Sendable, Identifiable {
 @MainActor
 @Observable
 final class DictationCoordinator {
-    private static let syncedPreferenceKeys = [SharedPreferenceKey.dictationLanguages]
+    private static let syncedPreferenceKeys = [SharedPreferenceKey.dictationLanguages, SharedPreferenceKey.voices]
 
     private let preferenceSync = CloudPreferenceStore()
     let access = MumlaAccess(client: SimulatedDictation.transcript == nil ? .live() : nil)
-    var transcriber: AccessTranscriber { AccessTranscriber(access: access) }
+    var transcriber: AccessTranscriber { AccessTranscriber(access: access, voice: { [weak self] in await self?.onlyMyVoice() }) }
     private let audioEngine = SessionAudioEngine()
     private let audioCommands: AsyncStream<AudioCommand>.Continuation
     private var audioCommandTask: Task<Void, Never>?
@@ -154,6 +154,10 @@ final class DictationCoordinator {
         didSet { preferenceSync.set(DictationLanguages.encode(dictationLanguages), forKey: SharedPreferenceKey.dictationLanguages) }
     }
 
+    var voices: VoiceSelection {
+        didSet { preferenceSync.set(voices.rawValue, forKey: SharedPreferenceKey.voices) }
+    }
+
     var spokenLanguagesOwner: SpokenLanguagesOwner {
         dataStore.library?.spokenLanguagesOwner(iCloudSignedOut: access.state.isICloudSignedOut) ?? .local
     }
@@ -240,6 +244,7 @@ final class DictationCoordinator {
         let defaults = UserDefaults.standard
         self.dictationLanguages = DictationLanguages.decode(preferenceSync.string(forKey: SharedPreferenceKey.dictationLanguages))
             ?? DictationLanguages.systemDefault()
+        self.voices = VoiceSelection(rawValue: preferenceSync.string(forKey: SharedPreferenceKey.voices)) ?? .onlyMine
         let savedDuration = defaults.object(forKey: "sessionDuration") as? Int
         self.sessionDuration = SessionDuration(rawValue: savedDuration ?? 0) ?? .fifteenMinutes
         self.showSwipeBackHint = showSwipeBackHint
@@ -284,6 +289,49 @@ final class DictationCoordinator {
         }
         if shouldSync(SharedPreferenceKey.customVocabulary) {
             migrateLegacyVocabulary()
+        }
+        if shouldSync(SharedPreferenceKey.voices),
+           let synced = VoiceSelection(rawValue: preferenceSync.string(forKey: SharedPreferenceKey.voices)), synced != voices {
+            voices = synced
+        }
+        if shouldSync(SharedPreferenceKey.voiceForgottenAt) { applyForgottenVoice() }
+    }
+
+    // MARK: - Only my voice
+
+    private var voiceProfiles: VoiceProfiles { VoiceProfiles(preferences: preferenceSync, dataStore: dataStore) }
+
+    private func onlyMyVoice() async -> OnlyMyVoice? {
+        guard voices == .onlyMine else { return nil }
+        do {
+            return try await voiceProfiles.voice { stage, error in
+                CrashReporting.capture(message: "Voice filter failed; delivering everyone", context: "voice_filter", error: error,
+                                       metadata: ["voice_filter_stage": stage.rawValue])
+            }
+        } catch {
+            CrashReporting.capture(message: "Voice profile unavailable", context: "voice_filter", error: error)
+            return nil
+        }
+    }
+
+    func voiceProfileStatus() async -> VoiceProfileStatus? {
+        do { return try await voiceProfiles.status() } catch {
+            CrashReporting.capture(message: "Voice profile unavailable", context: "voice_filter", error: error)
+            return nil
+        }
+    }
+
+    func forgetMyVoice() async {
+        do { try await voiceProfiles.forget() } catch {
+            reportError(String(localized: "Couldn't forget your voice. Try again."), error: error)
+        }
+    }
+
+    private func applyForgottenVoice() {
+        Task {
+            do { try await voiceProfiles.applyForget() } catch {
+                CrashReporting.capture(message: "Voice profile could not be forgotten", context: "voice_filter", error: error)
+            }
         }
     }
 
@@ -807,7 +855,7 @@ final class DictationCoordinator {
 
     // MARK: - Transcription
 
-    private func transcribe(wavData: Data, recordingID: UUID) async throws -> String {
+    private func transcribe(wavData: Data, recordingID: UUID) async throws -> AccessTranscript {
         let plan = dataStore.library?.plan(for: recordingID)
         if plan != nil { try await dataStore.library?.validateProviderCapture(recordingID) }
         let transcript = try await transcriber.transcribe(
@@ -816,14 +864,14 @@ final class DictationCoordinator {
             customVocabulary: plan?.dictionary ?? customVocabulary
         )
         if let library = dataStore.library, plan != nil {
-            try await library.recordProviderOutput(transcript, captureID: recordingID, model: TranscriptionProviderType.dictation.batchResultModelID)
+            try await library.recordProviderOutput(transcript.text, captureID: recordingID, model: TranscriptionProviderType.dictation.batchResultModelID)
         }
 
-        var text = transcript
+        var text = transcript.text
         if let lastChar = text.last, ".?!".contains(lastChar) {
             text.append(" ")
         }
-        return text
+        return AccessTranscript(text: text, voices: transcript.voices)
     }
 
     // MARK: - Realtime Transcription
@@ -856,12 +904,14 @@ final class DictationCoordinator {
                 break
             }
         }
+        async let voice = onlyMyVoice()
         let originalAudio = try await dataStore.makeOriginalAudioWriter(context: .prose)
         let plan = originalAudio.dictationPlan
         let providerConfiguration = RealtimeDictationProviderConfiguration(
             grant: grant,
             customVocabulary: plan?.dictionary ?? customVocabulary,
             languageHints: plan?.languages ?? dictationLanguages,
+            voice: await voice,
             onAudioLimitReached: { [weak self] in
                 Task { @MainActor in self?.requestDictationStop(capture: capture) }
             }
@@ -984,6 +1034,7 @@ final class DictationCoordinator {
 
             do {
                 let text: String
+                var voices = result?.voices
                 if let realtimeText = result?.text, !realtimeText.isEmpty {
                     if let library = dataStore.library, library.plan(for: recordingID) != nil {
                         try await library.recordProviderOutput(realtimeText, captureID: recordingID, model: TranscriptionProviderType.dictation.libraryModelID)
@@ -1001,7 +1052,9 @@ final class DictationCoordinator {
                                 ) { _, new in new }
                             )
                         )
-                        text = try await transcribe(wavData: wavData, recordingID: recordingID)
+                        let transcript = try await transcribe(wavData: wavData, recordingID: recordingID)
+                        text = transcript.text
+                        voices = transcript.voices
                     case .canceled:
                         phase = .idle
                         return
@@ -1026,7 +1079,7 @@ final class DictationCoordinator {
                     phase = .idle
                     return
                 }
-                let entryID = dataStore.record(text: text, audioRecordingID: recordingID)
+                let entryID = dataStore.record(text: text, audioRecordingID: recordingID, unfilteredText: voices?.unfilteredText)
                 publishTranscript(text, entryID: entryID)
                 let handedOffAt = ContinuousClock.now
                 phase = .success
@@ -1034,7 +1087,7 @@ final class DictationCoordinator {
                 let timingDetails = captureDetails.merging([
                     "fallback_reason": result?.fallbackReason ?? "none",
                     "service_dictation_id": result?.timing?.serviceDictationID ?? "none",
-                ]) { _, new in new }
+                ]) { _, new in new }.merging(voices?.metadata ?? [:]) { _, new in new }
                 CrashReporting.breadcrumb(
                     "Realtime transcription succeeded",
                     category: "transcription",

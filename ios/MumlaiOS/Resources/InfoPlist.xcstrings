@@ -8,13 +8,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Mumla records your voice to transcribe it into text."
+            "value" : "Mumla records your voice to transcribe it into text and learns to recognize it on this device."
           }
         },
         "sv" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mumla spelar in din röst för att göra om den till text."
+            "value" : "Mumla spelar in din röst för att göra om den till text och lär sig känna igen den på den här enheten."
           }
         }
       }

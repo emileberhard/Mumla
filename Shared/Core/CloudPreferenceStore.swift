@@ -6,6 +6,8 @@ import Security
 enum SharedPreferenceKey {
     static let dictationLanguages = "dictationLanguages"
     static let customVocabulary = "customVocabulary"
+    static let voices = "voices"
+    static let voiceForgottenAt = "voiceForgottenAt"
 }
 
 @MainActor
@@ -48,6 +50,16 @@ final class CloudPreferenceStore {
         }
         defaults.set(cloudValue, forKey: key)
         return cloudValue
+    }
+
+    func date(forKey key: String) -> Date? {
+        let value = cloudStore?.object(forKey: key) as? Double ?? defaults.object(forKey: key) as? Double
+        return value.map(Date.init(timeIntervalSince1970:))
+    }
+
+    func set(_ value: Date, forKey key: String) {
+        defaults.set(value.timeIntervalSince1970, forKey: key)
+        cloudStore?.set(value.timeIntervalSince1970, forKey: key)
     }
 
     func set(_ value: String, forKey key: String) {

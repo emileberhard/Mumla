@@ -79,7 +79,8 @@ forms in the same change.
 
 ### Onboarding
 
-[Onboarding](docs/design/onboarding.md) records both wizards' flows.
+[Onboarding](docs/design/onboarding.md) records both wizards' flows and the iOS
+wizard's style rules.
 
 - Both wizards derive phases from persistent state, since macOS relaunches
   after an Input Monitoring grant and iOS kills the app when a permission
@@ -92,11 +93,6 @@ forms in the same change.
   Full Access) and, once started, until the try-it lands or is skipped. A
   missing keyboard stamp is an unconfirmed connection, never proof that Full
   Access is off. `mumla://debug/onboarding` (Debug) resets both.
-- Use `OnboardingStyle.swift`'s primary-action modifier, spacing values,
-  `OnboardingPrimaryButton`, `OnboardingSecondaryButton`, `StepScaffold` and
-  `HeroSymbol` instead of per-step styling. Prefer semantic styles (`.tint`,
-  `.primary`, `.secondary`); add a shared rule only for a real repeated
-  pattern.
 
 ### Providers and credentials
 
@@ -123,6 +119,10 @@ forms in the same change.
   and allowance requests retry 503 after jittered 0.5, 1 and 2 s.
 - The keyboard reads `KeyboardAccessState` from the App Group and holds no
   credential. Provider-specific request rules belong to the access service.
+- Only Mine (default) filters with a voice profile once trusted
+  ([design](docs/design/only-my-voice.md)). The profile never leaves its
+  device; failure or doubt keeps everyone's text. Changing the speaker model
+  changes `SpeakerEmbedder.modelVersion`.
 
 ### Data sync
 

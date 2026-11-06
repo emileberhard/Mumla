@@ -19,11 +19,11 @@ enum SettingsTab: Hashable {
 @Observable
 final class FlowCoordinator {
     static let shared = FlowCoordinator()
-    private static let syncedPreferenceKeys = [SharedPreferenceKey.dictationLanguages]
+    private static let syncedPreferenceKeys = [SharedPreferenceKey.dictationLanguages, SharedPreferenceKey.voices]
 
     private let preferenceSync = CloudPreferenceStore()
     let access = MumlaAccess()
-    var transcriber: AccessTranscriber { AccessTranscriber(access: access) }
+    var transcriber: AccessTranscriber { AccessTranscriber(access: access, voice: { [weak self] in await self?.onlyMyVoice() }) }
 
     // MARK: - State
     var state: FlowState = .idle {
@@ -51,6 +51,10 @@ final class FlowCoordinator {
         didSet {
             preferenceSync.set(DictationLanguages.encode(dictationLanguages), forKey: SharedPreferenceKey.dictationLanguages)
         }
+    }
+
+    var voices: VoiceSelection {
+        didSet { preferenceSync.set(voices.rawValue, forKey: SharedPreferenceKey.voices) }
     }
 
     var spokenLanguagesOwner: SpokenLanguagesOwner {
@@ -184,6 +188,7 @@ final class FlowCoordinator {
 
         self.dictationLanguages = DictationLanguages.decode(preferenceSync.string(forKey: SharedPreferenceKey.dictationLanguages))
             ?? DictationLanguages.systemDefault()
+        self.voices = VoiceSelection(rawValue: preferenceSync.string(forKey: SharedPreferenceKey.voices)) ?? .onlyMine
         self.autoSend = defaults.bool(forKey: "autoSend")
         let keyboardShortcutModeRaw = defaults.string(forKey: "keyboardShortcutMode") ?? KeyboardShortcutMode.holdToTalk.rawValue
         self.keyboardShortcutMode = KeyboardShortcutMode(rawValue: keyboardShortcutModeRaw) ?? .holdToTalk
@@ -233,6 +238,52 @@ final class FlowCoordinator {
         }
         if shouldSync(SharedPreferenceKey.customVocabulary) {
             migrateLegacyVocabulary()
+        }
+        if shouldSync(SharedPreferenceKey.voices),
+           let synced = VoiceSelection(rawValue: preferenceSync.string(forKey: SharedPreferenceKey.voices)), synced != voices {
+            voices = synced
+        }
+        if shouldSync(SharedPreferenceKey.voiceForgottenAt) { applyForgottenVoice() }
+    }
+
+    // MARK: - Only my voice
+
+    private var voiceProfiles: VoiceProfiles { VoiceProfiles(preferences: preferenceSync, dataStore: dataStore) }
+
+    private func onlyMyVoice() async -> OnlyMyVoice? {
+        guard voices == .onlyMine else { return nil }
+        do {
+            return try await voiceProfiles.voice { stage, error in
+                Task { @MainActor in
+                    AppDiagnostics.error("Voice filter failed; delivering everyone", category: "voice_filter",
+                                         metadata: ["voice_filter_stage": stage.rawValue], error: error)
+                }
+            }
+        } catch {
+            AppDiagnostics.error("Voice profile unavailable", category: "voice_filter", error: error)
+            return nil
+        }
+    }
+
+    func voiceProfileStatus() async -> VoiceProfileStatus? {
+        do { return try await voiceProfiles.status() } catch {
+            AppDiagnostics.error("Voice profile unavailable", category: "voice_filter", error: error)
+            return nil
+        }
+    }
+
+    func forgetMyVoice() async {
+        do { try await voiceProfiles.forget() } catch {
+            AppDiagnostics.error("Voice profile could not be deleted", category: "voice_filter", error: error)
+            showError(String(localized: "Couldn't forget your voice. Try again."))
+        }
+    }
+
+    private func applyForgottenVoice() {
+        Task {
+            do { try await voiceProfiles.applyForget() } catch {
+                AppDiagnostics.error("Voice profile could not be forgotten", category: "voice_filter", error: error)
+            }
         }
     }
 
@@ -340,7 +391,7 @@ final class FlowCoordinator {
             do {
                 if try dataStore.recordingInfo(for: id).source.hasPrefix("unified/"), let library = dataStore.library {
                     try await library.refreshArchive()
-                    try await library.retranscribe(id, using: transcriber)
+                    try await dataStore.retranscribe(id, using: transcriber)
                     recoveryStatusMessage = String(localized: "A new result was saved in the shared library.")
                     retryingRecoveryRecordingID = nil
                     return
@@ -348,8 +399,9 @@ final class FlowCoordinator {
                 guard let recording = try recoveryStore.recording(with: id) else {
                     throw AudioArchiveError.invalidRecording
                 }
-                let text = try await transcribeRecoverableRecording(recording)
-                dataStore.record(text: text, audioRecordingID: recording.id)
+                let transcript = try await transcribeRecoverableRecording(recording)
+                let text = transcript.text
+                dataStore.record(text: text, audioRecordingID: recording.id, unfilteredText: transcript.voices?.unfilteredText)
                 recoveryStatusMessage = String(localized: "Recovered transcript updated.")
                 AppDiagnostics.info(
                     "Recoverable recording transcription retry succeeded",
@@ -375,15 +427,15 @@ final class FlowCoordinator {
 
     private func transcribeRecoverableRecording(
         _ recording: RecoverableRecording
-    ) async throws -> String {
-        let text = try await transcribeAudio(
+    ) async throws -> AccessTranscript {
+        let transcript = try await transcribeAudio(
             wavData: dataStore.providerWAV(for: recording.id),
             recordingID: recording.id
         )
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !transcript.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw RecoveryTranscriptionError.emptyRecoveredTranscript
         }
-        return text
+        return transcript
     }
 
     /// Returns nil when the fallback handled the recording (pasted or
@@ -409,7 +461,8 @@ final class FlowCoordinator {
         )
 
         do {
-            let text = try await transcribeRecoverableRecording(recording)
+            let recovered = try await transcribeRecoverableRecording(recording)
+            let text = recovered.text
             guard !Task.isCancelled else { return nil }
             AppDiagnostics.info(
                 "Realtime fallback transcription succeeded",
@@ -439,7 +492,7 @@ final class FlowCoordinator {
                 return nil
             }
 
-            dataStore.record(text: text, audioRecordingID: recording.id)
+            dataStore.record(text: text, audioRecordingID: recording.id, unfilteredText: recovered.voices?.unfilteredText)
             state = .success
             transcript = text
             paste(text)
@@ -587,7 +640,7 @@ final class FlowCoordinator {
     private func transcribeAudio(
         wavData: Data,
         recordingID: UUID?
-    ) async throws -> String {
+    ) async throws -> AccessTranscript {
         let plan = recordingID.flatMap { dataStore.library?.plan(for: $0) }
         if let recordingID, plan != nil { try await dataStore.library?.validateProviderCapture(recordingID) }
         let transcript = try await transcriber.transcribe(
@@ -598,15 +651,15 @@ final class FlowCoordinator {
         guard !Task.isCancelled else { throw CancellationError() }
 
         if let recordingID, let library = dataStore.library, plan != nil {
-            try await library.recordProviderOutput(transcript, captureID: recordingID, model: TranscriptionProviderType.dictation.batchResultModelID)
+            try await library.recordProviderOutput(transcript.text, captureID: recordingID, model: TranscriptionProviderType.dictation.batchResultModelID)
         }
         guard !Task.isCancelled else { throw CancellationError() }
 
-        var text = transcript
+        var text = transcript.text
         if let lastChar = text.last, ".?!".contains(lastChar) {
             text.append(" ")
         }
-        return text
+        return AccessTranscript(text: text, voices: transcript.voices)
     }
 
     private func showError(_ message: String) {
@@ -684,6 +737,7 @@ final class FlowCoordinator {
         realtimeCaptureID = captureID
         let access = access
         let grant = Task { try await access.grant(maximumAudioSeconds: AccessGrant.maximumAudioSeconds) }
+        let voice = Task { [weak self] in await self?.onlyMyVoice() }
         let controller = RealtimeDictationController(
             makeProviderConfiguration: { [weak self] original in
                 let plan = original.dictationPlan
@@ -691,6 +745,7 @@ final class FlowCoordinator {
                     grant: grant,
                     customVocabulary: plan?.dictionary ?? vocabulary,
                     languageHints: plan?.languages ?? languages,
+                    voice: await voice.value,
                     onAudioLimitReached: { Task { @MainActor in self?.stopRecording(captureID: captureID) } }
                 )
             },
@@ -884,7 +939,7 @@ final class FlowCoordinator {
                 }
             }
             guard !Task.isCancelled else { return }
-            self.dataStore.record(text: text, audioRecordingID: recoverableRecording?.id)
+            self.dataStore.record(text: text, audioRecordingID: recoverableRecording?.id, unfilteredText: result.voices?.unfilteredText)
             let handedOffAt = ContinuousClock.now
             let measurements = DictationTiming.measurements(of: result.timing, stoppedAt: stoppedAt, handedOffAt: handedOffAt)
             let timingMetadata = [

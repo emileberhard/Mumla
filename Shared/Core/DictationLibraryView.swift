@@ -70,7 +70,7 @@ struct DictationLibraryView: View {
             Section("Recordings") {
                 ForEach(library.entries) { entry in
                     NavigationLink {
-                        DictationLibraryCaptureView(library: library, transcriber: transcriber, captureID: entry.id)
+                        DictationLibraryCaptureView(library: library, dataStore: dataStore, transcriber: transcriber, captureID: entry.id)
                     } label: {
                         DictationLibraryCaptureRow(entry: entry)
                     }
@@ -224,13 +224,14 @@ private struct DictationLibraryCaptureRow: View {
 
 private struct DictationLibraryCaptureView: View {
     let library: UnifiedDictationLibrary
+    let dataStore: MumlaDataStore
     let transcriber: AccessTranscriber
     let captureID: UUID
 
     var body: some View {
         Group {
             if let entry = library.entries.first(where: { $0.id == captureID }) {
-                DictationLibraryCaptureDetail(library: library, transcriber: transcriber, entry: entry)
+                DictationLibraryCaptureDetail(library: library, dataStore: dataStore, transcriber: transcriber, entry: entry)
             } else {
                 ContentUnavailableView("Recording Unavailable", systemImage: "waveform", description: Text("Refresh the library for the current iCloud account."))
             }
@@ -240,6 +241,7 @@ private struct DictationLibraryCaptureView: View {
 
 private struct DictationLibraryCaptureDetail: View {
     let library: UnifiedDictationLibrary
+    let dataStore: MumlaDataStore
     let transcriber: AccessTranscriber
     let entry: DictationArchiveEntry
     @State private var previewURL: URL?
@@ -278,7 +280,7 @@ private struct DictationLibraryCaptureDetail: View {
                     Task {
                         isWorking = true
                         defer { isWorking = false }
-                        do { try await library.retranscribe(entry.id, using: transcriber) }
+                        do { try await dataStore.retranscribe(entry.id, using: transcriber) }
                         catch { self.error = TranscriptionFailureMessage.text(for: error, allowance: transcriber.access.state) }
                     }
                 }

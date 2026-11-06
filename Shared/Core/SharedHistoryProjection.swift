@@ -13,18 +13,24 @@ actor SharedHistoryProjection {
 
     init(container: ModelContainer) { self.container = container }
 
-    func insert(_ result: DictationResultVersion, deviceName: String, lease: AccountPartitionLease) throws {
+    func insert(_ result: DictationResultVersion, deviceName: String, unfilteredText: String?, lease: AccountPartitionLease) throws {
         try Task.checkCancellation()
         guard lease.isActive else { throw LibraryAgentError.accountChanged }
         let id = result.id
-        if let existing = try context.fetch(FetchDescriptor<HistoryEntry>(predicate: #Predicate { $0.id == id })).first {
-            guard existing.text == result.text, existing.audioRecordingID == result.captureID else { throw AudioArchiveError.conflictingRecording }
-            return
-        }
         do {
-            context.insert(HistoryEntry(id: result.id, text: result.text, createdAt: result.createdAt,
+            if let existing = try context.fetch(FetchDescriptor<HistoryEntry>(predicate: #Predicate { $0.id == id })).first {
+                guard existing.text == result.text, existing.audioRecordingID == result.captureID else { throw AudioArchiveError.conflictingRecording }
+                guard existing.unfilteredText == nil, let unfilteredText else { return }
+                existing.unfilteredText = unfilteredText
+                guard lease.isActive else { throw LibraryAgentError.accountChanged }
+                try context.save()
+                return
+            }
+            let entry = HistoryEntry(id: result.id, text: result.text, createdAt: result.createdAt,
                 providerDisplayName: TranscriptionProviderType.displayName(libraryModelID: result.model),
-                deviceName: deviceName, audioRecordingID: result.captureID))
+                deviceName: deviceName, audioRecordingID: result.captureID)
+            entry.unfilteredText = unfilteredText
+            context.insert(entry)
             guard lease.isActive else { throw LibraryAgentError.accountChanged }
             try context.save()
         } catch {
@@ -67,19 +73,24 @@ actor SharedHistoryProjection {
                 let resultIDs = Set(results.map(\.id))
                 let texts = Set(results.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) })
                 var hiddenTexts = Set<String>()
+                var unfilteredTexts: [String: String] = [:]
                 for (_, existing) in byCapture[capture.id] ?? [] where !resultIDs.contains(existing.id) {
                     let text = existing.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard texts.contains(text) else { continue }
                     if existing.isHidden { hiddenTexts.insert(text) }
+                    if let unfiltered = existing.unfilteredText { unfilteredTexts[text] = unfiltered }
                     context.delete(existing)
                     byID.removeValue(forKey: existing.id)
                 }
                 for result in results {
-                    let hidden = hiddenTexts.contains(result.text.trimmingCharacters(in: .whitespacesAndNewlines))
+                    let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let hidden = hiddenTexts.contains(trimmed)
+                    let unfiltered = unfilteredTexts[trimmed]
                     if let existing = byID[result.id] {
-                        guard existing.text.trimmingCharacters(in: .whitespacesAndNewlines) == result.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                        guard existing.text.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed,
                               existing.audioRecordingID == capture.id else { throw AudioArchiveError.conflictingRecording }
                         if hidden { existing.isHidden = true }
+                        if let unfiltered, existing.unfilteredText == nil { existing.unfilteredText = unfiltered }
                         if existing.text != result.text { existing.text = result.text }
                         continue
                     }
@@ -87,6 +98,7 @@ actor SharedHistoryProjection {
                         providerDisplayName: TranscriptionProviderType.displayName(libraryModelID: result.model),
                         deviceName: capture.source, audioRecordingID: capture.id)
                     row.isHidden = hidden
+                    row.unfilteredText = unfiltered
                     context.insert(row)
                     byID[row.id] = row
                 }

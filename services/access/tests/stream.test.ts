@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { AccessConfig } from "../src/config";
 import { AccessService } from "../src/server";
 import { AccessStore } from "../src/store";
+import { KeptAudioBudget, StreamUpload } from "../src/stream";
 import { syntheticPolicy, syntheticVerifier } from "./appstore-fixture";
 
 const resources: (() => void | Promise<void>)[] = [];
@@ -393,4 +394,287 @@ test("a settlement failure after dispatch is never reported as retryable", async
       id: expect.any(String),
     },
   ]);
+});
+
+const diarizedDefinition = {
+  enhancedMode: {
+    enabled: true,
+    model: "MAI-Transcribe-2",
+    modelOptions: { transcribeStyle: "clean", timestamps: "word" },
+  },
+  diarization: { enabled: true },
+};
+
+const diarizedResult = {
+  combinedPhrases: [{ text: "Mine. Theirs." }],
+  phrases: [
+    {
+      speaker: 0,
+      text: "Mine.",
+      offsetMilliseconds: 0,
+      durationMilliseconds: 400,
+      words: [
+        { text: "Mine.", offsetMilliseconds: 0, durationMilliseconds: 400 },
+      ],
+    },
+    {
+      speaker: 1,
+      text: "Theirs.",
+      offsetMilliseconds: 500,
+      durationMilliseconds: 400,
+      words: [
+        { text: "Theirs.", offsetMilliseconds: 500, durationMilliseconds: 400 },
+      ],
+    },
+  ],
+};
+
+const voicesReply = {
+  type: "voices",
+  text: "Mine. Theirs.",
+  phrases: [
+    { speaker: 0, text: "Mine.", words: [[0, 400]] },
+    { speaker: 1, text: "Theirs.", words: [[500, 400]] },
+  ],
+  id: expect.any(String),
+};
+
+test("a requested voices pass diarizes the kept audio without charging again", async () => {
+  const requests: Awaited<ReturnType<typeof multipartAudio>>[] = [];
+  const { grant, used, open } = await setup(async (request) => {
+    const received = await multipartAudio(request);
+    requests.push(received);
+    return Response.json(
+      received.definition.diarization
+        ? diarizedResult
+        : { combinedPhrases: [{ text: "Mine. Theirs." }] },
+    );
+  });
+  const { socket, opened, closed } = open((await grant(30)).token);
+  await opened;
+  socket.send(
+    JSON.stringify({
+      type: "start",
+      languages: [],
+      vocabulary: [],
+      speakers: "onRequest",
+    }),
+  );
+  socket.send(pcm(16_000, 7));
+  socket.send(pcm(8_000, 9));
+  socket.send(JSON.stringify({ type: "finish" }));
+  socket.send(JSON.stringify({ type: "voices" }));
+  const messages = await closed;
+  expect(messages).toEqual([
+    { type: "result", text: "Mine. Theirs.", id: expect.any(String) },
+    voicesReply,
+  ]);
+  expect(requests).toHaveLength(2);
+  const second = requests.find((request) => request.definition.diarization);
+  expect(second?.definition).toEqual(diarizedDefinition);
+  expect(second?.header.readUInt32LE(40)).toBe(48_000);
+  expect(second?.pcm).toEqual(Buffer.concat([pcm(16_000, 7), pcm(8_000, 9)]));
+  expect(await used()).toMatchObject({ used_seconds: 2, in_flight_seconds: 0 });
+  const [result] = messages as { id: string }[];
+  expect(
+    logged.find((entry) => entry.event === "voices" && entry.id === result?.id),
+  ).toMatchObject({ code: "ok", audio_ms: 1_500 });
+});
+
+test("a failed voices pass still delivers the result first", async () => {
+  const { grant, open } = await setup(async (request) => {
+    const received = await multipartAudio(request);
+    if (received.definition.diarization)
+      return new Response("busy", { status: 503 });
+    return Response.json({ combinedPhrases: [{ text: "Everyone." }] });
+  });
+  const { socket, opened, closed } = open((await grant(30)).token);
+  await opened;
+  socket.send(
+    JSON.stringify({
+      type: "start",
+      languages: [],
+      vocabulary: [],
+      speakers: "onRequest",
+    }),
+  );
+  socket.send(pcm(1_600));
+  socket.send(JSON.stringify({ type: "finish" }));
+  socket.send(JSON.stringify({ type: "voices" }));
+  expect(await closed).toEqual([
+    { type: "result", text: "Everyone.", id: expect.any(String) },
+    { type: "voices_unavailable", id: expect.any(String) },
+  ]);
+});
+
+test("a voices pass with unusable speaker phrases answers voices_unavailable", async () => {
+  const { grant, open } = await setup(async (request) => {
+    const received = await multipartAudio(request);
+    return Response.json(
+      received.definition.diarization
+        ? {
+            combinedPhrases: [{ text: "Everyone." }],
+            phrases: [{ speaker: "a", text: "Everyone.", words: [] }],
+          }
+        : { combinedPhrases: [{ text: "Everyone." }] },
+    );
+  });
+  const { socket, opened, closed } = open((await grant(30)).token);
+  await opened;
+  socket.send(
+    JSON.stringify({
+      type: "start",
+      languages: [],
+      vocabulary: [],
+      speakers: "onRequest",
+    }),
+  );
+  socket.send(pcm(1_600));
+  socket.send(JSON.stringify({ type: "finish" }));
+  socket.send(JSON.stringify({ type: "voices" }));
+  const messages = await closed;
+  expect(messages).toEqual([
+    { type: "result", text: "Everyone.", id: expect.any(String) },
+    { type: "voices_unavailable", id: expect.any(String) },
+  ]);
+  const [result] = messages as { id: string }[];
+  expect(
+    logged.find((entry) => entry.event === "voices" && entry.id === result?.id),
+  ).toMatchObject({ code: "phrases_invalid" });
+});
+
+test("diarize mode answers with speaker phrases in one charged request", async () => {
+  const definitions: unknown[] = [];
+  const { grant, used, open } = await setup(async (request) => {
+    definitions.push((await multipartAudio(request)).definition);
+    return Response.json(diarizedResult);
+  });
+  const { socket, opened, closed } = open((await grant(30)).token);
+  await opened;
+  socket.send(
+    JSON.stringify({
+      type: "start",
+      languages: [],
+      vocabulary: [],
+      speakers: "diarize",
+    }),
+  );
+  socket.send(pcm(16_000));
+  socket.send(JSON.stringify({ type: "finish" }));
+  expect(await closed).toEqual([voicesReply]);
+  expect(definitions).toEqual([diarizedDefinition]);
+  expect(await used()).toMatchObject({ used_seconds: 1, in_flight_seconds: 0 });
+});
+
+test("diarize mode with unusable speaker phrases still answers the text", async () => {
+  const { grant, open } = await setup(async (request) => {
+    await multipartAudio(request);
+    return Response.json({
+      combinedPhrases: [{ text: "Everyone." }],
+      phrases: [{ speaker: -1, text: "Everyone.", words: [] }],
+    });
+  });
+  const { socket, opened, closed } = open((await grant(30)).token);
+  await opened;
+  socket.send(
+    JSON.stringify({
+      type: "start",
+      languages: [],
+      vocabulary: [],
+      speakers: "diarize",
+    }),
+  );
+  socket.send(pcm(1_600));
+  socket.send(JSON.stringify({ type: "finish" }));
+  const messages = await closed;
+  expect(messages).toEqual([
+    { type: "result", text: "Everyone.", id: expect.any(String) },
+  ]);
+  const [result] = messages as { id: string }[];
+  expect(
+    logged.find((entry) => entry.event === "voices" && entry.id === result?.id),
+  ).toMatchObject({ code: "phrases_invalid" });
+});
+
+test("an on-request stream stays active until it closes unasked after the result", async () => {
+  const { call, grant, open } = await setup(async (request) => {
+    await multipartAudio(request);
+    return Response.json({ combinedPhrases: [{ text: "Mine." }] });
+  });
+  const active = async () =>
+    (await (await call("/internal/status", "GET", operatorToken)).json())
+      .active;
+  const { socket, opened, closed } = open((await grant(30)).token);
+  await opened;
+  const result = new Promise<void>((resolve) =>
+    socket.addEventListener("message", () => resolve(), { once: true }),
+  );
+  socket.send(
+    JSON.stringify({
+      type: "start",
+      languages: [],
+      vocabulary: [],
+      speakers: "onRequest",
+    }),
+  );
+  socket.send(pcm(1_600));
+  socket.send(JSON.stringify({ type: "finish" }));
+  await result;
+  expect(await active()).toBe(1);
+  const started = performance.now();
+  expect(await closed).toEqual([
+    { type: "result", text: "Mine.", id: expect.any(String) },
+  ]);
+  expect(performance.now() - started).toBeGreaterThan(4_000);
+  expect(await active()).toBe(0);
+}, 10_000);
+
+test("voices is refused before finish and outside on-request streams", async () => {
+  const { grant, open } = await setup(async () =>
+    Response.json({ combinedPhrases: [] }),
+  );
+  for (const speakers of ["onRequest", undefined]) {
+    const { socket, opened, closed } = open((await grant(30)).token);
+    await opened;
+    socket.send(
+      JSON.stringify({
+        type: "start",
+        languages: [],
+        vocabulary: [],
+        speakers,
+      }),
+    );
+    if (!speakers) {
+      socket.send(pcm(160));
+      socket.send(JSON.stringify({ type: "finish" }));
+    }
+    socket.send(JSON.stringify({ type: "voices" }));
+    expect(await closed).toMatchObject([
+      { type: "error", status: 400, code: "invalid_message" },
+    ]);
+  }
+});
+
+test("kept audio past the shared budget is released and never sent", () => {
+  const budget = new KeptAudioBudget(100);
+  const upload = new StreamUpload(
+    { pause() {}, resume() {} },
+    16_000,
+    new AbortController().signal,
+    budget,
+  );
+  upload.receive(
+    JSON.stringify({
+      type: "start",
+      languages: [],
+      vocabulary: [],
+      speakers: "onRequest",
+    }),
+  );
+  upload.receive(pcm(32));
+  expect(upload.keptAudio?.length).toBe(1);
+  upload.receive(pcm(32));
+  expect(upload.keptAudio).toBeUndefined();
+  expect(budget.reserve(100)).toBe(true);
+  upload.close();
 });

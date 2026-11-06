@@ -11,7 +11,7 @@ final class RealtimeDictationController {
     let diagnosticsSessionID = UUID().uuidString
 
     private let makeOriginalAudio: @MainActor () async throws -> OriginalAudioWriter
-    private let makeProviderConfiguration: @MainActor (OriginalAudioWriter) throws -> RealtimeDictationProviderConfiguration
+    private let makeProviderConfiguration: @MainActor (OriginalAudioWriter) async throws -> RealtimeDictationProviderConfiguration
     private var providerConfiguration: RealtimeDictationProviderConfiguration?
     private var microphoneCapture: BuiltInMicrophoneCapture?
     private var originalAudio: OriginalAudioWriter?
@@ -22,7 +22,7 @@ final class RealtimeDictationController {
     private var isTerminating = false
     private var startedAt: Date?
 
-    init(makeProviderConfiguration: @escaping @MainActor (OriginalAudioWriter) throws -> RealtimeDictationProviderConfiguration, makeOriginalAudio: @escaping @MainActor () async throws -> OriginalAudioWriter) {
+    init(makeProviderConfiguration: @escaping @MainActor (OriginalAudioWriter) async throws -> RealtimeDictationProviderConfiguration, makeOriginalAudio: @escaping @MainActor () async throws -> OriginalAudioWriter) {
         self.makeOriginalAudio = makeOriginalAudio
         self.makeProviderConfiguration = makeProviderConfiguration
     }
@@ -33,7 +33,7 @@ final class RealtimeDictationController {
         self.originalAudio = originalAudio
         do {
             try Task.checkCancellation()
-            let configuration = try makeProviderConfiguration(originalAudio)
+            let configuration = try await makeProviderConfiguration(originalAudio)
             providerConfiguration = configuration
             let session = configuration.makeSession()
             let dictation = RealtimeDictation(session: session)
@@ -61,7 +61,8 @@ final class RealtimeDictationController {
                 originalAudio: await finishOriginalAudio(),
                 fallbackReason: "realtime_not_started",
                 failure: RealtimeDictationNotStarted(),
-                timing: nil
+                timing: nil,
+                voices: nil
             )
         }
 
@@ -77,7 +78,8 @@ final class RealtimeDictationController {
                 originalAudio: originalAudio,
                 fallbackReason: "realtime_not_started",
                 failure: RealtimeDictationNotStarted(),
-                timing: nil
+                timing: nil,
+                voices: nil
             )
         }
         let completion = await RealtimeDictationCompletion.finish(dictation)
@@ -92,6 +94,7 @@ final class RealtimeDictationController {
             )
         }
 
+        let voices = await session?.voices
         if completion.error == nil {
             AppDiagnostics.info(
                 "Realtime recording stopped",
@@ -99,7 +102,7 @@ final class RealtimeDictationController {
                 metadata: baseDiagnosticsMetadata.merging([
                     "fallback_reason": completion.fallbackReason ?? "none",
                     "final_text_length": String(completion.text?.count ?? 0),
-                ]) { _, new in new }
+                ]) { _, new in new }.merging(voices?.metadata ?? [:]) { _, new in new }
             )
         }
         let timing = await session?.timing
@@ -111,7 +114,8 @@ final class RealtimeDictationController {
             originalAudio: originalAudio,
             fallbackReason: completion.fallbackReason,
             failure: completion.error,
-            timing: timing
+            timing: timing,
+            voices: voices
         )
     }
 

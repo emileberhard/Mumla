@@ -343,7 +343,8 @@ final class UnifiedDictationLibrary {
         case archive(DictationArchive, DictationAccountSession)
     }
 
-    private func recordProviderResult(destination: ResultDestination, captureID: UUID, text: String, model: String, plan: DictationPlan) async throws {
+    @discardableResult
+    private func recordProviderResult(destination: ResultDestination, captureID: UUID, text: String, model: String, plan: DictationPlan) async throws -> DictationResultVersion {
         let result = DictationResultVersion(
             id: UUID(), captureID: captureID, createdAt: .now, kind: .providerOutput,
             text: text, model: model, contextWasUsed: false, parentResultID: nil, plan: plan
@@ -364,6 +365,7 @@ final class UnifiedDictationLibrary {
                 publicationStatus = try await store.status()
             } catch { lastError = error.localizedDescription }
         }
+        return result
     }
 
     func validateProviderCapture(_ id: UUID) async throws {
@@ -392,7 +394,9 @@ final class UnifiedDictationLibrary {
         try Task.checkCancellation()
     }
 
-    func retranscribe(_ id: UUID, using transcriber: AccessTranscriber) async throws {
+    func retranscribe(_ id: UUID, using transcriber: AccessTranscriber) async throws
+        -> (result: DictationResultVersion, source: String, unfilteredText: String?)
+    {
         guard let session = accountSession else { throw DictationLibraryError.accountUnavailable }
         try await store.validateAccountSession(session)
         let destination: ResultDestination
@@ -406,11 +410,13 @@ final class UnifiedDictationLibrary {
         let wav = try await OriginalAudio.providerWAV(from: original(for: id), fileType: .caf)
         try await store.validateAccountSession(session)
         try Task.checkCancellation()
-        let text = try await transcriber.transcribe(wav: wav, languageHints: plan.languages, customVocabulary: plan.dictionary)
-        try await recordProviderResult(destination: destination, captureID: id, text: text, model: TranscriptionProviderType.dictation.batchResultModelID, plan: plan)
+        let transcript = try await transcriber.transcribe(wav: wav, languageHints: plan.languages, customVocabulary: plan.dictionary)
+        let result = try await recordProviderResult(destination: destination, captureID: id, text: transcript.text,
+                                                    model: TranscriptionProviderType.dictation.batchResultModelID, plan: plan)
         try await store.validateAccountSession(session)
         try Task.checkCancellation()
         try await refreshArchive()
+        return (result, entry.capture.source, transcript.voices?.unfilteredText)
     }
 
     func reseedRetainedLibrary() async throws {

@@ -223,6 +223,8 @@ struct GeneralSettingsTab: View {
 
             SpokenLanguagesSection(coordinator: coordinator)
 
+            VoicesSection(coordinator: coordinator)
+
             Section("Permissions") {
                 PermissionStatusRow(
                     title: "Dictation Shortcut",
@@ -308,6 +310,39 @@ private struct ShortcutSettingsSection: View {
                 }
             }
         }
+    }
+}
+
+private struct VoicesSection: View {
+    @Bindable var coordinator: FlowCoordinator
+    @State private var confirmsForgetting = false
+    @State private var status: VoiceProfileStatus?
+
+    var body: some View {
+        Section("Voices") {
+            Picker("Transcribe", selection: $coordinator.voices) {
+                ForEach(VoiceSelection.allCases) { selection in
+                    Label { Text(selection.title) } icon: { Image(systemName: selection.systemImage) }
+                        .tag(selection)
+                }
+            }
+            .pickerStyle(.segmented)
+            LabeledContent("Your Voice") {
+                HStack {
+                    if let status { Text(status.title) }
+                    Button("Forget My Voice", role: .destructive) { confirmsForgetting = true }
+                }
+            }
+            .confirmationDialog("Mumla will learn your voice again from your next dictations.", isPresented: $confirmsForgetting) {
+                Button("Forget My Voice", role: .destructive) {
+                    Task {
+                        await coordinator.forgetMyVoice()
+                        status = await coordinator.voiceProfileStatus()
+                    }
+                }
+            }
+        }
+        .task { status = await coordinator.voiceProfileStatus() }
     }
 }
 
