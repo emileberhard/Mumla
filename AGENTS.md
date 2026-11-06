@@ -496,10 +496,11 @@ publishes `Mumla.dmg`.
 ## Ask first
 
 Ask the maintainer before destructive git operations, deleting user data,
-changing signing identities, or sending externally visible communication not
-explicitly requested. Check Apple's current documentation, or crash
-diagnostics, rather than guessing when behavior depends on keyboard extension
-policy, audio sessions, haptics, App Groups or CloudKit.
+changing signing identities, changing plan limits or an account's allowance, or
+sending externally visible communication not explicitly requested. Check
+Apple's current documentation, or crash diagnostics, rather than guessing when
+behavior depends on keyboard extension policy, audio sessions, haptics, App
+Groups or CloudKit.
 
 ## Documentation
 
