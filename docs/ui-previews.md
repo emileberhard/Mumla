@@ -9,8 +9,8 @@ corners masked. Previews default to dark; App Store captures use light.
 
 ```bash
 just ui-previews
-just ui-previews home settings keyboard
-just ui-previews --appearance light home settings
+just ui-previews transcripts account keyboard
+just ui-previews --appearance light transcripts account
 just ui-previews-stop
 ```
 

@@ -4,12 +4,13 @@ import SwiftUI
 import UIKit
 
 enum CaptureScreen: String, CaseIterable {
-    case home
-    case homeRecording = "home-recording"
-    case history
-    case historyRecordings = "history-recordings"
-    case historyStats = "history-stats"
-    case settings
+    case transcripts
+    case transcriptsRecording = "transcripts-recording"
+    case dictating
+    case transcript
+    case dictionary
+    case search
+    case account
     case onboardingEnable = "onboarding-enable"
     case onboardingDictate = "onboarding-dictate"
     case keyboardStart = "keyboard-start"
@@ -20,12 +21,13 @@ enum CaptureScreen: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .home: "Home"
-        case .homeRecording: "Home · Recording"
-        case .history: "History · Transcripts"
-        case .historyRecordings: "History · Recordings"
-        case .historyStats: "History · Stats"
-        case .settings: "Settings"
+        case .transcripts: "Transcripts"
+        case .transcriptsRecording: "Transcripts · Recording"
+        case .dictating: "Now Dictating"
+        case .transcript: "Transcript"
+        case .dictionary: "Dictionary"
+        case .search: "Search"
+        case .account: "Account"
         case .onboardingEnable: "Onboarding · Enable"
         case .onboardingDictate: "Onboarding · Dictate"
         case .keyboardStart: "Keyboard composite · Start Session"
@@ -80,7 +82,7 @@ struct CaptureView: View {
                 KeyboardScene(scenario: .processing)
             case .keyboardError:
                 KeyboardScene(scenario: .error)
-            case .settings, .home, .homeRecording, .history, .historyRecordings, .historyStats:
+            case .transcripts, .transcriptsRecording, .dictating, .transcript, .dictionary, .search, .account:
                 ContentView()
             case .onboardingEnable:
                 OnboardingView(coordinator: coordinator, capturePhase: .enable)
@@ -135,18 +137,9 @@ struct CaptureView: View {
                 guard await shown.next(isolation: #isolation) == next else {
                     throw CaptureError("the \(next.rawValue) screen did not appear")
                 }
-                if [.history, .historyRecordings, .historyStats].contains(next) {
-                    coordinator.navigationPath = [.history]
+                if next == .transcript {
+                    coordinator.transcriptsPath = [.transcript(try CaptureFixture.transcriptWithAudio(in: coordinator))]
                     try await settle(window, screen: next)
-                }
-                if next == .historyRecordings {
-                    coordinator.captureShowsRecordings = false
-                    let previous = try await drawnFrame(of: window)
-                    try selectSegment(1, in: window)
-                    try await waitForRecordings(from: previous, in: window)
-                }
-                if next == .settings || next == .historyStats {
-                    try activateToolbarButton(in: window)
                 }
                 try await settle(window, screen: next)
                 let image = try await screenshot(next, in: directory)
@@ -188,52 +181,6 @@ struct CaptureView: View {
             previous = next
         }
         throw CaptureError("the \(screen.rawValue) screen did not settle")
-    }
-
-    private func waitForRecordings(from previous: Data?, in window: UIWindow) async throws {
-        for _ in 0..<60 {
-            try await Task.sleep(for: .milliseconds(33))
-            if coordinator.captureShowsRecordings {
-                if try await drawnFrame(of: window) != previous { return }
-            }
-        }
-        throw CaptureError("the history-recordings screen did not appear")
-    }
-
-    private func activateToolbarButton(in window: UIWindow) throws {
-        func navigationBar(in view: UIView) -> UINavigationBar? {
-            if let bar = view as? UINavigationBar { return bar }
-            return view.subviews.lazy.compactMap(navigationBar).first
-        }
-        func controls(in view: UIView) -> [UIControl] {
-            let own = (view as? UIControl).map { [$0] } ?? []
-            return own + view.subviews.flatMap(controls)
-        }
-        guard let bar = navigationBar(in: window) else {
-            throw CaptureError("the navigation bar did not appear")
-        }
-        let trailing = controls(in: bar).filter {
-            !$0.allTargets.isEmpty && $0.convert($0.bounds, to: bar).midX > bar.bounds.midX
-        }
-        guard trailing.count == 1, let button = trailing.first else {
-            throw CaptureError("expected one trailing toolbar button, found \(trailing.count)")
-        }
-        button.sendActions(for: .touchUpInside)
-    }
-
-    private func selectSegment(_ index: Int, in window: UIWindow) throws {
-        guard let control = segmentedControl(in: window) else {
-            throw CaptureError("the screen has no segmented control")
-        }
-        control.selectedSegmentIndex = index
-        control.sendActions(for: .valueChanged)
-    }
-
-    private func segmentedControl(in view: UIView) -> UISegmentedControl? {
-        if let control = view as? UISegmentedControl {
-            return control
-        }
-        return view.subviews.lazy.compactMap(segmentedControl).first
     }
 
     private func screenshot(_ screen: CaptureScreen, in directory: URL) async throws -> UIImage {
@@ -364,18 +311,40 @@ private enum CaptureFixture {
             )
         }
         try context.save()
+        let newest = FetchDescriptor<HistoryEntry>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+        if let entry = try context.fetch(newest).first {
+            coordinator.copy(entry)
+        }
     }
 
     static func configure(_ coordinator: DictationCoordinator, for screen: CaptureScreen) {
-        coordinator.navigationPath = []
+        coordinator.transcriptsPath = []
+        coordinator.selectedTab = switch screen {
+        case .dictionary: .dictionary
+        case .search: .search
+        default: .transcripts
+        }
+        coordinator.captureSheet = switch screen {
+        case .dictating: .dictation
+        case .account: .account
+        default: nil
+        }
         switch screen {
-        case .homeRecording:
+        case .transcriptsRecording, .dictating:
             coordinator.access.preview("low")
             coordinator.setCapturePhase(.recording)
         default:
             coordinator.access.preview("available")
             coordinator.setCapturePhase(.idle)
         }
+    }
+
+    static func transcriptWithAudio(in coordinator: DictationCoordinator) throws -> UUID {
+        let newest = FetchDescriptor<HistoryEntry>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+        guard let entry = try coordinator.dataStore.container.mainContext.fetch(newest).dropFirst().first(where: { $0.audioRecordingID != nil }) else {
+            throw CaptureError("the fixture has no transcript with audio")
+        }
+        return entry.id
     }
 }
 

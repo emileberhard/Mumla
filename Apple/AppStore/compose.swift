@@ -117,8 +117,8 @@ struct Slide: View {
 
 let slides: [(String, Slide)] = [
     ("1-keyboard", Slide(headline: [("Just ", nil), ("speak", Brand.amber), (".\nIn ", nil), ("any app", Brand.pink), (".", nil)], screen: "keyboard")),
-    ("2-dictionary", Slide(headline: [("Names", Brand.amber), (" spelled\n", nil), ("your way", Brand.pink), (".", nil)], screen: "settings")),
-    ("3-home", Slide(headline: [("Every word ", nil), ("kept", Brand.amber), ("\nand ", nil), ("synced", Brand.pink), (".", nil)], screen: "home")),
+    ("2-dictionary", Slide(headline: [("Names", Brand.amber), (" spelled\n", nil), ("your way", Brand.pink), (".", nil)], screen: "dictionary")),
+    ("3-home", Slide(headline: [("Every word ", nil), ("kept", Brand.amber), ("\nand ", nil), ("synced", Brand.pink), (".", nil)], screen: "transcripts")),
 ]
 
 MainActor.assumeIsolated {
