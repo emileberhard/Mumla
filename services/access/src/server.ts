@@ -680,7 +680,9 @@ export class AccessService {
         !upload?.bodyHandedOff
           ? error
           : new AccessError(502, "transcription_failed");
-      result = outcome(refusal);
+      result = client.aborted
+        ? { status: 499, code: "client_closed" }
+        : outcome(refusal);
       if (refusal !== error) this.incident(error);
       throw refusal;
     } finally {

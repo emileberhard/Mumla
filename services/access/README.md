@@ -205,7 +205,8 @@ locally. Pro raises the same month's limit; it never resets used samples.
 Each transcription logs one JSON line to the journal: `event` `dictation`, a
 random `id` that the client also receives in its `result` or `error` reply, the
 `route` (`stream` or `upload`), `status` and `code` (the operator's code, which
-can be more specific than the client's), `audio_ms`, and milliseconds from the
+can be more specific than the client's, or `499` `client_closed` when the client
+left first, such as a canceled dictation), `audio_ms`, and milliseconds from the
 stream opening or the upload request for `dispatch` (the router pulled the first
 body bytes), `audio_end` (the client's last audio), `upstream` (the router
 answered) and `settled`. `upstream - audio_end` is the provider's finalization

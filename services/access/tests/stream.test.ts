@@ -329,6 +329,7 @@ test("a client that disconnects after dispatch is charged for what was forwarded
   socket.send(JSON.stringify({ type: "start", languages: [], vocabulary: [] }));
   socket.send(pcm(24_000));
   await upstream.reached;
+  const before = logged.length;
   socket.close();
   await closed;
   for (let attempt = 0; attempt < 50; attempt++) {
@@ -336,6 +337,9 @@ test("a client that disconnects after dispatch is charged for what was forwarded
     await Bun.sleep(20);
   }
   expect(await used()).toMatchObject({ used_seconds: 2, in_flight_seconds: 0 });
+  expect(
+    logged.slice(before).filter((entry) => entry.event === "dictation"),
+  ).toMatchObject([{ route: "stream", status: 499, code: "client_closed" }]);
 });
 
 test("a burst faster than the provider reads is paused, not dropped or timed out", async () => {
