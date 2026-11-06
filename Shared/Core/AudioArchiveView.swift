@@ -67,21 +67,29 @@ struct AudioArchiveView: View {
 struct AudioAttachmentControls: View {
     let recordingID: UUID
     let dataStore: MumlaDataStore
-    @State private var previewURL: URL?
-    @State private var isDownloading = false
-    @State private var downloadError: String?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout(alignment: .top))
+        layout {
+            ListenButton(recordingID: recordingID, dataStore: dataStore)
+            ExportAudioLink(recordingID: recordingID, dataStore: dataStore)
+        }
+    }
+}
+
+struct ListenButton: View {
+    let recordingID: UUID
+    let dataStore: MumlaDataStore
+    @State private var previewURL: URL?
+    @State private var isDownloading = false
+    @State private var downloadError: String?
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())
-            layout {
+            HStack {
                 Button("Listen", systemImage: "play.circle") { Task { await listen() } }
                     .disabled(isDownloading)
-                ShareLink(
-                    item: ArchivedAudioFile(recordingID: recordingID, dataStore: dataStore),
-                    preview: SharePreview("Recording")
-                ) { Label("Export Audio", systemImage: "square.and.arrow.up") }
                 if isDownloading { ProgressView().controlSize(.small) }
             }
             if let downloadError {
@@ -100,6 +108,18 @@ struct AudioAttachmentControls: View {
         } catch {
             downloadError = error.localizedDescription
         }
+    }
+}
+
+struct ExportAudioLink: View {
+    let recordingID: UUID
+    let dataStore: MumlaDataStore
+
+    var body: some View {
+        ShareLink(
+            item: ArchivedAudioFile(recordingID: recordingID, dataStore: dataStore),
+            preview: SharePreview("Recording")
+        ) { Label("Export Audio", systemImage: "waveform") }
     }
 }
 

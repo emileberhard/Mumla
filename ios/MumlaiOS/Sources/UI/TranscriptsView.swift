@@ -64,44 +64,38 @@ struct TranscriptRow: View {
     private var isCopied: Bool { coordinator.copiedTranscript?.id == entry.id }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Button(action: copy) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.text)
-                        .lineLimit(3)
-                        .foregroundStyle(.primary)
-                    HStack(spacing: 8) {
-                        Text(entry.createdAt, format: .dateTime.hour().minute())
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        if isCopied {
-                            Group {
-                                if dynamicTypeSize.isAccessibilitySize {
-                                    Image(systemName: "checkmark")
-                                } else {
-                                    Label("Copied", systemImage: "checkmark")
-                                }
+        Button(action: copy) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.text)
+                    .lineLimit(3)
+                    .foregroundStyle(.primary)
+                HStack(spacing: 8) {
+                    Text(entry.createdAt, format: .dateTime.hour().minute())
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                    if isCopied {
+                        Group {
+                            if dynamicTypeSize.isAccessibilitySize {
+                                Image(systemName: "checkmark")
+                            } else {
+                                Label("Copied", systemImage: "checkmark")
                             }
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.tint)
-                            .transition(.symbolEffect(.drawOn))
                         }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.tint)
+                        .transition(.symbolEffect(.drawOn))
                     }
-                    .font(.subheadline)
-                    .lineLimit(1)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(.rect)
+                .font(.subheadline)
+                .lineLimit(1)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint("Copies the transcript")
-            Button("Details", systemImage: "info.circle", action: open)
-                .labelStyle(.iconOnly)
-                .font(.title3)
-                .foregroundStyle(.tint)
-                .buttonStyle(.borderless)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint("Copies the transcript")
         .padding(.vertical, 4)
         .listRowBackground(Color.accentColor.opacity(flash ? 0.16 : 0))
         .animation(.smooth(duration: 0.3), value: isCopied)
@@ -109,13 +103,13 @@ struct TranscriptRow: View {
         .contextMenu {
             Button("Copy", systemImage: "doc.on.doc", action: copy)
             ShareLink(item: entry.text)
-            Button("Details", systemImage: "info.circle", action: open)
+            Button("Show Transcript", systemImage: "text.page", action: open)
             Button("Delete", systemImage: "trash", role: .destructive, action: delete)
         }
         .swipeActions {
             Button("Delete", systemImage: "trash", role: .destructive, action: delete)
         }
-        .accessibilityAction(named: "Details", open)
+        .accessibilityAction(named: "Show Transcript", open)
     }
 
     private var accessibilityLabel: Text {
@@ -153,13 +147,15 @@ struct TranscriptView: View {
 
     var body: some View {
         if let entry = matches.first {
-            content(entry)
+            RecordingAvailability(recordingID: entry.audioRecordingID) { recordingID in
+                content(entry, recordingID: recordingID)
+            }
         } else {
             ContentUnavailableView("Transcript Deleted", systemImage: "trash")
         }
     }
 
-    private func content(_ entry: HistoryEntry) -> some View {
+    private func content(_ entry: HistoryEntry, recordingID: UUID?) -> some View {
         let isCopied = coordinator.copiedTranscript?.id == entry.id
         return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -167,8 +163,9 @@ struct TranscriptView: View {
                     .font(entry.text.count > 280 ? .body : .title2)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if let recordingID = entry.audioRecordingID {
-                    TranscriptAudio(recordingID: recordingID)
+                if let recordingID {
+                    ListenButton(recordingID: recordingID, dataStore: coordinator.dataStore)
+                        .buttonStyle(.bordered)
                 }
                 Text(details(entry))
                     .font(.footnote)
@@ -184,6 +181,9 @@ struct TranscriptView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu("More", systemImage: "ellipsis") {
                     ShareLink(item: entry.text)
+                    if let recordingID {
+                        ExportAudioLink(recordingID: recordingID, dataStore: coordinator.dataStore)
+                    }
                     Button("Delete", systemImage: "trash", role: .destructive) {
                         coordinator.dataStore.deleteAllVersions(of: entry)
                         dismiss()
@@ -208,10 +208,7 @@ struct TranscriptView: View {
 
     private func details(_ entry: HistoryEntry) -> String {
         let words = entry.text.split(whereSeparator: \.isWhitespace).count
-        var parts = [
-            entry.createdAt.formatted(date: .complete, time: .shortened),
-            String(localized: "\(words) words"),
-        ]
+        var parts = [String(localized: "\(words) words")]
         if !entry.deviceName.isEmpty {
             parts.append(entry.deviceName)
         }
@@ -219,23 +216,21 @@ struct TranscriptView: View {
     }
 }
 
-private struct TranscriptAudio: View {
-    @Environment(DictationCoordinator.self) private var coordinator
+private struct RecordingAvailability<Content: View>: View {
     @Query private var recordings: [AudioRecording]
-    let recordingID: UUID
+    @ViewBuilder let content: (UUID?) -> Content
 
-    init(recordingID: UUID) {
-        self.recordingID = recordingID
-        var query = FetchDescriptor<AudioRecording>(predicate: #Predicate { $0.id == recordingID })
+    init(recordingID: UUID?, @ViewBuilder content: @escaping (UUID?) -> Content) {
+        self.content = content
+        var query = FetchDescriptor<AudioRecording>(
+            predicate: recordingID.map { id in #Predicate<AudioRecording> { $0.id == id } } ?? #Predicate<AudioRecording> { _ in false }
+        )
         query.fetchLimit = 1
         _recordings = Query(query)
     }
 
     var body: some View {
-        if !recordings.isEmpty {
-            AudioAttachmentControls(recordingID: recordingID, dataStore: coordinator.dataStore)
-                .buttonStyle(.bordered)
-        }
+        content(recordings.first?.id)
     }
 }
 
