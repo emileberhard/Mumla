@@ -28,3 +28,21 @@ The separate driver screenshot captures the actual Dynamic Island and home
 indicator, unlike the template's in-app rendering; this is needed for App
 Store slides and makes previews match that capture path. The slide compositor
 adds a home indicator because the Simulator capture may omit it.
+
+## Interactive dictation in the Simulator
+
+Debug Simulator builds can dictate without a microphone or the access service,
+so a screen recording can check the dictation sheet, strip, timer and landing
+transcript end to end:
+
+```bash
+SIMCTL_CHILD_MUMLA_FAKE_MIC_WAV=/path/to/speech-16k-mono.wav \
+SIMCTL_CHILD_MUMLA_FAKE_TRANSCRIPT="Synthetic transcript text." \
+  xcrun simctl launch <udid> emileberhard.WisprClone.ios
+xcrun simctl io <udid> recordVideo --codec=h264 --force flow.mov
+```
+
+The WAV (16 kHz mono PCM16 with a 44-byte header) loops as microphone input and
+drives the level meter; Stop returns the given transcript. Without
+`MUMLA_FAKE_TRANSCRIPT` the app uses the real access service. Device builds
+compile neither seam, and the transcript seam exists only in Debug.

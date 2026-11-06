@@ -33,7 +33,7 @@ final class DictationCoordinator {
     private static let syncedPreferenceKeys = [SharedPreferenceKey.dictationLanguages]
 
     private let preferenceSync = CloudPreferenceStore()
-    let access = MumlaAccess()
+    let access = MumlaAccess(client: SimulatedDictation.transcript == nil ? .live() : nil)
     var transcriber: AccessTranscriber { AccessTranscriber(access: access) }
     private let audioEngine = SessionAudioEngine()
     private let audioCommands: AsyncStream<AudioCommand>.Continuation
@@ -841,7 +841,9 @@ final class DictationCoordinator {
     private func startRealtimeDictation() async throws {
         let access = access
         let capture = UUID()
-        let grant = Task { try await access.grant(maximumAudioSeconds: AccessGrant.maximumAudioSeconds) }
+        let grant: Task<AccessGrant, any Error> = SimulatedDictation.transcript == nil
+            ? Task { try await access.grant(maximumAudioSeconds: AccessGrant.maximumAudioSeconds) }
+            : Task { try await Task.sleep(for: .seconds(86_400)); throw CancellationError() }
         realtimeCapture = (capture, grant)
         recordingLimit = TimeInterval(AccessGrant.maximumAudioSeconds)
         Task { [weak self] in

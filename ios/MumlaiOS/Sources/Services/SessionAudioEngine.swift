@@ -64,6 +64,34 @@ actor SessionAudioEngine {
     /// process inside AURemoteIO::Initialize when mic input starts, so tests
     /// inject "recorded" audio from a WAV file instead of touching the engine.
     private let fakeMicWAVPath = ProcessInfo.processInfo.environment["MUMLA_FAKE_MIC_WAV"]
+    private var fakeMicrophone: Task<Void, Never>?
+
+    private func playFakeMicrophone(from path: String, onPCM16Data: (@Sendable (Data) -> Void)?) {
+        fakeMicrophone?.cancel()
+        fakeMicrophone = Task.detached { [levelMeter] in
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)), data.count > 44 else { return }
+            let samples: [Int16] = data.dropFirst(44).withUnsafeBytes { raw in
+                (0..<raw.count / 2).map { raw.loadUnaligned(fromByteOffset: $0 * 2, as: Int16.self) }
+            }
+            let window = Self.sampleRate / 20
+            var start = 0
+            while !Task.isCancelled {
+                let slice = Array(samples[start..<min(start + window, samples.count)])
+                let power = slice.reduce(0.0) { $0 + pow(Double($1) / Double(Int16.max), 2) } / Double(max(1, slice.count))
+                levelMeter.update(min(1, sqrt(power) * 4))
+                onPCM16Data?(slice.withUnsafeBytes { Data($0) })
+                start = start + window >= samples.count ? 0 : start + window
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            levelMeter.update(0)
+        }
+    }
+
+    private func stopFakeMicrophone() {
+        fakeMicrophone?.cancel()
+        fakeMicrophone = nil
+        levelMeter.update(0)
+    }
     #endif
 
     nonisolated var unownedExecutor: UnownedSerialExecutor {
@@ -198,7 +226,8 @@ actor SessionAudioEngine {
     ) throws {
         defer { publishDiagnostics() }
         #if targetEnvironment(simulator)
-        if fakeMicWAVPath != nil {
+        if let fakeMicWAVPath {
+            playFakeMicrophone(from: fakeMicWAVPath, onPCM16Data: onPCM16Data)
             return
         }
         #endif
@@ -285,6 +314,7 @@ actor SessionAudioEngine {
         }
         #if targetEnvironment(simulator)
         if fakeMicWAVPath != nil {
+            stopFakeMicrophone()
             return
         }
         #endif
@@ -327,6 +357,7 @@ actor SessionAudioEngine {
         captureGeneration = UUID()
         #if targetEnvironment(simulator)
         if let fakeMicWAVPath {
+            stopFakeMicrophone()
             let url = URL(fileURLWithPath: fakeMicWAVPath)
             return CapturedDictationAudio(
                 providerWAV: (try? Data(contentsOf: url)) ?? Data(),
