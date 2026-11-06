@@ -793,16 +793,38 @@ final class MumlaDataStore {
     func delete(_ entry: HistoryEntry) {
         guard entry.modelContext === context else { return }
         do {
-            if try Self.isUnifiedRecording(entry.audioRecordingID, in: context) {
-                entry.isHidden = true
-            } else {
-                try enqueueSyncChange(for: entry.id, kind: .delete)
-                context.delete(entry)
-            }
+            try remove(entry)
             try saveAndSync()
             logger.info("Queued history change kind=delete id=\(entry.id.uuidString, privacy: .public)")
         } catch {
             onPersistenceError?(error)
+        }
+    }
+
+    func deleteAllVersions(of entry: HistoryEntry) {
+        guard entry.modelContext === context else { return }
+        guard let recordingID = entry.audioRecordingID else {
+            delete(entry)
+            return
+        }
+        do {
+            let versions = try context.fetch(FetchDescriptor<HistoryEntry>(predicate: #Predicate { $0.audioRecordingID == recordingID }))
+            for version in versions {
+                try remove(version)
+            }
+            try saveAndSync()
+            logger.info("Queued history change kind=delete versions=\(versions.count, privacy: .public)")
+        } catch {
+            onPersistenceError?(error)
+        }
+    }
+
+    private func remove(_ entry: HistoryEntry) throws {
+        if try Self.isUnifiedRecording(entry.audioRecordingID, in: context) {
+            entry.isHidden = true
+        } else {
+            try enqueueSyncChange(for: entry.id, kind: .delete)
+            context.delete(entry)
         }
     }
 

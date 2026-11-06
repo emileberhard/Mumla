@@ -156,6 +156,23 @@ struct MumlaDataStoreTests {
         #expect(try entries(in: reloaded).map(\.text) == ["keep me"])
     }
 
+    @Test func deleteAllVersionsRemovesEveryTranscriptOfThatRecording() throws {
+        let directory = try makeTemporaryDirectory()
+        let store = makeStore(in: directory)
+        let recording = UUID()
+        store.record(text: "keep me", audioRecordingID: UUID())
+        store.record(text: "first version", audioRecordingID: recording)
+        store.record(text: "second version", audioRecordingID: recording)
+
+        let newest = try #require(try entries(in: store).first { $0.text == "second version" })
+        store.deleteAllVersions(of: newest)
+
+        #expect(try entries(in: store).map(\.text) == ["keep me"])
+        let reloaded = makeStore(in: directory)
+        #expect(try entries(in: reloaded).map(\.text) == ["keep me"])
+        #expect(try pendingChanges(in: reloaded).filter { $0.kind == .delete }.count == 2)
+    }
+
     @Test func recordsDurablePendingSave() throws {
         let store = makeStore(in: try makeTemporaryDirectory())
         store.record(text: "sync me")
