@@ -79,7 +79,8 @@ forms in the same change.
 
 ### Onboarding
 
-[Onboarding](docs/design/onboarding.md) records both wizards' flows.
+[Onboarding](docs/design/onboarding.md) records both wizards' flows and the iOS
+wizard's style rules.
 
 - Both wizards derive phases from persistent state, since macOS relaunches
   after an Input Monitoring grant and iOS kills the app when a permission
@@ -92,11 +93,6 @@ forms in the same change.
   Full Access) and, once started, until the try-it lands or is skipped. A
   missing keyboard stamp is an unconfirmed connection, never proof that Full
   Access is off. `mumla://debug/onboarding` (Debug) resets both.
-- Use `OnboardingStyle.swift`'s primary-action modifier, spacing values,
-  `OnboardingPrimaryButton`, `OnboardingSecondaryButton`, `StepScaffold` and
-  `HeroSymbol` instead of per-step styling. Prefer semantic styles (`.tint`,
-  `.primary`, `.secondary`); add a shared rule only for a real repeated
-  pattern.
 
 ### Providers and credentials
 
@@ -364,7 +360,8 @@ container `iCloud.emileberhard.WisprClone`.
 ### Diagnostics
 
 - Diagnostics carry no persistent user or installation identity. `DiagnosticPrivacy` owns Sentry's privacy options, the only `beforeSend` and `beforeSendLog`; every Sentry setup calls it, automatic sessions stay off, and its tests must keep passing against the real SDK.
-- iOS events carry a `process` tag of `app` or `keyboard`. Every iOS
+- Sentry project `mumla`. iOS events use `ios-release` and `ios-debug`
+  environments and a `process` tag of `app` or `keyboard`. Every iOS
   `CrashReporting` breadcrumb and capture is also a Sentry structured log
   (attribute `category`; `sentry.release` separates app and keyboard). Logs
   buffer up to 5 s, so a killed keyboard can lose its last entries. Sentry gets
@@ -400,6 +397,7 @@ container `iCloud.emileberhard.WisprClone`.
 | `just build-sim` | Compile `MumlaiOS` and the keyboard for the simulator |
 | `just test-keyboard` | Keyboard delivery tests on macOS |
 | `just test-access-live` | Live access acceptance from the signed Debug Mac app: enrollment, proof replay, Transcribe Again, and paced, grant-bounded and canceled streams |
+| `just realtime-eval` | Resume the provider evaluation from completed atomic run logs with adaptive concurrency |
 | `just install-mac` | Build signed Debug, replace `/Applications/Mumla Dev.app`, install the `mumla` CLI and launch; stamped with the latest version tag |
 | `just build-iphone`, `just install-iphone`, `just deliver-iphone <app>` | Signed development checkpoint for a physical iPhone and its delivery; development builds use marketing version `0.0.0` |
 | `just ui-previews [--locale sv] [id…]` | All iOS screens in `.local/ui-previews/sheet.jpg` ([docs](docs/ui-previews.md)) |
@@ -457,6 +455,11 @@ sentence per line, in English and then in a `[sv]` section
 ([format](docs/localization.md#app-store)); English becomes What to Test and
 the release notes, each section its locale's What's New. Choose the bump from the changes since the latest tag: patch fixes, minor adds,
 major removes or changes what installs rely on.
+
+```bash
+git tag -a x.y.z -F notes.txt
+git push origin x.y.z
+```
 
 `.github/workflows/release.yml` (hosted runners, [Canonical build](docs/design/canonical-build.md))
 admits the tag after `ci.yml` passes on its commit and reserves build numbers.

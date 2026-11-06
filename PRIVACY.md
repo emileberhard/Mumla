@@ -54,11 +54,11 @@ not synced to iCloud, not included in device backups and never sent anywhere,
 so each of your devices learns your voice on its own.
 
 While you dictate, Mumla compares the voices it hears with each other on the
-device. Once your profile is ready, the access service keeps each dictation's
-audio in memory until a few seconds after its transcript. Only when Mumla heard
-more than one voice does it ask the service to have Microsoft also tell the
-speakers apart, with the timing of each word; when you transcribe a saved
-recording again, it asks for the speakers in the same request. Mumla then
+device. Once Mumla has learned your voice, the access service keeps each
+dictation's audio in memory until a few seconds after its transcript. Only when
+Mumla heard more than one voice does it ask the service to have Microsoft also
+tell the speakers apart, with the timing of each word; when you transcribe a
+saved recording again, it asks for the speakers in the same request. Mumla then
 compares each speaker with your profile on the device and leaves out the words
 of voices that are not yours. The full transcript, with everyone's words, stays
 in History on that device, where **Show Everyone** shows it; it is not synced to
@@ -181,7 +181,8 @@ Accessibility or keyboard Full Access permissions, sign out of iCloud to keep
 everything on one device, and build Mumla yourself with your own services.
 Set **Voices** to **Everyone** to keep every voice and stop learning yours.
 **Forget My Voice** deletes your voice profile on all your devices, which learn
-it again from your next dictations; deleting the app also deletes it.
+it again from your next dictations. Deleting the iPhone app also deletes it; on
+a Mac, use Forget My Voice before deleting the app.
 Turning something off stops its future use; it does not delete what providers,
 iCloud or Sentry already received. To have the access service forget your
 account, its usage and its purchases, email the address above.

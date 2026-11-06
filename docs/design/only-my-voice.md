@@ -114,7 +114,7 @@ of at least 1 s as it ends. Each piece costs one model call on the CPU, about
 12 calls per minute of speech, or roughly 0.4% of one core. That keeps the work
 background-safe and finished by the time the user stops.
 
-Another voice is heard when a piece scores below the detection threshold
+Another voice is heard when a piece scores below the same-voice threshold
 against the duration-weighted mean of all the other pieces. At stop, at most
 one piece is still open, so the answer normally arrives while Azure is still
 transcribing. An answer that isn't ready when the first result arrives counts
@@ -137,14 +137,15 @@ modes:
   `timestamps: "word"`. The service replies with today's `result`, then with
   `{"type": "voices", "text", "phrases"}`. The socket closes 5 s after `result`
   if no `voices` message arrives.
-- `"diarize"`, for Transcribe Again and for batch recovery when the watcher
-  heard another voice. The one Azure request is diarized and the reply is the
-  `voices` form. No audio is kept.
+- `"diarize"`, for Transcribe Again and batch recovery. The one Azure request
+  is diarized and the reply is the `voices` form. No audio is kept.
 
 Each phrase carries its integer `speaker`, its `text`, and its words as
 `[offsetMs, durationMs]` pairs without word text. Grouping words into spans is
 the app's decision, not the service's. Either reply can deliver the dictation
-on its own.
+on its own. When Azure's phrases are unusable, `onRequest` answers
+`voices_unavailable` and `diarize` answers the plain `result`, so the text
+always arrives.
 
 Rules for the kept audio and the second request:
 
@@ -158,12 +159,6 @@ Rules for the kept audio and the second request:
 - **Deploys:** the deploy drain counts a pending second request as live work.
 - **Compatibility:** without the field, every byte of request and reply stays
   as today. Transcript text and word timings stay out of service logs.
-
-Price this first: if Azure does not bill an upload that is aborted before its
-body ends, the service can instead stream a diarized request alongside the
-plain one from the start, and abort it at stop when no voice was heard. That
-deletes the kept audio and its limits, and saves the re-upload. One billing
-check decides which version is built.
 
 ### Choosing the user's labels
 
@@ -194,9 +189,10 @@ labels to keep.
    interruption can leave the turn before it without closing punctuation; that
    is accepted.
 
-The same-voice threshold is 0.35 and the detection threshold 0.30, both on
-mean-normalized ResNet34-LM embeddings, set by calibration on 300 random
-dictations of up to 10 minutes, a third each under 15 s, 15–60 s and over 60 s:
+One same-voice threshold, 0.35 on mean-normalized ResNet34-LM embeddings,
+serves the detector and the filter, so every voice the filter would drop is
+also detected. Calibration on 300 random dictations of up to 10 minutes, a
+third each under 15 s, 15–60 s and over 60 s, set it:
 
 - **The user's words:** no label of the user scored below 0.519 against the
   profile, so none failed both checks (rule of three: at most 1.5% for labels
@@ -204,13 +200,14 @@ dictations of up to 10 minutes, a third each under 15 s, 15–60 s and over 60 s
 - **Other voices:** they scored at most 0.20 against the profile and the
   anchor. All three other-voice labels in an earlier screened set were
   dropped; the random sample held none.
-- **Detector false alarms:** 4.7% of single-voice dictations at 0.30 against
-  6.4% at the starting 0.35, rising with length because longer dictations have
-  more pieces; nearly all came from pieces with almost no words.
+- **Detector false alarms:** 6.4% of single-voice dictations, rising with
+  length because longer dictations have more pieces; nearly all came from
+  pieces with almost no words. A lower detection threshold of 0.30 cut them to
+  4.7% but missed a synthetic second voice at 0.346 that the filter drops.
 - **Azure splits:** 6 of 300 dictations had two labels, all the user, and every
   one was kept.
 
-They are the only tunable values.
+It is the only tunable value besides the learning threshold.
 
 ### Embeddings
 
@@ -228,7 +225,7 @@ at most 0.01.
   on both platforms, with no new entitlement. The Neural Engine is about three
   times faster. If device measurements show the CPU misses the budget, the iOS
   app adds the background inference entitlement, which reissues its profiles.
-- The model loads when a capture starts with Only Mine ready, which hides its
+- The model loads when a capture starts with Only Mine selected, which hides its
   load time behind the first second of speech. It unloads after delivery and
   learning.
 - It is bundled in both containing apps and not in the keyboard. Background
@@ -243,27 +240,26 @@ version that made them. `VoiceProfileStore` keeps it in one file of about 25 KB
 in the verified account's `Accounts/<SHA256>` partition, never in the
 unconfirmed one. The file is excluded from backup, uses
 `completeUntilFirstUserAuthentication`, and is never added to an outbox. Each
-account's profile stays dormant while another account is signed in. The file
-goes away when the app is uninstalled.
+account's profile stays dormant while another account is signed in. Deleting
+the iOS app deletes the file; on macOS it stays in Application Support until
+Forget My Voice.
 
 - **Learning** uses dictations where no other voice was heard and there are at
   least 5 s of speech. After delivery, one embedding of up to 10 s of speech
   becomes a candidate.
 - **Ready** requires five candidates that each reach the learning threshold
   against the mean of the other four. The learning threshold is stricter than
-  the same-voice threshold, starting at 0.5. A candidate that fails is dropped,
-  so one dictation by someone else delays readiness without defining the
-  profile. A device shared by two people who dictate equally rarely becomes
-  ready, and then filters nothing. Calibration measures how many dictations
-  readiness takes.
+  the same-voice threshold, at 0.5. A candidate that fails is dropped, so one
+  dictation by someone else delays readiness without defining the profile.
 - **Updates** accept a candidate whose mean of its three best matches reaches
   the learning threshold. The profile freezes at 24 exemplars, so it cannot
   drift and stops costing work.
 - **Trust:** a ready profile also records whether each of the last 10
   candidates reached the same-voice threshold against it. Filtering and the
-  `speakers` modes use it only once 8 of them did, so a profile learned from
+  `speakers` modes use it only once all 10 did, so a profile learned from
   someone else, or on a device two people share, never drops the person
-  dictating. When 8 of the last 10 miss, the profile starts over.
+  dictating; such a device stays Learning and filters nothing. When 8 of the
+  last 10 miss, the profile starts over.
 - **Deletion** happens on Forget My Voice and when the model version changes;
   learning then starts again. Forget My Voice writes its time to the KVS key
   `voiceForgottenAt`, and every device deletes a profile created before it and
@@ -318,7 +314,7 @@ never filtered or learned from. The filter can delay delivery by at most that
 deadline; it never blocks or empties delivery.
 
 Diagnostics carry counts (pieces, labels, dropped labels), the decision path
-(not heard, filtered, kept everything) and timing. They never carry
+(not heard, too long, filtered, kept everything) and timing. They never carry
 embeddings, scores or text.
 
 ### Privacy
@@ -337,12 +333,23 @@ their attribution to `THIRD_PARTY_NOTICES.md` and `LICENSES/`.
 | --- | --- |
 | One voice (nearly all) | the last open piece, overlapped with Azure; nothing expected |
 | Another voice heard | the second diarized request, plus 2–3 embeddings (about 60 ms on CPU) |
-| False alarm (0 of 15 under 30 s, 3 of 11 over) | the same, then today's text |
+| False alarm (6.4% of one-voice dictations) | the same, then today's text |
 
 Measured end to end against Azure on synthetic speech, two runs each, the
 diarized request takes 0.65–0.77 s at 30 s, 0.8–1.3 s at 2 minutes, 1.4–1.5 s
 at 5 minutes and 2.8–2.9 s at 10 minutes, against 0.35–1.8 s for today's
 request at the same lengths. The scaled deadline leaves margin at every length.
+
+## Several voices later
+
+Keeping other tagged people's words, as well as the user's, needs no service
+or session change: the service already returns every label, and the session
+hands the filter the phrases, one embedding per label and the profile.
+`VoiceProfile` already describes one voice. What changes is the store, which
+would keep several profiles by person ID; `VoiceFilter.keptSpeakers`, which
+would keep labels matching any selected profile; a per-person forget date;
+and the Voices setting. Tagged profiles come from labels the user names, never
+from silent learning, which stays the user's own.
 
 ## Alternatives considered
 
@@ -376,49 +383,17 @@ request at the same lengths. The scaled deadline leaves margin at every length.
 
 ## Assumptions that could invalidate the design
 
-1. The same-voice and detection thresholds hold on fresh, random dictations,
-   on Swedish, and on the Mac microphone. Both were fitted on 19 screened
-   recordings. If they fail, only thresholds change.
+1. The threshold holds on Swedish and on the Mac microphone, which the
+   calibration sample did not separate out. If it fails, only the threshold
+   changes.
 2. CPU embedding fits the budget on the iPhone 14 Plus, the M1 iPad and macOS
-   27 in the background. If it doesn't, the iOS app adds the inference
-   entitlement.
-3. The detector's false alarms stay rare on long dictations, and its misses
-   are mostly brief. If either fails, diarize every dictation and accept the
-   0.3 s.
-4. Keeping up to 10 minutes of audio per stream fits the service's memory at its
+   27 in the background; it is measured only on the M1 Max so far. If it
+   doesn't, the iOS app adds the inference entitlement.
+3. Keeping up to 10 minutes of audio per stream fits the service's memory at its
    real concurrency.
-5. Diarization is not billed above transcription.
+4. Diarization is not billed above transcription.
 
-## Slices and validation
-
-1. **Prototype measurement.** Convert the model, port the filterbank, and
-   measure load, latency and memory on the iPhone 14 Plus, the M1 iPad and macOS
-   27, in the foreground and the background, with another app in front.
-2. **Calibration set.** Diarize a random sample of about 300 ordinary
-   dictations, with word timestamps, including Swedish and Mac recordings.
-   From it, measure how often Azure splits one user, draw same-voice pairs, run
-   the detector, and set both thresholds. Report the detector's false alarms by
-   dictation length, how often the user fails both checks, the dictations
-   readiness takes, the set's size and the rule-of-three bound.
-3. **SpeechKit.** Publish stored bytes and ship that in an app release first,
-   then add `unfilteredText`; release and pin.
-4. **Access service.** First check Azure billing for aborted uploads, then
-   add the `speakers` modes and the `voices` reply. Service unit tests cover the
-   limits, `voices_unavailable` and the drain. `just test-access-live` drives
-   `voices` after `finish` through the real `AccessStream` on a synthetic
-   two-voice fixture, asserting two labels with word timings, plus a long
-   fixture for the response cap. Older services reject the new field, so the rollback floor is
-   this version; record it in the service README.
-5. **App.** Add `VoiceWatch`, `VoiceFilter`, `SpeakerEmbedder`,
-   `VoiceProfileStore`, settings and history UI, `unfilteredText` on `HistoryEntry` with its
-   schema deploy, and Swedish strings. A test checks that an older build
-   re-saving a history record keeps the new CloudKit field. Update
-   `PRIVACY.md`, the notices, this repository's agent instructions,
-   `mumla-access-service.md`, `unified-dictation.md` and
-   `library-agent-tools.md`. Swift Testing covers the filter with fixed
-   embeddings: a split user, a TV ad, someone else dictating, labels under
-   2 s and no ready profile. The live gate runs the real stream, watcher, filter
-   and bundled model against the two-voice fixture with a synthetic ready
-   profile, and asserts the second voice is dropped.
-6. **Release** after a fresh private set, recorded after this design, loses no
-   user words. Leaked words per minute and the rerun rate are reported beside it.
+The live gate (`just test-access-live`) streams a synthetic two-voice mix
+through the real session, watcher, service and filter with a trusted synthetic
+profile, and diarizes the same mix in one batch request; both must drop the
+second voice and keep the first.
