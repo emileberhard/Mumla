@@ -26,21 +26,23 @@ account may use; a client never asserts Pro or chooses its limit.
 
 Ownership derives only from Apple-signed data and the service's own records.
 The service keeps one row per subscription, `(environment,
-originalTransactionId)`, holding its latest signed state and its owner.
+originalTransactionId)`, holding its latest signed state, its owner and the
+transaction that named the owner.
 
 1. **The latest transaction defines a subscription's state.** A transaction
    replaces the stored one when its purchase date is later (transaction ID
    breaks a tie) or, for the same transaction, when its `signedDate` is later.
    Replaying an older JWS, or an older transaction's refund, changes nothing.
-2. **A purchase belongs to the subject its `appAccountToken` names.** The iOS app
-   always purchases with the session's subject. A submitter whose subject the
+2. **A purchase belongs to the subject its `appAccountToken` names.** The
+   latest transaction that carries a token names the owner, ordered as in rule
+   1 and kept apart from the state, so delivery order never decides ownership.
+   The iOS app always purchases with the session's subject. A submitter whose subject the
    owner is not gets `409 purchase_owned_elsewhere`; a token that names no
    known subject entitles nobody.
 3. **A transaction without a token inherits the subscription's owner.** This
-   covers resubscriptions and offers redeemed outside the app. An older
-   transaction's token names the owner of a subscription that has none yet.
-   Only a subscription with no owner at all goes to the first subject that
-   submits one of its transactions, permanently.
+   covers resubscriptions and offers redeemed outside the app. Only a
+   subscription with no token anywhere goes to the first subject that submits
+   one of its transactions, until a transaction with a token arrives.
 4. **iCloud account changes do not move Pro.** Where StoreKit holds an
    entitlement that the service reports as owned elsewhere, the app replaces
    Get Pro with "belongs to another iCloud account" and Manage Subscription, so
@@ -77,15 +79,22 @@ deliveries converge.
 - **Client submission.** `ProStore` sends each verified Pro-group
   transaction's `jwsRepresentation` to `POST /v1/purchases`: from
   `Transaction.updates` (purchases from the store view, renewals, refunds, and
-  unfinished transactions once at launch), and from the group's subscription
-  status at launch, foreground, Restore (`AppStore.sync` first) and whenever
-  the paywall sees the status change. It finishes a transaction after a 200, a
-  definitive 400 or a 409, and remembers each answered transaction until the
-  iCloud account changes, so foregrounds do not resubmit it. While a
-  submission runs the paywall shows "Activating Mumla Pro"; once the access
-  client's bounded retries fail, it keeps the transaction unfinished and shows
-  "Mumla Pro isn't active yet" with Try Again, which the next foreground also
-  retries. Get Pro stays hidden meanwhile.
+  unfinished transactions once at launch), and from every subscription status
+  in the group, revoked and expired included, at launch, foreground, Restore
+  (`AppStore.sync` first) and whenever the paywall's status task reports. It
+  finishes a transaction after a 200, a definitive 400 or a 409, and remembers
+  each answer by its JWS, which changes with every re-signed state, so
+  foregrounds do not resubmit unchanged states; concurrent deliveries of one
+  JWS are submitted once. `MumlaAccess.accountGeneration` counts iCloud account
+  changes: answers, conflicts and pending activations belong to one
+  generation, and an answer that arrives after a change publishes nothing.
+  While an entitling transaction is submitted the paywall shows "Activating
+  Mumla Pro"; once the access client's bounded retries fail, it keeps the
+  transaction unfinished and shows "Mumla Pro isn't active yet" with Try Again,
+  which reconciles, as the next foreground does. A 409 for an entitling
+  transaction shows the owned-elsewhere state until a full reconciliation finds
+  none; a failed status lookup leaves it as it was. Get Pro stays hidden
+  meanwhile.
 - **App Store Server Notifications V2.** `POST /v1/app-store/notifications`
   applies a verified payload's `signedTransactionInfo` whatever the
   notification type: renewals, expiry, refunds and revocations while no device
@@ -96,8 +105,9 @@ deliveries converge.
   the sandbox; a retried 400 is harmless.
 - **Replay.** `scripts/replay-notifications.ts` (operator) reads Get
   Notification History for a window (180 days in production, 30 in the sandbox)
-  and posts each payload to the endpoint above; records reflect their original
-  state, which rule 1 makes safe to replay. The maintainer runs it after any
+  and posts each payload to the service's loopback listener, since the public
+  edge admits only Apple; records reflect their original state, which rules 1
+  and 2 make safe to replay in any order. The maintainer runs it after any
   period the endpoint was unreachable or answering 5xx, and on a report of a
   missing renewal or refund. It needs an In-App Purchase key from the operator's
   environment; whether the production host ever holds one is an open
@@ -168,11 +178,13 @@ acceptance while no Pro build is in TestFlight or App Review.
   account token first, so every purchase carries it.
 - **iOS dictation strip**: when a Free account is out of minutes, tapping
   No Minutes Left opens the paywall.
-- **iOS Account** (`ProPlanRows`, under the allowance): Free shows Get
+- **iOS Account** (`ProPlanRows`, wrapping the allowance row): Free shows Get
   Mumla Pro and Restore Purchases; Pro shows Manage Subscription; activation
   shows its progress and Try Again; a subscription owned by another iCloud
-  account says so and offers Manage Subscription. The toolbar's allowance ring
-  opens Account.
+  account says so and offers Manage Subscription. Its sheets and alert hang
+  on the allowance row, the one row every state keeps: in a `Form`, modifiers
+  on several rows attach to each row and present nothing. The toolbar's
+  allowance ring opens Account.
 - **Mac** (`ProStatusRow`): the menu and Settings show the plan. Free links to
   Mumla on the App Store for iPhone and iPad; Pro links to the App Store's
   subscription management.
@@ -190,8 +202,8 @@ them and the app finishes them; it exercises the paywall, not activation.
 ## Privacy
 
 The service stores, per subscription, the environment, original and latest
-transaction IDs, purchase, expiry, revocation and signing dates, and the owning
-subject, for as long as the service runs. Apps send the signed transaction
+transaction IDs, purchase, expiry, revocation and signing dates, the owning
+subject and the transaction that named it, for as long as the service runs. Apps send the signed transaction
 only. The App Store privacy label gains Purchases (Purchase History), linked to
 the user, for App Functionality, and the iOS app's privacy manifest declares
 the same.
@@ -229,14 +241,26 @@ the same.
 - The `subscriptions` table and the allowance's `plan` field that installed
   apps read.
 
-## Assumptions to verify in the sandbox
+## Sandbox verification
 
-- Renewals repeat `appAccountToken` and keep `originalTransactionId`; whether a
-  resubscription after lapse keeps the same original ID.
-- Both crossgrades take effect at renewal; refund, refund reversal and
-  reordered delivery converge.
-- StoreKit returns a re-tokened transaction after Set App Account Token and
-  Restore.
+A sandbox purchase on a physical iPhone, against a development service reached
+by both the app and Apple's sandbox notifications, confirmed:
+
+- The paywall's purchase carries the subject token; the app's submission and
+  Apple's notification both answer 200, the plan turns Pro and the paywall
+  closes to Settings' Manage Subscription.
+- Renewals repeat `appAccountToken` and keep `originalTransactionId`: each
+  renewal updated the same row and named the same owner, whether its
+  notification or the app's delivery arrived first.
+- With the service's row removed, the next renewal notification, a foreground
+  delivering a state the app had not submitted, and Restore after
+  `AppStore.sync` each restored Pro.
+- After a cancellation, the plan returned to Free at `expiresDate`, and the
+  app offered Get Mumla Pro and Restore again.
+
+Still unverified: whether a resubscription after lapse keeps the original ID;
+both crossgrades at renewal; refund and refund reversal; and whether StoreKit
+returns a re-tokened transaction after Set App Account Token and Restore.
 
 ## Challenge record
 
@@ -263,3 +287,25 @@ Both approved the identifiers.
 | Promoted purchases would lack a token | Products are not promoted |
 | Set both notification URLs together | Partly disagreed: the sandbox URL is set now so test notifications and sandbox purchases reach the endpoint once deployed; the production URL waits for acceptance |
 | Separate `Transaction.unfinished` pass | Dropped; `Transaction.updates` delivers them at launch |
+
+## Pre-merge review
+
+Two reviewers read the implemented branch.
+
+| Finding | Disposition |
+| --- | --- |
+| Ownership depended on delivery order when a token-less transaction arrived first | Fixed: the transaction that named the owner is kept apart from the state (rule 2), with a test of four delivery orders |
+| Reconciliation skipped revoked states, and its answer cache could not tell a refund reversal from the original | Fixed: every status is submitted; answers are keyed by JWS |
+| An answer could land after an iCloud account change | Fixed: account generations in `MumlaAccess` and `ProStore` |
+| Owned elsewhere stayed after that subscription ended | Fixed: a full reconciliation clears it |
+| Concurrent deliveries of one transaction raced | Fixed: one submission per JWS in flight |
+| The paywall's token could outlive an account change | Fixed: it reloads on a new generation |
+| Replay through the public origin meets the Apple-only edge rule | Fixed: the script accepts only a loopback origin and retries 503 |
+| The previous executable cannot check Pro's configuration | Documented: the Pro boundary's pre-fence check uses the previous configuration |
+| Unknown keys in Apple's body would be rejected and dropped after retries | Fixed: the notification route reads only `signedPayload` |
+| `PurchaseVerifier`, `retry()`, `RestoreOutcome` and a token passthrough had no second use | Removed or collapsed |
+| Remove the answer cache | Disagreed: keyed by JWS it skips only states the service already answered, saving a verified request on every foreground; Restore clears it |
+| Feed the paywall's status task into reconciliation | Fixed |
+| Subscription owners outlive a deleted subject | Disagreed for now: the service has no subject deletion; whatever adds one clears `owner` in the same transaction |
+| The new session field makes each device enroll once more | Accepted: one proof per device; sessions are capped at 32 per subject with the oldest revoked, and enrollment 503s retry |
+| Replay with eight posts in flight | Disagreed: serial replay leaves the eight notification slots to Apple's live deliveries |

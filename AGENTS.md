@@ -101,7 +101,8 @@ stale documentation in the same change.
   for other apps, but Mumla's plans pin the model and disable cleanup. Older
   model IDs remain data in history and results. Mumla shows no model, provider
   or key anywhere; no provider key exists in the apps, recipes or configuration.
-- The apps reach the model only through the access service
+- The apps reach the model, and learn their [plan](docs/design/mumla-pro.md),
+  only through the access service
   ([design](docs/design/mumla-access-service.md)). `AccessClient` owns the
   device's session: one per verified CloudKit account, enrolled with a fresh
   `CKFetchWebAuthTokenOperation` proof per attempt, renewed within a week of
@@ -117,8 +118,6 @@ stale documentation in the same change.
   and allowance requests retry 503 after jittered 0.5, 1 and 2 s.
 - The keyboard reads `KeyboardAccessState` from the App Group and holds no
   credential. Provider-specific request rules belong to the access service.
-- Only the access service decides the plan ([Mumla Pro](docs/design/mumla-pro.md));
-  `ProStore` finishes a transaction only after a 200, 400 or 409.
 
 ### Data sync
 
@@ -265,9 +264,11 @@ container `iCloud.emileberhard.WisprClone`.
   bundle ID `emileberhard.WisprClone` and one access group. Both apps delete
   retired provider-key items at launch. The `security` CLI cannot see these
   items; `--delete-credentials` removes them.
-- `just fresh-user-mac` wipes for a fresh-user test (kill, TCC, defaults and
-  history with backups, access session, installs), keeping DMGs and iCloud.
-  `just reset-permissions-mac` needs an installed app, or tccutil does nothing.
+- Fresh-user testing: `just kill-mac` quits every instance,
+  `just reset-permissions-mac` resets TCC (only while an app is installed, or
+  tccutil does nothing), `just fresh-user-mac` wipes in order (kill, TCC,
+  defaults and history with backups, access session, installs; DMGs and iCloud
+  stay) and `just clean-dmgs` removes built DMGs.
 
 ### iOS keyboard
 
