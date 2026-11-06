@@ -100,12 +100,12 @@ private struct HistoryStatsSummary: View {
 
     private var totalsLine: String {
         var parts = [
-            "\(stats.entryCount) transcriptions",
-            "\(stats.wordCount) words",
+            String(localized: "\(stats.entryCount) transcriptions"),
+            String(localized: "\(stats.wordCount) words"),
             stats.storeSizeInBytes.formatted(.byteCount(style: .file)),
         ]
         if let oldest = stats.oldest {
-            parts.append("since \(oldest.formatted(date: .abbreviated, time: .omitted))")
+            parts.append(String(localized: "since \(oldest.formatted(date: .abbreviated, time: .omitted))"))
         }
         return parts.joined(separator: " · ")
     }

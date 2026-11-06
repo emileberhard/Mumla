@@ -4,27 +4,12 @@ import SwiftData
 enum RecordingRecoverySource: String, Codable, Sendable {
     case batch
     case realtime
-
-    var displayName: String {
-        switch self {
-        case .batch: "Batch"
-        case .realtime: "Realtime"
-        }
-    }
 }
 
 enum RecordingRecoveryStatus: String, Codable, Sendable {
     case recorded
     case transcribed
     case failed
-
-    var displayName: String {
-        switch self {
-        case .recorded: "Recorded"
-        case .transcribed: "Transcribed"
-        case .failed: "Failed"
-        }
-    }
 }
 
 struct RecoverableRecording: Codable, Hashable, Identifiable, Sendable {

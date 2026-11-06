@@ -15,7 +15,7 @@ struct ThirdPartyNoticesView: View {
             do {
                 text = try Self.load(bundle: .main)
             } catch {
-                text = "The bundled third-party notices could not be loaded. Please reinstall Mumla."
+                text = String(localized: "The bundled third-party notices could not be loaded. Please reinstall Mumla.")
             }
         }
     }

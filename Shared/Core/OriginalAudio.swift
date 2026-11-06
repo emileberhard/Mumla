@@ -17,10 +17,10 @@ nonisolated enum OriginalAudioError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .encoder(let status): "The original audio could not be encoded (\(status))."
-        case .conversionFailed: "The original audio could not be converted."
-        case .empty: "No original audio was captured."
-        case .alreadyFinished: "The original audio was already finished."
+        case .encoder(let status): String(localized: "The original audio could not be encoded (\(status)).")
+        case .conversionFailed: String(localized: "The original audio could not be converted.")
+        case .empty: String(localized: "No original audio was captured.")
+        case .alreadyFinished: String(localized: "The original audio was already finished.")
         }
     }
 }

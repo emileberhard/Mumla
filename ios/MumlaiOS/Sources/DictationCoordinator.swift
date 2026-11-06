@@ -14,7 +14,7 @@ enum SessionDuration: Int, CaseIterable, Sendable, Identifiable {
 
     var id: Self { self }
 
-    var displayName: String {
+    var displayName: LocalizedStringResource {
         switch self {
         case .fiveMinutes: "5 minutes"
         case .fifteenMinutes: "15 minutes"
@@ -582,7 +582,7 @@ final class DictationCoordinator {
             try await audioEngine.start()
         } catch {
             reportError(
-                "Could not start the dictation session: \(error.localizedDescription)",
+                String(localized: "Could not start the dictation session: \(error.localizedDescription)"),
                 error: error,
                 metadata: ["operation": "audio_engine_start"]
             )
@@ -686,7 +686,7 @@ final class DictationCoordinator {
         }
         guard sessionActive else {
             reportError(
-                "No active session. Open Mumla to start one.",
+                String(localized: "No active session. Open Mumla to start one."),
                 metadata: ["reason": "no_active_audio_session"]
             )
             return
@@ -800,7 +800,7 @@ final class DictationCoordinator {
                     durationMilliseconds: duration.map { Int($0 * 1_000) }
                 )
             } catch {
-                reportError("Canceled audio could not be archived: \(error.localizedDescription)", error: error)
+                reportError(String(localized: "Canceled audio could not be archived: \(error.localizedDescription)"), error: error)
             }
         }
     }
@@ -934,7 +934,7 @@ final class DictationCoordinator {
                 await controller?.cancel()
                 guard !Task.isCancelled else { return }
                 realtimeDictationController = nil
-                reportError("Audio could not be archived: \(error.localizedDescription)", error: error)
+                reportError(String(localized: "Audio could not be archived: \(error.localizedDescription)"), error: error)
                 return
             }
             guard !Task.isCancelled else { return }
@@ -1539,7 +1539,7 @@ final class DictationCoordinator {
             )
         } catch {
             reportError(
-                "Built-in microphone is unavailable; Mumla will not use another microphone.",
+                String(localized: "Built-in microphone is unavailable; Mumla will not use another microphone."),
                 error: error,
                 metadata: metadata
             )
@@ -1614,7 +1614,7 @@ final class DictationCoordinator {
 
     private func endSessionAfterFailedRestart(_ error: any Error) async {
         reportError(
-            "Microphone session was interrupted and could not be restored.",
+            String(localized: "Microphone session was interrupted and could not be restored."),
             error: error,
             metadata: ["operation": "audio_engine_restart"]
         )

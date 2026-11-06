@@ -186,7 +186,7 @@ struct OnboardingView: View {
         }
     }
 
-    private var title: String {
+    private var title: LocalizedStringResource {
         switch phase {
         case .enable: "Add the Mumla Keyboard"
         case .connect: "Switch to Mumla"
@@ -196,7 +196,7 @@ struct OnboardingView: View {
         }
     }
 
-    private var subtitle: String {
+    private var subtitle: LocalizedStringResource {
         switch phase {
         case .enable:
             "It types what you say into any app."
@@ -223,11 +223,11 @@ struct OnboardingView: View {
     private var controls: some View {
         switch phase {
         case .enable:
-            settingsPathHint(navigation: "Keyboards", toggles: ["Mumla", "Allow Full Access"])
+            settingsPathHint(navigation: Self.keyboardsSetting, toggles: ["Mumla", Self.fullAccessSetting])
             OnboardingPrimaryButton("Open Settings", action: openSettings)
         case .connect, .keyboardUnconfirmed, .dictate:
             if phase == .keyboardUnconfirmed {
-                settingsPathHint(navigation: "Keyboards", toggles: ["Allow Full Access"])
+                settingsPathHint(navigation: Self.keyboardsSetting, toggles: [Self.fullAccessSetting])
                 OnboardingPrimaryButton("Open Settings", action: openSettings)
             }
             if phase == .dictate, microphoneStatus == .denied {
@@ -381,8 +381,8 @@ struct OnboardingView: View {
     /// The path through Settings: the first capsule is a navigation step and
     /// the remaining capsules mirror the switches the user turns on.
     private func settingsPathHint(navigation: String, toggles: [String]) -> some View {
-        let accessibilityLabel = (["Open \(navigation)"] + toggles.map { "turn on \($0)" })
-            .joined(separator: ", then ")
+        let accessibilityLabel = ([String(localized: "Open \(navigation)")] + toggles.map { String(localized: "turn on \($0)") })
+            .joined(separator: String(localized: ", then ", comment: "Joins the steps of a path through Settings for VoiceOver."))
 
         return ViewThatFits(in: .horizontal) {
             HStack(spacing: 5) {
@@ -408,6 +408,9 @@ struct OnboardingView: View {
             SettingsHintCapsule(title: toggle, showsEnabledSwitch: true)
         }
     }
+
+    private static let keyboardsSetting = String(localized: "Keyboards", comment: "The Keyboards row in iOS Settings > Mumla.")
+    private static let fullAccessSetting = String(localized: "Allow Full Access", comment: "The Allow Full Access switch in iOS keyboard settings.")
 
     private static var appIcon: UIImage? {
         guard let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],

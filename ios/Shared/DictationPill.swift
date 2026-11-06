@@ -16,7 +16,7 @@ enum DictationPillPalette {
 /// the control looks and behaves the same on both surfaces.
 struct DictationPillContent: View {
     let symbolName: String?
-    let title: String?
+    let title: LocalizedStringResource?
     let foregroundColor: Color
     var symbolColor: Color?
     var showsProgress = false

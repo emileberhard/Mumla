@@ -1,0 +1,3832 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+      "shouldTranslate" : false
+    },
+    "%@ allowed" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@: tillåten"
+          }
+        }
+      }
+    },
+    "%@ left" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kvar"
+          }
+        }
+      }
+    },
+    "%@ of %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of %2$@"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ av %@"
+          }
+        }
+      }
+    },
+    "%@ unavailable" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@: inte tillgänglig"
+          }
+        }
+      }
+    },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      },
+      "shouldTranslate" : false
+    },
+    "%@%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@%2$@"
+          }
+        }
+      },
+      "shouldTranslate" : false
+    },
+    "%@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      },
+      "shouldTranslate" : false
+    },
+    "%lld free minutes every month." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld free minute every month."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld free minutes every month."
+                }
+              }
+            }
+          }
+        },
+        "sv" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld gratisminut varje månad."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld gratisminuter varje månad."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld hours a month" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld hour a month"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld hours a month"
+                }
+              }
+            }
+          }
+        },
+        "sv" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld timme i månaden"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld timmar i månaden"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld hours of dictation a month" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld hour of dictation a month"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld hours of dictation a month"
+                }
+              }
+            }
+          }
+        },
+        "sv" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld timme diktering i månaden"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld timmar diktering i månaden"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld min left" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld min kvar"
+          }
+        }
+      }
+    },
+    "%lld minutes left" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld minute left"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld minutes left"
+                }
+              }
+            }
+          }
+        },
+        "sv" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld minut kvar"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld minuter kvar"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld of %lld min left" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld min left"
+          }
+        },
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld av %lld min kvar"
+          }
+        }
+      }
+    },
+    "%lld recordings need ownership confirmation" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld recording needs ownership confirmation"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld recordings need ownership confirmation"
+                }
+              }
+            }
+          }
+        },
+        "sv" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld inspelning behöver bekräftad ägare"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld inspelningar behöver bekräftad ägare"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld transcriptions" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld transcription"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld transcriptions"
+                }
+              }
+            }
+          }
+        },
+        "sv" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld transkription"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld transkriptioner"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld words" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld word"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld words"
+                }
+              }
+            }
+          }
+        },
+        "sv" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ord"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ord"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    ", then " : {
+      "comment" : "Joins the steps of a path through Settings for VoiceOver.",
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ", sedan "
+          }
+        }
+      }
+    },
+    "0:14" : {
+      "shouldTranslate" : false
+    },
+    "1 hour" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 timme"
+          }
+        }
+      }
+    },
+    "15 minutes" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "15 minuter"
+          }
+        }
+      }
+    },
+    "5 minutes" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5 minuter"
+          }
+        }
+      }
+    },
+    "A" : {
+      "shouldTranslate" : false
+    },
+    "A different recording already has this recording ID." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En annan inspelning har redan det här inspelnings-ID:t."
+          }
+        }
+      }
+    },
+    "A new result was saved in the shared library." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ett nytt resultat sparades i det delade biblioteket."
+          }
+        }
+      }
+    },
+    "A recording has unreadable metadata. The export is incomplete." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En inspelning har oläsbar metadata. Exporten är ofullständig."
+          }
+        }
+      }
+    },
+    "AI Answer" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI-svar"
+          }
+        }
+      }
+    },
+    "About" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Om"
+          }
+        }
+      }
+    },
+    "Account" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konto"
+          }
+        }
+      }
+    },
+    "Activating Mumla Pro" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiverar Mumla Pro"
+          }
+        }
+      }
+    },
+    "Add" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lägg till"
+          }
+        }
+      }
+    },
+    "Add Language" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lägg till språk"
+          }
+        }
+      }
+    },
+    "Add Term" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lägg till ord"
+          }
+        }
+      }
+    },
+    "Add Word" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lägg till ord"
+          }
+        }
+      }
+    },
+    "Add Word or Phrase" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lägg till ord eller fras"
+          }
+        }
+      }
+    },
+    "Add the Mumla Keyboard" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lägg till Mumla-tangentbordet"
+          }
+        }
+      }
+    },
+    "Add words or phrases to improve transcription accuracy." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lägg till ord eller fraser för att förbättra transkriberingen."
+          }
+        }
+      }
+    },
+    "Alex" : {
+      "shouldTranslate" : false
+    },
+    "Allow" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tillåt"
+          }
+        }
+      }
+    },
+    "Allow %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tillåt %@"
+          }
+        }
+      }
+    },
+    "Allow Full Access" : {
+      "comment" : "The Allow Full Access switch in iOS keyboard settings.",
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tillåt full åtkomst"
+          }
+        }
+      }
+    },
+    "Allow Full Access in Settings" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tillåt full åtkomst i Inställningar"
+          }
+        }
+      }
+    },
+    "Allowed" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tillåtet"
+          }
+        }
+      }
+    },
+    "An original recording does not match its saved checksum. The export is incomplete." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En originalinspelning matchar inte sin sparade kontrollsumma. Exporten är ofullständig."
+          }
+        }
+      }
+    },
+    "App" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App"
+          }
+        }
+      }
+    },
+    "Apps you connect can save original recordings and result versions in your private library." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appar du ansluter kan spara originalinspelningar och resultatversioner i ditt privata bibliotek."
+          }
+        }
+      }
+    },
+    "Assign and Upload" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tilldela och ladda upp"
+          }
+        }
+      }
+    },
+    "Assign this recording to the current iCloud account?" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tilldela inspelningen till det aktuella iCloud-kontot?"
+          }
+        }
+      }
+    },
+    "Assign to Current Account" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tilldela till aktuellt konto"
+          }
+        }
+      }
+    },
+    "Audio could not be archived: %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ljudet kunde inte arkiveras: %@"
+          }
+        }
+      }
+    },
+    "Audio import failed: %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ljudimporten misslyckades: %@"
+          }
+        }
+      }
+    },
+    "Audio saved without a transcript" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ljud sparat utan transkription"
+          }
+        }
+      }
+    },
+    "Auto-Paste" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klistra in automatiskt"
+          }
+        }
+      }
+    },
+    "Auto-send" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skicka automatiskt"
+          }
+        }
+      }
+    },
+    "Automatic" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatiskt"
+          }
+        }
+      }
+    },
+    "Built-in microphone is unavailable; Mumla will not use another microphone." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den inbyggda mikrofonen är inte tillgänglig. Mumla använder ingen annan mikrofon."
+          }
+        }
+      }
+    },
+    "Can't Reach Mumla" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kan inte nå Mumla"
+          }
+        }
+      }
+    },
+    "Can't reach Mumla" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kan inte nå Mumla"
+          }
+        }
+      }
+    },
+    "Can't reach Mumla. Try again in a moment." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kan inte nå Mumla. Försök igen om en stund."
+          }
+        }
+      }
+    },
+    "Can't reach iCloud to load your languages." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kan inte nå iCloud för att läsa in dina språk."
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avbryt"
+          }
+        }
+      }
+    },
+    "Cancel dictation" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avbryt diktering"
+          }
+        }
+      }
+    },
+    "Canceled audio could not be archived: %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avbrutet ljud kunde inte arkiveras: %@"
+          }
+        }
+      }
+    },
+    "Chat" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chatt"
+          }
+        }
+      }
+    },
+    "Check Full Access" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontrollera full åtkomst"
+          }
+        }
+      }
+    },
+    "Choose where to save your vocabulary" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Välj var ordlistan ska sparas"
+          }
+        }
+      }
+    },
+    "Cleaned Transcript" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rensad transkription"
+          }
+        }
+      }
+    },
+    "Clear" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rensa"
+          }
+        }
+      }
+    },
+    "Clear Transcripts" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rensa transkriptioner"
+          }
+        }
+      }
+    },
+    "Click to record" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicka för att spela in"
+          }
+        }
+      }
+    },
+    "Close" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stäng"
+          }
+        }
+      }
+    },
+    "Confirmed" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekräftat"
+          }
+        }
+      }
+    },
+    "Connected Apps" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anslutna appar"
+          }
+        }
+      }
+    },
+    "Context" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontext"
+          }
+        }
+      }
+    },
+    "Context used" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontext användes"
+          }
+        }
+      }
+    },
+    "Contextual Output" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontextuellt resultat"
+          }
+        }
+      }
+    },
+    "Continue" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortsätt"
+          }
+        }
+      }
+    },
+    "Copied" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopierat"
+          }
+        }
+      }
+    },
+    "Copy" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiera"
+          }
+        }
+      }
+    },
+    "Copy Diagnostics" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiera diagnostik"
+          }
+        }
+      }
+    },
+    "Could not configure the microphone audio format." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofonens ljudformat kunde inte ställas in."
+          }
+        }
+      }
+    },
+    "Could not keep system haptics enabled while the microphone is active." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemhaptiken kunde inte hållas på medan mikrofonen är aktiv."
+          }
+        }
+      }
+    },
+    "Could not keep the dictation session ready in the background." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikteringssessionen kunde inte hållas redo i bakgrunden."
+          }
+        }
+      }
+    },
+    "Could not start the dictation session: %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikteringssessionen kunde inte startas: %@"
+          }
+        }
+      }
+    },
+    "Couldn't Restore Purchases" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunde inte återställa köp"
+          }
+        }
+      }
+    },
+    "Couldn't save your languages." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dina språk kunde inte sparas."
+          }
+        }
+      }
+    },
+    "Couldn't start the microphone. Try again." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofonen kunde inte startas. Försök igen."
+          }
+        }
+      }
+    },
+    "Couldn't transcribe. The recording is saved; try again later." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunde inte transkribera. Inspelningen är sparad, så försök igen senare."
+          }
+        }
+      }
+    },
+    "Delete" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Radera"
+          }
+        }
+      }
+    },
+    "Delete Word" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Radera ord"
+          }
+        }
+      }
+    },
+    "Deleting transcript history keeps its original audio." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalljudet finns kvar när du raderar transkriptionshistoriken."
+          }
+        }
+      }
+    },
+    "Devices" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enheter"
+          }
+        }
+      }
+    },
+    "Dictate" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diktera"
+          }
+        }
+      }
+    },
+    "Dictation Failed" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikteringen misslyckades"
+          }
+        }
+      }
+    },
+    "Dictation Library" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikteringsbibliotek"
+          }
+        }
+      }
+    },
+    "Dictation Preferences" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikteringsinställningar"
+          }
+        }
+      }
+    },
+    "Dictation Shortcut" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kortkommando för diktering"
+          }
+        }
+      }
+    },
+    "Dictionary" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordlista"
+          }
+        }
+      }
+    },
+    "Dismiss keyboard" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dölj tangentbordet"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klar"
+          }
+        }
+      }
+    },
+    "Double-tap" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tryck två gånger på"
+          }
+        }
+      }
+    },
+    "Edit Term" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redigera ord"
+          }
+        }
+      }
+    },
+    "Edit Word" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redigera ord"
+          }
+        }
+      }
+    },
+    "End Session" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avsluta session"
+          }
+        }
+      }
+    },
+    "End Session After" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avsluta sessionen efter"
+          }
+        }
+      }
+    },
+    "End Session Now" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avsluta sessionen nu"
+          }
+        }
+      }
+    },
+    "Export" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportera"
+          }
+        }
+      }
+    },
+    "Export Audio" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportera ljud"
+          }
+        }
+      }
+    },
+    "Export Library" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportera bibliotek"
+          }
+        }
+      }
+    },
+    "Export Original" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportera original"
+          }
+        }
+      }
+    },
+    "Export section checksum verification failed: %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontrollsumman för ett exportavsnitt stämmer inte: %@"
+          }
+        }
+      }
+    },
+    "Fallback transcription produced no transcript." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reservtranskriberingen gav ingen text."
+          }
+        }
+      }
+    },
+    "Finish dictation" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avsluta diktering"
+          }
+        }
+      }
+    },
+    "Free Local Audio" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frigör lokalt ljud"
+          }
+        }
+      }
+    },
+    "Free Uploaded Local Audio" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frigör uppladdat lokalt ljud"
+          }
+        }
+      }
+    },
+    "Free uploaded originals on this device?" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frigöra uppladdade original på den här enheten?"
+          }
+        }
+      }
+    },
+    "Full Access" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Full åtkomst"
+          }
+        }
+      }
+    },
+    "General" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allmänt"
+          }
+        }
+      }
+    },
+    "Get Mumla Pro" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skaffa Mumla Pro"
+          }
+        }
+      }
+    },
+    "Get Mumla Pro on iPhone or iPad" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skaffa Mumla Pro på iPhone eller iPad"
+          }
+        }
+      }
+    },
+    "Grant Access…" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ge åtkomst…"
+          }
+        }
+      }
+    },
+    "History" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Historik"
+          }
+        }
+      }
+    },
+    "Hold" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Håll ned"
+          }
+        }
+      }
+    },
+    "Hold fn, speak, and your words appear wherever you type." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Håll ned fn och tala, så hamnar orden där du skriver."
+          }
+        }
+      }
+    },
+    "Host probe" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Värdtest"
+          }
+        }
+      }
+    },
+    "Import" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importera"
+          }
+        }
+      }
+    },
+    "Independent backup" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oberoende säkerhetskopia"
+          }
+        }
+      }
+    },
+    "It types what you say into any app." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Det skriver det du säger i alla appar."
+          }
+        }
+      }
+    },
+    "Keep all originals on this Mac" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behåll alla original på den här Macen"
+          }
+        }
+      }
+    },
+    "Keep listening" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortsätt lyssna"
+          }
+        }
+      }
+    },
+    "Keyboard" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tangentbord"
+          }
+        }
+      }
+    },
+    "Keyboard Host Test" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test av tangentbordsvärd"
+          }
+        }
+      }
+    },
+    "Keyboard Test" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tangentbordstest"
+          }
+        }
+      }
+    },
+    "Keyboards" : {
+      "comment" : "The Keyboards row in iOS Settings > Mumla.",
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tangentbord"
+          }
+        }
+      }
+    },
+    "Languages" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Språk"
+          }
+        }
+      }
+    },
+    "Launch at Login" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna vid inloggning"
+          }
+        }
+      }
+    },
+    "Less than a minute left" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mindre än en minut kvar"
+          }
+        }
+      }
+    },
+    "Let go of" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Släpp"
+          }
+        }
+      }
+    },
+    "Lets fn start dictation in any app." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Låter fn starta diktering i alla appar."
+          }
+        }
+      }
+    },
+    "Library Status" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bibliotekets status"
+          }
+        }
+      }
+    },
+    "Library updated" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biblioteket uppdaterat"
+          }
+        }
+      }
+    },
+    "Listen" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lyssna"
+          }
+        }
+      }
+    },
+    "Loading your languages from iCloud" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läser in dina språk från iCloud"
+          }
+        }
+      }
+    },
+    "Local originals" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokala original"
+          }
+        }
+      }
+    },
+    "Manage Subscription" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hantera prenumeration"
+          }
+        }
+      }
+    },
+    "Microphone" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon"
+          }
+        }
+      }
+    },
+    "Microphone session was interrupted and could not be restored." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofonsessionen avbröts och kunde inte återställas."
+          }
+        }
+      }
+    },
+    "Minimize" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minimera"
+          }
+        }
+      }
+    },
+    "Minutes left" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minuter kvar"
+          }
+        }
+      }
+    },
+    "Mode" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läge"
+          }
+        }
+      }
+    },
+    "More" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mer"
+          }
+        }
+      }
+    },
+    "More symbols" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fler symboler"
+          }
+        }
+      }
+    },
+    "Mumla Pro" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mumla Pro"
+          }
+        }
+      }
+    },
+    "Mumla Pro Belongs to Another iCloud Account" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mumla Pro tillhör ett annat iCloud-konto"
+          }
+        }
+      }
+    },
+    "Mumla Pro Isn't Active Yet" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mumla Pro är inte aktivt än"
+          }
+        }
+      }
+    },
+    "Mumla Pro belongs to another iCloud account." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mumla Pro tillhör ett annat iCloud-konto."
+          }
+        }
+      }
+    },
+    "Mumla can't reach the keyboard yet. Check that Allow Full Access is on." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mumla når inte tangentbordet än. Kontrollera att Tillåt full åtkomst är på."
+          }
+        }
+      }
+    },
+    "Mumla couldn't turn on the fn shortcut." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mumla kunde inte aktivera kortkommandot fn."
+          }
+        }
+      }
+    },
+    "Mumla is already dictating on two of your devices. Try again when one finishes." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mumla dikterar redan på två av dina enheter. Försök igen när någon av dem är klar."
+          }
+        }
+      }
+    },
+    "Mumla listens only while you dictate." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mumla lyssnar bara medan du dikterar."
+          }
+        }
+      }
+    },
+    "Never" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aldrig"
+          }
+        }
+      }
+    },
+    "Next keyboard" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nästa tangentbord"
+          }
+        }
+      }
+    },
+    "No Minutes Left" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga minuter kvar"
+          }
+        }
+      }
+    },
+    "No Mumla Pro Subscription Found" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingen Mumla Pro-prenumeration hittades"
+          }
+        }
+      }
+    },
+    "No Recordings" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga inspelningar"
+          }
+        }
+      }
+    },
+    "No Terms" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga ord"
+          }
+        }
+      }
+    },
+    "No Transcriptions" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga transkriptioner"
+          }
+        }
+      }
+    },
+    "No Transcripts" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga transkriptioner"
+          }
+        }
+      }
+    },
+    "No Words" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga ord"
+          }
+        }
+      }
+    },
+    "No active session. Open Mumla to start one." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingen aktiv session. Öppna Mumla för att starta en."
+          }
+        }
+      }
+    },
+    "No internet connection." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingen internetanslutning."
+          }
+        }
+      }
+    },
+    "No minutes left" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga minuter kvar"
+          }
+        }
+      }
+    },
+    "No minutes left this month." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga minuter kvar den här månaden."
+          }
+        }
+      }
+    },
+    "No minutes left until %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga minuter kvar förrän den %@"
+          }
+        }
+      }
+    },
+    "No minutes left. They reset %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga minuter kvar. De fylls på den %@"
+          }
+        }
+      }
+    },
+    "No minutes left. They reset %@." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga minuter kvar. De fylls på den %@."
+          }
+        }
+      }
+    },
+    "No original audio was captured." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inget originalljud spelades in."
+          }
+        }
+      }
+    },
+    "No probe records" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga testposter"
+          }
+        }
+      }
+    },
+    "No recent transcriptions" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga transkriptioner nyligen"
+          }
+        }
+      }
+    },
+    "No shared profile yet" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingen delad profil än"
+          }
+        }
+      }
+    },
+    "No shared recordings." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inga delade inspelningar."
+          }
+        }
+      }
+    },
+    "No text returned" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingen text returnerades"
+          }
+        }
+      }
+    },
+    "Not enough minutes left for this recording." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Det finns inte tillräckligt med minuter kvar för den här inspelningen."
+          }
+        }
+      }
+    },
+    "Not verified here" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inte verifierad här"
+          }
+        }
+      }
+    },
+    "Numbers" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siffror"
+          }
+        }
+      }
+    },
+    "Off" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Av"
+          }
+        }
+      }
+    },
+    "On" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "På"
+          }
+        }
+      }
+    },
+    "On Disk" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "På enheten"
+          }
+        }
+      }
+    },
+    "Only originals fully acknowledged by iCloud will be removed. An iCloud upload does not confirm an independent backup." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Endast original som iCloud har bekräftat helt tas bort. En uppladdning till iCloud är ingen bekräftad oberoende säkerhetskopia."
+          }
+        }
+      }
+    },
+    "Open %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna %@"
+          }
+        }
+      }
+    },
+    "Open Logs Folder" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna loggmappen"
+          }
+        }
+      }
+    },
+    "Open Settings" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna Inställningar"
+          }
+        }
+      }
+    },
+    "Open Settings and sign in at the top." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna Inställningar och logga in högst upp."
+          }
+        }
+      }
+    },
+    "Open System Settings" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna Systeminställningar"
+          }
+        }
+      }
+    },
+    "Open the Mumla keyboard in another app, then come back." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna Mumla-tangentbordet i en annan app och kom sedan tillbaka."
+          }
+        }
+      }
+    },
+    "Opens Mumla to start a dictation session" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppnar Mumla för att starta en dikteringssession"
+          }
+        }
+      }
+    },
+    "Opens history. Touch and hold for recent transcriptions" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppnar historiken. Håll ned för senaste transkriptionerna"
+          }
+        }
+      }
+    },
+    "Original Audio" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalljud"
+          }
+        }
+      }
+    },
+    "Original Recordings" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalinspelningar"
+          }
+        }
+      }
+    },
+    "Original audio without a result" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalljud utan resultat"
+          }
+        }
+      }
+    },
+    "PRO" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PRO"
+          }
+        }
+      }
+    },
+    "Permissions" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behörigheter"
+          }
+        }
+      }
+    },
+    "Preparing export…" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Förbereder export…"
+          }
+        }
+      }
+    },
+    "Press" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tryck på"
+          }
+        }
+      }
+    },
+    "Press 🌐 and choose Mumla." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tryck på 🌐 och välj Mumla."
+          }
+        }
+      }
+    },
+    "Privacy Policy" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integritetspolicy"
+          }
+        }
+      }
+    },
+    "Prose" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Löptext"
+          }
+        }
+      }
+    },
+    "Push-to-talk" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Håll ned för att tala"
+          }
+        }
+      }
+    },
+    "Puts your words where the cursor is." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Placerar orden där markören står."
+          }
+        }
+      }
+    },
+    "Quit" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avsluta"
+          }
+        }
+      }
+    },
+    "Recorded" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspelad"
+          }
+        }
+      }
+    },
+    "Recording" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspelning"
+          }
+        }
+      }
+    },
+    "Recording Unavailable" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspelningen är inte tillgänglig"
+          }
+        }
+      }
+    },
+    "Recording metadata could not be read" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspelningens metadata kunde inte läsas"
+          }
+        }
+      }
+    },
+    "Recording sharing disabled" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delning av inspelningar av"
+          }
+        }
+      }
+    },
+    "Recording sharing enabled" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delning av inspelningar på"
+          }
+        }
+      }
+    },
+    "Recording: %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spelar in: %@"
+          }
+        }
+      }
+    },
+    "Recordings" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspelningar"
+          }
+        }
+      }
+    },
+    "Recordings have not been loaded." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspelningarna har inte lästs in."
+          }
+        }
+      }
+    },
+    "Recordings longer than %@ can't be transcribed." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspelningar längre än %@ kan inte transkriberas."
+          }
+        }
+      }
+    },
+    "Recover Recordings..." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Återställ inspelningar…"
+          }
+        }
+      }
+    },
+    "Recovered transcript updated." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den återställda transkriptionen har uppdaterats."
+          }
+        }
+      }
+    },
+    "Recovery" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Återställning"
+          }
+        }
+      }
+    },
+    "Refresh" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uppdatera"
+          }
+        }
+      }
+    },
+    "Refresh the library for the current iCloud account." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uppdatera biblioteket för det aktuella iCloud-kontot."
+          }
+        }
+      }
+    },
+    "Reload" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läs in igen"
+          }
+        }
+      }
+    },
+    "Remove" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ta bort"
+          }
+        }
+      }
+    },
+    "Reopen Settings" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öppna Inställningar igen"
+          }
+        }
+      }
+    },
+    "Resets %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fylls på den %@"
+          }
+        }
+      }
+    },
+    "Restart Mumla" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starta om Mumla"
+          }
+        }
+      }
+    },
+    "Restoration is incomplete: %lld legacy original recordings are unavailable." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Restoration is incomplete: %lld legacy original recording is unavailable."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Restoration is incomplete: %lld legacy original recordings are unavailable."
+                }
+              }
+            }
+          }
+        },
+        "sv" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Återställningen är ofullständig: %lld äldre originalinspelning är inte tillgänglig."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Återställningen är ofullständig: %lld äldre originalinspelningar är inte tillgängliga."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Restoration is incomplete: %lld original recordings are unavailable." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Restoration is incomplete: %lld original recording is unavailable."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Restoration is incomplete: %lld original recordings are unavailable."
+                }
+              }
+            }
+          }
+        },
+        "sv" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Återställningen är ofullständig: %lld originalinspelning är inte tillgänglig."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Återställningen är ofullständig: %lld originalinspelningar är inte tillgängliga."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Restore Library" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Återställ biblioteket"
+          }
+        }
+      }
+    },
+    "Restore Purchases" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Återställ köp"
+          }
+        }
+      }
+    },
+    "Restore Retained Library" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Återställ det sparade biblioteket"
+          }
+        }
+      }
+    },
+    "Restore this account's retained library to iCloud?" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Återställa kontots sparade bibliotek till iCloud?"
+          }
+        }
+      }
+    },
+    "Result Versions" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resultatversioner"
+          }
+        }
+      }
+    },
+    "Retrying transcription…" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Försöker transkribera igen…"
+          }
+        }
+      }
+    },
+    "Return" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retur"
+          }
+        }
+      }
+    },
+    "Return to the library to load the current account." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gå tillbaka till biblioteket för att läsa in det aktuella kontot."
+          }
+        }
+      }
+    },
+    "Return to your app." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gå tillbaka till din app."
+          }
+        }
+      }
+    },
+    "Save" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spara"
+          }
+        }
+      }
+    },
+    "Save recordings to iCloud" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spara inspelningar i iCloud"
+          }
+        }
+      }
+    },
+    "Saved in iCloud" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sparad i iCloud"
+          }
+        }
+      }
+    },
+    "Saved locally" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sparad lokalt"
+          }
+        }
+      }
+    },
+    "Saving" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sparar"
+          }
+        }
+      }
+    },
+    "Say Something" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Säg något"
+          }
+        }
+      }
+    },
+    "Screen Recording" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skärminspelning"
+          }
+        }
+      }
+    },
+    "Screen Time or device management blocks it." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skärmtid eller enhetshantering blockerar det."
+          }
+        }
+      }
+    },
+    "Search" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sök"
+          }
+        }
+      }
+    },
+    "Search transcriptions" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sök i transkriptioner"
+          }
+        }
+      }
+    },
+    "Search transcripts" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sök i transkriptioner"
+          }
+        }
+      }
+    },
+    "Select a vocabulary JSON file to import" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Välj en JSON-fil med ordlista att importera"
+          }
+        }
+      }
+    },
+    "Set Up Later" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konfigurera senare"
+          }
+        }
+      }
+    },
+    "Set Up Mumla" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konfigurera Mumla"
+          }
+        }
+      }
+    },
+    "Set up your profile in Dictation Library to change your languages." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konfigurera din profil i Dikteringsbibliotek för att ändra dina språk."
+          }
+        }
+      }
+    },
+    "Settings..." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inställningar…"
+          }
+        }
+      }
+    },
+    "Share Latest Export" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dela senaste exporten"
+          }
+        }
+      }
+    },
+    "Shared profile not verified" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den delade profilen är inte verifierad"
+          }
+        }
+      }
+    },
+    "Shared profile unavailable" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den delade profilen är inte tillgänglig"
+          }
+        }
+      }
+    },
+    "Shortcut" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kortkommando"
+          }
+        }
+      }
+    },
+    "Shortcut Mode" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kortkommandoläge"
+          }
+        }
+      }
+    },
+    "Shows Mumla Pro" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visar Mumla Pro"
+          }
+        }
+      }
+    },
+    "Sign In to iCloud" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Logga in på iCloud"
+          }
+        }
+      }
+    },
+    "Sign In to iCloud to Dictate…" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Logga in på iCloud för att diktera…"
+          }
+        }
+      }
+    },
+    "Sign in to iCloud in Settings to dictate" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Logga in på iCloud i Inställningar för att diktera"
+          }
+        }
+      }
+    },
+    "Sign in to iCloud to change your languages." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Logga in på iCloud för att ändra dina språk."
+          }
+        }
+      }
+    },
+    "Sign in to iCloud to dictate." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Logga in på iCloud för att diktera."
+          }
+        }
+      }
+    },
+    "Signed Out" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utloggad"
+          }
+        }
+      }
+    },
+    "Since" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sedan"
+          }
+        }
+      }
+    },
+    "Skip" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoppa över"
+          }
+        }
+      }
+    },
+    "Something went wrong" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Något gick fel"
+          }
+        }
+      }
+    },
+    "Space" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mellanslag"
+          }
+        }
+      }
+    },
+    "Spoken Languages" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Talade språk"
+          }
+        }
+      }
+    },
+    "Start Session" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starta session"
+          }
+        }
+      }
+    },
+    "Start dictation" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starta diktering"
+          }
+        }
+      }
+    },
+    "Start or stop" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starta eller stoppa"
+          }
+        }
+      }
+    },
+    "Start session" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starta session"
+          }
+        }
+      }
+    },
+    "State" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tillstånd"
+          }
+        }
+      }
+    },
+    "Statistics" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statistik"
+          }
+        }
+      }
+    },
+    "Stop" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stoppa"
+          }
+        }
+      }
+    },
+    "Swipe right" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Svep åt höger"
+          }
+        }
+      }
+    },
+    "Switch to Mumla" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Byt till Mumla"
+          }
+        }
+      }
+    },
+    "Synced across your devices with iCloud." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synkas mellan dina enheter med iCloud."
+          }
+        }
+      }
+    },
+    "Talk" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tala"
+          }
+        }
+      }
+    },
+    "Tap Dictate on the keyboard and speak." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tryck på Diktera på tangentbordet och tala."
+          }
+        }
+      }
+    },
+    "Tap again when you're done." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tryck igen när du är klar."
+          }
+        }
+      }
+    },
+    "Terminal" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal"
+          }
+        }
+      }
+    },
+    "The archival copy is incomplete: %lld originals could not be retained." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "The archival copy is incomplete: %lld original could not be retained."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "The archival copy is incomplete: %lld originals could not be retained."
+                }
+              }
+            }
+          }
+        },
+        "sv" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Arkivkopian är ofullständig: %lld original kunde inte behållas."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Arkivkopian är ofullständig: %lld original kunde inte behållas."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "The built-in microphone is not available for recording." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den inbyggda mikrofonen är inte tillgänglig för inspelning."
+          }
+        }
+      }
+    },
+    "The bundled third-party notices could not be loaded. Please reinstall Mumla." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tredjepartsmeddelandena kunde inte läsas in. Installera om Mumla."
+          }
+        }
+      }
+    },
+    "The export failed and its incomplete staging files could not be removed." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exporten misslyckades och dess ofullständiga tillfälliga filer kunde inte tas bort."
+          }
+        }
+      }
+    },
+    "The iCloud account changed before the export completed." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud-kontot ändrades innan exporten var klar."
+          }
+        }
+      }
+    },
+    "The original and its saved results will be shared with your other dictation apps." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalet och dess sparade resultat delas med dina andra dikteringsappar."
+          }
+        }
+      }
+    },
+    "The original audio could not be converted." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalljudet kunde inte konverteras."
+          }
+        }
+      }
+    },
+    "The original audio could not be encoded (%d)." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalljudet kunde inte kodas (%d)."
+          }
+        }
+      }
+    },
+    "The original audio was already finished." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalljudet var redan avslutat."
+          }
+        }
+      }
+    },
+    "The recording is stored in iCloud, which is unavailable." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspelningen ligger i iCloud, som inte är tillgängligt."
+          }
+        }
+      }
+    },
+    "The recording metadata or audio is invalid." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspelningens metadata eller ljud är ogiltigt."
+          }
+        }
+      }
+    },
+    "The recording was interrupted" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspelningen avbröts"
+          }
+        }
+      }
+    },
+    "The saved audio does not match its original checksum." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Det sparade ljudet matchar inte originalets kontrollsumma."
+          }
+        }
+      }
+    },
+    "The system did not route recording to the built-in microphone." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemet skickade inte inspelningen till den inbyggda mikrofonen."
+          }
+        }
+      }
+    },
+    "The transcript could not be saved. Its original audio is retained." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionen kunde inte sparas. Originalljudet finns kvar."
+          }
+        }
+      }
+    },
+    "Then try again here" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Försök sedan igen här"
+          }
+        }
+      }
+    },
+    "Third-party Notices" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tredjepartsmeddelanden"
+          }
+        }
+      }
+    },
+    "Today" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I dag"
+          }
+        }
+      }
+    },
+    "Toggle only" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Endast start och stopp"
+          }
+        }
+      }
+    },
+    "Transcribe Again" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribera igen"
+          }
+        }
+      }
+    },
+    "Transcribing" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriberar"
+          }
+        }
+      }
+    },
+    "Transcribing…" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriberar…"
+          }
+        }
+      }
+    },
+    "Transcript" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription"
+          }
+        }
+      }
+    },
+    "Transcript Deleted" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionen har raderats"
+          }
+        }
+      }
+    },
+    "Transcription History" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionshistorik"
+          }
+        }
+      }
+    },
+    "Transcription history" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionshistorik"
+          }
+        }
+      }
+    },
+    "Transcriptions appear here as you dictate." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptioner visas här när du dikterar."
+          }
+        }
+      }
+    },
+    "Transcripts" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptioner"
+          }
+        }
+      }
+    },
+    "Try Again" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Försök igen"
+          }
+        }
+      }
+    },
+    "Try dictation again" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Försök diktera igen"
+          }
+        }
+      }
+    },
+    "Try it here" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prova här"
+          }
+        }
+      }
+    },
+    "Turn On the Microphone" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Slå på mikrofonen"
+          }
+        }
+      }
+    },
+    "Unassigned Recordings" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otilldelade inspelningar"
+          }
+        }
+      }
+    },
+    "Unconfirmed" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obekräftat"
+          }
+        }
+      }
+    },
+    "Unknown" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Okänd"
+          }
+        }
+      }
+    },
+    "Until %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Till %@"
+          }
+        }
+      }
+    },
+    "Version" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version"
+          }
+        }
+      }
+    },
+    "Waiting to upload" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Väntar på uppladdning"
+          }
+        }
+      }
+    },
+    "Welcome to Mumla" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Välkommen till Mumla"
+          }
+        }
+      }
+    },
+    "Word or phrase" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ord eller fras"
+          }
+        }
+      }
+    },
+    "Words" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ord"
+          }
+        }
+      }
+    },
+    "Yesterday" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I går"
+          }
+        }
+      }
+    },
+    "You're All Set" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allt är klart"
+          }
+        }
+      }
+    },
+    "Your local copy is retained. Restoring uploads the retained library to iCloud again." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Din lokala kopia finns kvar. Återställningen laddar upp det sparade biblioteket till iCloud igen."
+          }
+        }
+      }
+    },
+    "Your original audio will appear here as you dictate." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ditt originalljud visas här när du dikterar."
+          }
+        }
+      }
+    },
+    "Your purchase went through." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ditt köp har genomförts."
+          }
+        }
+      }
+    },
+    "Your words appear here" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dina ord visas här"
+          }
+        }
+      }
+    },
+    "again when you're done" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "igen när du är klar"
+          }
+        }
+      }
+    },
+    "and speak" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "och tala"
+          }
+        }
+      }
+    },
+    "iCloud" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        }
+      }
+    },
+    "iCloud Account Changed" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud-kontot har ändrats"
+          }
+        }
+      }
+    },
+    "iCloud Is Restricted" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud är begränsat"
+          }
+        }
+      }
+    },
+    "iCloud Isn't Available" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud är inte tillgängligt"
+          }
+        }
+      }
+    },
+    "iCloud Isn't Responding" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud svarar inte"
+          }
+        }
+      }
+    },
+    "iCloud Unavailable" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud är inte tillgängligt"
+          }
+        }
+      }
+    },
+    "iCloud account" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud-konto"
+          }
+        }
+      }
+    },
+    "iCloud account changed" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud-kontot har ändrats"
+          }
+        }
+      }
+    },
+    "iCloud is unavailable" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud är inte tillgängligt"
+          }
+        }
+      }
+    },
+    "iCloud isn't available right now" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud är inte tillgängligt just nu"
+          }
+        }
+      }
+    },
+    "iCloud isn't available right now." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud är inte tillgängligt just nu."
+          }
+        }
+      }
+    },
+    "iCloud library deleted — sync paused" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud-biblioteket har raderats – synkningen är pausad"
+          }
+        }
+      }
+    },
+    "iCloud was reset; this original is not retained on this device. Restore it from an archival copy." : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud har återställts och originalet finns inte kvar på den här enheten. Återställ det från en arkivkopia."
+          }
+        }
+      }
+    },
+    "since %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sedan %@"
+          }
+        }
+      }
+    },
+    "turn on %@" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "slå på %@"
+          }
+        }
+      }
+    },
+    "when you're done" : {
+      "localizations" : {
+        "sv" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "när du är klar"
+          }
+        }
+      }
+    },
+    "|" : {
+      "shouldTranslate" : false
+    },
+    "−%@" : {
+      "shouldTranslate" : false
+    }
+  },
+  "version" : "1.0"
+}

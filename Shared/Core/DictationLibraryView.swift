@@ -127,7 +127,7 @@ private struct DictationLibraryStatusSection: View {
 
     var body: some View {
         Section("Library Status") {
-            LabeledContent("iCloud account", value: library.accountSession == nil ? "Unconfirmed" : "Confirmed")
+            LabeledContent("iCloud account") { Text(library.accountSession == nil ? "Unconfirmed" : "Confirmed") }
             switch library.profileState {
             case .unverified:
                 Label("Shared profile not verified", systemImage: "icloud")
@@ -158,7 +158,7 @@ private struct DictationLibraryStatusSection: View {
                 }
                 .disabled(status.releasableBytes == 0 || library.accountSession == nil)
             }
-            LabeledContent("Independent backup", value: "Not verified here")
+            LabeledContent("Independent backup") { Text("Not verified here") }
             if let refreshed = library.archiveRefreshedAt {
                 LabeledContent("Library updated") { Text(refreshed, format: .dateTime.year().month().day().hour().minute()) }
             }
@@ -207,7 +207,7 @@ private struct DictationLibraryCaptureRow: View {
                     .foregroundStyle(.secondary)
             }
             if let result = entry.results.max(by: { $0.createdAt < $1.createdAt }) {
-                Text(result.text.isEmpty ? "No text returned" : result.text).lineLimit(3)
+                Text(result.text.isEmpty ? String(localized: "No text returned") : result.text).lineLimit(3)
                 Text(DictationLibraryPresentation.kindName(result.kind))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -252,7 +252,7 @@ private struct DictationLibraryCaptureDetail: View {
             Section {
                 LabeledContent("Recorded") { Text(entry.capture.startedAt, format: .dateTime.year().month().day().hour().minute()) }
                 LabeledContent("App", value: DictationLibraryPresentation.sourceName(entry.capture.source))
-                LabeledContent("Context", value: entry.capture.plan.context.rawValue.capitalized)
+                LabeledContent("Context") { Text(DictationLibraryPresentation.contextName(entry.capture.plan.context)) }
                 if entry.capture.interrupted {
                     Label("The recording was interrupted", systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
@@ -306,7 +306,7 @@ private struct DictationLibraryResultRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(DictationLibraryPresentation.kindName(result.kind)).font(.headline)
-            Text(result.text.isEmpty ? "No text returned" : result.text).textSelection(.enabled)
+            Text(result.text.isEmpty ? String(localized: "No text returned") : result.text).textSelection(.enabled)
             Text(result.createdAt, format: .dateTime.month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
             if result.contextWasUsed { Label("Context used", systemImage: "text.bubble").font(.caption).foregroundStyle(.secondary) }
         }
@@ -315,13 +315,21 @@ private struct DictationLibraryResultRow: View {
 }
 
 private enum DictationLibraryPresentation {
-    static func kindName(_ kind: DictationResultKind) -> String {
+    static func kindName(_ kind: DictationResultKind) -> LocalizedStringResource {
         switch kind {
         case .providerOutput: "Transcript"
         case .cleanup: "Cleaned Transcript"
         case .contextualOutput: "Contextual Output"
         case .answer: "AI Answer"
         case .failure: "Dictation Failed"
+        }
+    }
+
+    static func contextName(_ context: DictationContext) -> LocalizedStringResource {
+        switch context {
+        case .prose: "Prose"
+        case .chat: "Chat"
+        case .terminal: "Terminal"
         }
     }
 

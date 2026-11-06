@@ -247,7 +247,7 @@ private struct MicButton: View {
                 feedback(location)
             }
         }
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel(Text(accessibilityLabel))
         .accessibilityValue(accessibilityValue)
         .accessibilityAddTraits(.startsMediaSession)
     }
@@ -286,7 +286,7 @@ private struct MicButton: View {
 
     // Recording shows only the spinning cassette: the running mechanism is
     // the state, and tapping it to stop needs no caption.
-    private var title: String? {
+    private var title: LocalizedStringResource? {
         switch bridge.phase {
         case .recording: nil
         case .processing: "Transcribing"
@@ -295,7 +295,7 @@ private struct MicButton: View {
         }
     }
 
-    private var accessibilityLabel: String {
+    private var accessibilityLabel: LocalizedStringResource {
         switch bridge.phase {
         case .recording: "Finish dictation"
         case .processing: "Transcribing"
@@ -306,7 +306,7 @@ private struct MicButton: View {
 
     private var accessibilityValue: String {
         guard bridge.phase == .error else { return "" }
-        return bridge.errorMessage.isEmpty ? "Something went wrong" : bridge.errorMessage
+        return bridge.errorMessage.isEmpty ? String(localized: "Something went wrong") : bridge.errorMessage
     }
 
     private func toggle() {
@@ -353,9 +353,9 @@ private struct AccessStatusPill: View {
 
 private struct DictationStatusPill: View {
     let symbolName: String
-    let title: String
+    let title: LocalizedStringResource
     let symbolColor: Color
-    let accessibilityLabel: String
+    let accessibilityLabel: LocalizedStringResource
 
     var body: some View {
         DictationPillContent(
@@ -366,7 +366,7 @@ private struct DictationStatusPill: View {
         )
         .dictationPillBackground(DictationPillPalette.control, shadowOpacity: 0.06)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel(Text(accessibilityLabel))
     }
 }
 
@@ -482,7 +482,7 @@ private struct SpecialCharacterKey: View {
 
 private struct ModeSwitchKey: View {
     let title: String
-    let accessibilityLabel: String
+    let accessibilityLabel: LocalizedStringResource
     let feedback: @MainActor (CGPoint) -> Void
     let action: () -> Void
 
@@ -493,7 +493,7 @@ private struct ModeSwitchKey: View {
                 .frame(width: KeyboardMetrics.sideKeyWidth, height: KeyboardMetrics.keyCellHeight)
         }
         .buttonStyle(KeyButtonStyle(prominent: true, feedback: feedback))
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel(Text(accessibilityLabel))
         .accessibilityAddTraits(.isKeyboardKey)
     }
 }
@@ -508,7 +508,7 @@ private struct SpaceKeyLabel: View {
 private struct SpecialKey: View {
     let symbol: String
     let width: CGFloat
-    let accessibilityLabel: String
+    let accessibilityLabel: LocalizedStringResource
     let feedback: @MainActor (CGPoint) -> Void
     let action: () -> Void
 
@@ -519,7 +519,7 @@ private struct SpecialKey: View {
                 .frame(width: width, height: KeyboardMetrics.keyCellHeight)
         }
         .buttonStyle(KeyButtonStyle(prominent: true, feedback: feedback))
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel(Text(accessibilityLabel))
         .accessibilityAddTraits(.isKeyboardKey)
     }
 }

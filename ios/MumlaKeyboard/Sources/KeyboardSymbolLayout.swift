@@ -1,3 +1,5 @@
+import Foundation
+
 enum KeyboardSymbolPage: String, CaseIterable {
     case numbers
     case symbols
@@ -26,7 +28,7 @@ enum KeyboardSymbolPage: String, CaseIterable {
         }
     }
 
-    var switchAccessibilityLabel: String {
+    var switchAccessibilityLabel: LocalizedStringResource {
         switch self {
         case .numbers: "More symbols"
         case .symbols: "Numbers"

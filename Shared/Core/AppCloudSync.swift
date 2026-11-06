@@ -1061,7 +1061,7 @@ actor AppCloudSyncCoordinator: CKSyncEngineDelegate {
         await uploadPendingChanges()
         guard accountLease.isActive else { throw CancellationError() }
         guard missing == 0 else {
-            throw NSError(domain: "CloudLibraryRestoration", code: 1, userInfo: [NSLocalizedDescriptionKey: "Restoration is incomplete: \(missing) legacy original recordings are unavailable."])
+            throw NSError(domain: "CloudLibraryRestoration", code: 1, userInfo: [NSLocalizedDescriptionKey: String(localized: "Restoration is incomplete: \(missing) legacy original recordings are unavailable.")])
         }
         guard try context.fetchCount(FetchDescriptor<HistorySyncChange>()) == 0,
               try context.fetchCount(FetchDescriptor<VocabularySyncChange>()) == 0,

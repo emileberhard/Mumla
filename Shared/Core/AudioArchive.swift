@@ -77,11 +77,11 @@ nonisolated enum AudioArchiveError: LocalizedError {
     case invalidRecording, conflictingRecording, corruptAudio, transcriptNotSaved, audioUnavailable
     var errorDescription: String? {
         switch self {
-        case .invalidRecording: "The recording metadata or audio is invalid."
-        case .conflictingRecording: "A different recording already has this recording ID."
-        case .corruptAudio: "The saved audio does not match its original checksum."
-        case .transcriptNotSaved: "The transcript could not be saved. Its original audio is retained."
-        case .audioUnavailable: "The recording is stored in iCloud, which is unavailable."
+        case .invalidRecording: String(localized: "The recording metadata or audio is invalid.")
+        case .conflictingRecording: String(localized: "A different recording already has this recording ID.")
+        case .corruptAudio: String(localized: "The saved audio does not match its original checksum.")
+        case .transcriptNotSaved: String(localized: "The transcript could not be saved. Its original audio is retained.")
+        case .audioUnavailable: String(localized: "The recording is stored in iCloud, which is unavailable.")
         }
     }
 }
@@ -381,7 +381,7 @@ actor AudioRecordingPersistence {
                 guard !info.source.hasPrefix("unified/") else { continue }
                 guard let url = archive.localAudioURL(info) else {
                     recording.uploaded = false
-                    recording.syncError = "iCloud was reset; this original is not retained on this device. Restore it from an archival copy."
+                    recording.syncError = String(localized: "iCloud was reset; this original is not retained on this device. Restore it from an archival copy.")
                     missing += 1
                     continue
                 }

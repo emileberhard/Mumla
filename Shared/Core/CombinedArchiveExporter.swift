@@ -98,7 +98,7 @@ nonisolated enum CombinedArchiveExporter {
                 if sectionPath != "manifest.json" {
                     guard let expected = remaining.removeValue(forKey: sectionPath),
                           expected.byteCount == bytes, expected.sha256 == digest else {
-                        throw NSError(domain: "CombinedArchiveChecksum", code: 1, userInfo: [NSLocalizedDescriptionKey: "Export section checksum verification failed: \(relative)"])
+                        throw NSError(domain: "CombinedArchiveChecksum", code: 1, userInfo: [NSLocalizedDescriptionKey: String(localized: "Export section checksum verification failed: \(relative)")])
                     }
                 }
                 files.append(Manifest.File(path: relative, byteCount: bytes, sha256: digest))

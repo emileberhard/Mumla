@@ -248,8 +248,8 @@ private struct StatisticsSection: View {
         Group {
             if let stats {
                 Section("Statistics") {
-                    LabeledContent("Transcripts", value: "\(stats.entryCount)")
-                    LabeledContent("Words", value: "\(stats.wordCount)")
+                    LabeledContent("Transcripts", value: stats.entryCount.formatted())
+                    LabeledContent("Words", value: stats.wordCount.formatted())
                     LabeledContent("On Disk", value: stats.storeSizeInBytes.formatted(.byteCount(style: .file)))
                     if let oldest = stats.oldest {
                         LabeledContent("Since", value: oldest.formatted(date: .abbreviated, time: .omitted))
@@ -258,7 +258,7 @@ private struct StatisticsSection: View {
                 if stats.entriesPerDevice.count > 1 {
                     Section("Devices") {
                         ForEach(stats.entriesPerDevice, id: \.name) { device in
-                            LabeledContent(device.name, value: "\(device.count)")
+                            LabeledContent(device.name, value: device.count.formatted())
                         }
                     }
                 }

@@ -46,10 +46,10 @@ nonisolated enum LegacyArchiveExportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .accountChanged: "The iCloud account changed before the export completed."
-        case .invalidRecording: "A recording has unreadable metadata. The export is incomplete."
-        case .corruptOriginal: "An original recording does not match its saved checksum. The export is incomplete."
-        case .cleanupFailed: "The export failed and its incomplete staging files could not be removed."
+        case .accountChanged: String(localized: "The iCloud account changed before the export completed.")
+        case .invalidRecording: String(localized: "A recording has unreadable metadata. The export is incomplete.")
+        case .corruptOriginal: String(localized: "An original recording does not match its saved checksum. The export is incomplete.")
+        case .cleanupFailed: String(localized: "The export failed and its incomplete staging files could not be removed.")
         }
     }
 }

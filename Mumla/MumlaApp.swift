@@ -530,7 +530,7 @@ struct DictionarySettingsTab: View {
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.message = "Select a vocabulary JSON file to import"
+        panel.message = String(localized: "Select a vocabulary JSON file to import")
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
@@ -547,7 +547,7 @@ struct DictionarySettingsTab: View {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = "vocabulary.json"
-        panel.message = "Choose where to save your vocabulary"
+        panel.message = String(localized: "Choose where to save your vocabulary")
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 

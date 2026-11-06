@@ -24,7 +24,7 @@ struct HistoryStats {
         oldest = entries.map(\.createdAt).min()
         self.storeSizeInBytes = storeSizeInBytes
         entriesPerDevice = Dictionary(grouping: entries, by: \.deviceName)
-            .map { (name: $0.key.isEmpty ? "Unknown" : $0.key, count: $0.value.count) }
+            .map { (name: $0.key.isEmpty ? String(localized: "Unknown") : $0.key, count: $0.value.count) }
             .sorted {
                 $0.count == $1.count
                     ? $0.name.localizedStandardCompare($1.name) == .orderedAscending

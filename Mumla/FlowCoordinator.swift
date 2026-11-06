@@ -325,7 +325,7 @@ final class FlowCoordinator {
     func importLegacyAudio() async {
         do { try await recoveryStore.importLegacyRecordings() }
         catch {
-            recoveryStatusMessage = "Audio import failed: \(error.localizedDescription)"
+            recoveryStatusMessage = String(localized: "Audio import failed: \(error.localizedDescription)")
             AppDiagnostics.error("Legacy audio import failed", category: "recovery", error: error)
         }
     }
@@ -334,14 +334,14 @@ final class FlowCoordinator {
         guard retryingRecoveryRecordingID == nil else { return }
 
         retryingRecoveryRecordingID = id
-        recoveryStatusMessage = "Retrying transcription..."
+        recoveryStatusMessage = String(localized: "Retrying transcription…")
 
         Task {
             do {
                 if try dataStore.recordingInfo(for: id).source.hasPrefix("unified/"), let library = dataStore.library {
                     try await library.refreshArchive()
                     try await library.retranscribe(id, using: transcriber)
-                    recoveryStatusMessage = "A new result was saved in the shared library."
+                    recoveryStatusMessage = String(localized: "A new result was saved in the shared library.")
                     retryingRecoveryRecordingID = nil
                     return
                 }
@@ -350,7 +350,7 @@ final class FlowCoordinator {
                 }
                 let text = try await transcribeRecoverableRecording(recording)
                 dataStore.record(text: text, audioRecordingID: recording.id)
-                recoveryStatusMessage = "Recovered transcript updated."
+                recoveryStatusMessage = String(localized: "Recovered transcript updated.")
                 AppDiagnostics.info(
                     "Recoverable recording transcription retry succeeded",
                     category: "recovery",
@@ -511,7 +511,7 @@ final class FlowCoordinator {
                 ],
                 error: error
             )
-            recoveryStatusMessage = "Audio could not be archived: \(error.localizedDescription)"
+            recoveryStatusMessage = String(localized: "Audio could not be archived: \(error.localizedDescription)")
             return nil
         }
     }
@@ -937,7 +937,7 @@ enum RecoveryTranscriptionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .emptyRecoveredTranscript:
-            "Fallback transcription produced no transcript."
+            String(localized: "Fallback transcription produced no transcript.")
         }
     }
 }

@@ -13,7 +13,9 @@
   "localizations": {
     "development": "en",
     "supported": [
-      "Base"
+      "Base",
+      "en",
+      "sv"
     ]
   },
   "packages": [
@@ -517,6 +519,15 @@
         "MumlaKeyboard",
         "MumlaSharedTests",
         "MumlaKeyboardTests"
+      ]
+    },
+    {
+      "kind": "folder",
+      "path": "Shared/Localization",
+      "target-membership": [
+        "MumlaMac",
+        "MumlaiOS",
+        "MumlaKeyboard"
       ]
     },
     {

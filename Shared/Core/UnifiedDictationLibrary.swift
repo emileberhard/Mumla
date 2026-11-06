@@ -420,7 +420,7 @@ final class UnifiedDictationLibrary {
         try await store.validateAccountSession(session)
         let report = try await archiveReader().reseedPublication(session: session)
         guard report.missingOriginalCaptureIDs.isEmpty else {
-            throw SpeechKitError.invalidRequest("Restoration is incomplete: \(report.missingOriginalCaptureIDs.count) original recordings are unavailable.")
+            throw SpeechKitError.invalidRequest(String(localized: "Restoration is incomplete: \(report.missingOriginalCaptureIDs.count) original recordings are unavailable."))
         }
         try await profileWriter.restoreCachedProfile(account: session).value
         try await store.publishPending()
@@ -442,7 +442,7 @@ final class UnifiedDictationLibrary {
         }
         let report = try await reader.retainAllOriginals()
         guard !report.capacityExceeded, report.failures.isEmpty else {
-            throw SpeechKitError.invalidRequest("The archival copy is incomplete: \(report.failures.count) originals could not be retained.")
+            throw SpeechKitError.invalidRequest(String(localized: "The archival copy is incomplete: \(report.failures.count) originals could not be retained."))
         }
     }
 

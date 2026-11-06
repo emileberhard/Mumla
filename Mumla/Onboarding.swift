@@ -56,7 +56,7 @@ final class OnboardingController: NSObject, NSWindowDelegate {
             self?.close()
         })
         let window = NSWindow(contentViewController: hosting)
-        window.title = "Set Up Mumla"
+        window.title = String(localized: "Set Up Mumla")
         window.styleMask = [.titled, .closable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
@@ -178,8 +178,8 @@ struct OnboardingView: View {
 /// step's own controls, and a single prominent action. Everything centered
 /// so each step reads as one focused card.
 private struct StepScaffold<Hero: View, Controls: View>: View {
-    let title: String
-    let subtitle: String
+    let title: LocalizedStringKey
+    let subtitle: LocalizedStringKey
     @ViewBuilder var hero: Hero
     @ViewBuilder var controls: Controls
 
@@ -333,13 +333,13 @@ private struct PermissionsStep: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.title3)
                     .foregroundStyle(.orange)
-                    .accessibilityLabel("\(name(for: permission)) unavailable")
+                    .accessibilityLabel("\(String(localized: name(for: permission))) unavailable")
             } else if isGranted {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.title3)
                     .foregroundStyle(.green)
                     .transition(.scale.combined(with: .opacity))
-                    .accessibilityLabel("\(name(for: permission)) allowed")
+                    .accessibilityLabel("\(String(localized: name(for: permission))) allowed")
             } else {
                 allowButton(for: permission)
             }
@@ -354,7 +354,7 @@ private struct PermissionsStep: View {
     private func allowButton(for permission: SystemPermission) -> some View {
         let button = Button("Allow") { request(permission) }
             .disabled(requesting == permission)
-            .accessibilityLabel("Allow \(name(for: permission))")
+            .accessibilityLabel("Allow \(String(localized: name(for: permission)))")
 
         if permission == nextPermission, !needsRestart {
             button
@@ -376,7 +376,7 @@ private struct PermissionsStep: View {
         }
     }
 
-    private func name(for permission: SystemPermission) -> String {
+    private func name(for permission: SystemPermission) -> LocalizedStringResource {
         switch permission {
         case .microphone: "Microphone"
         case .accessibility: "Auto-Paste"
@@ -385,7 +385,7 @@ private struct PermissionsStep: View {
         }
     }
 
-    private func detail(for permission: SystemPermission) -> String {
+    private func detail(for permission: SystemPermission) -> LocalizedStringKey {
         switch permission {
         case .microphone: "Mumla listens only while you dictate."
         case .accessibility: "Puts your words where the cursor is."
@@ -509,7 +509,7 @@ private struct TryItStep: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var freeMinutes: String {
+    private var freeMinutes: LocalizedStringKey {
         if case .available(let allowance) = coordinator.access.state {
             "\(allowance.limit.wholeMinutes) free minutes every month."
         } else {

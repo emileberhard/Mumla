@@ -6,7 +6,7 @@ enum KeyboardShortcutMode: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    var displayName: String {
+    var displayName: LocalizedStringResource {
         switch self {
         case .holdToTalk:
             "Push-to-talk"

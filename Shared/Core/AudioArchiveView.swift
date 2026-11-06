@@ -26,7 +26,7 @@ struct AudioArchiveView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(info.createdAt.formatted(date: .abbreviated, time: .shortened))
                                 .font(.headline)
-                            Text(transcripts[info.id] ?? "Audio saved without a transcript")
+                            Text(transcripts[info.id] ?? String(localized: "Audio saved without a transcript"))
                                 .lineLimit(3)
                                 .textSelection(.enabled)
                             Text("\(info.deviceName) · \(info.byteCount.formatted(.byteCount(style: .file)))")

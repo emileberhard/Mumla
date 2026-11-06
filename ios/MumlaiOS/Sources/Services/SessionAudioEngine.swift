@@ -15,17 +15,17 @@ enum SessionAudioEngineError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .formatUnavailable:
-            "Could not configure the microphone audio format."
+            String(localized: "Could not configure the microphone audio format.")
         case .fakeMicFileUnreadable(let path):
             "Fake mic WAV is not readable: \(path)"
         case .hapticsDuringRecordingUnavailable:
-            "Could not keep system haptics enabled while the microphone is active."
+            String(localized: "Could not keep system haptics enabled while the microphone is active.")
         case .backgroundSessionUnavailable:
-            "Could not keep the dictation session ready in the background."
+            String(localized: "Could not keep the dictation session ready in the background.")
         case .builtInMicrophoneUnavailable:
-            "The built-in microphone is not available for recording."
+            String(localized: "The built-in microphone is not available for recording.")
         case .builtInMicrophoneRouteUnavailable:
-            "The system did not route recording to the built-in microphone."
+            String(localized: "The system did not route recording to the built-in microphone.")
         }
     }
 }
