@@ -767,6 +767,7 @@ final class FlowCoordinator {
     }
 
     private func stopRealtimeRecording() {
+        let stoppedAt = ContinuousClock.now
         realtimeDictationController?.prepareAudioForArchiving()
         realtimeStartTask?.cancel()
         realtimeStartTask = nil
@@ -826,6 +827,7 @@ final class FlowCoordinator {
                         "recovery_recording_id": recoverableRecording?.id.uuidString ?? "none",
                         "fallback_reason": fallbackReason,
                         "realtime_session_id": result.diagnosticsSessionID,
+                        "service_dictation_id": result.timing?.serviceDictationID ?? "none",
                     ]
                 )
                 // Debounce short taps: skip the batch fallback and the error
@@ -883,16 +885,25 @@ final class FlowCoordinator {
             }
             guard !Task.isCancelled else { return }
             self.dataStore.record(text: text, audioRecordingID: recoverableRecording?.id)
+            let handedOffAt = ContinuousClock.now
+            let measurements = DictationTiming.measurements(of: result.timing, stoppedAt: stoppedAt, handedOffAt: handedOffAt)
+            let timingMetadata = [
+                "duration_ms": durationMilliseconds,
+                "realtime_session_id": result.diagnosticsSessionID,
+                "service_dictation_id": result.timing?.serviceDictationID ?? "none",
+            ]
             AppDiagnostics.info(
                 "Pasting buffered realtime transcript",
                 category: "realtime",
-                metadata: [
-                    "duration_ms": durationMilliseconds,
+                metadata: timingMetadata.merging([
                     "length": String(text.count),
                     "recovery_recording_id": recoverableRecording?.id.uuidString ?? "none",
-                    "realtime_session_id": result.diagnosticsSessionID,
-                ]
+                ]) { _, new in new },
+                measurements: measurements
             )
+            if DictationTiming.isSlow(stoppedAt: stoppedAt, handedOffAt: handedOffAt) {
+                AppDiagnostics.warning("Dictation text was slow to arrive", category: "realtime", metadata: timingMetadata, measurements: measurements)
+            }
             self.state = .success
             self.transcript = text
             self.paste(text)

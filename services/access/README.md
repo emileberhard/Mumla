@@ -160,10 +160,11 @@ and alerts that the service needs the operator. Every service boot stays fenced.
 
 ## Data and limits
 
-Only identity hashes, stable random subject UUIDs, hashed sessions/grants and
-monthly sample aggregates persist. No audio, dictionary, transcript or CloudKit
-token is stored. Keep the current and previous two months of aggregates; expired
-sessions and unused grants are pruned. Subject mappings remain for account and
+Only identity hashes, stable random subject UUIDs, hashed sessions/grants,
+monthly sample aggregates and daily activity counts persist. No audio,
+dictionary, transcript or CloudKit token is stored. Keep the current and
+previous two months of aggregates and 13 calendar months of daily activity;
+expired sessions and unused grants are pruned. Subject mappings remain for account and
 purchase ownership. One row per App Store subscription keeps its latest signed
 state and owner, bounded by the number of subscriptions. SQLite pages are capped at 192 MiB; WAL checkpoints
 and bounded pruning keep transient state small. The private supervisor caps
@@ -198,6 +199,66 @@ waiting for its result has no progress timer. Response-read cancellation retains
 client-failure charging. Recovery transcription is a new admitted attempt.
 Periods are UTC calendar months; clients render the returned reset instant
 locally. Pro raises the same month's limit; it never resets used samples.
+
+## Diagnostics and usage analytics
+
+Each transcription logs one JSON line to the journal: `event` `dictation`, a
+random `id` that the client also receives in its `result` or `error` reply, the
+`route` (`stream` or `upload`), `status` and `code` (the operator's code, which
+can be more specific than the client's), `audio_ms`, and milliseconds from the
+stream opening or the upload request for `dispatch` (the router pulled the first
+body bytes), `audio_end` (the client's last audio), `upstream` (the router
+answered) and `settled`. `upstream - audio_end` is the provider's finalization
+plus the router hop. The router's vendor rows add `request_body_ms` and
+`response_headers_ms`; they carry no dictation ID, so match them by time. The
+line carries no subject, session or address. The service unit's journal rate
+limit and the poller's batch bound both count these lines; raise them with the
+dictation rate.
+
+`activity` holds one row per subject, UTC day and platform, written in the same
+transaction as the event it counts. Apps send `Mumla-Platform: ios` or `macos`;
+anything else is `unknown`, as from installs before this header. `enrollments`
+counts issued sessions, `dictations` charged attempts, `charged_samples` their
+charged audio at 16,000 per second, matching `usage`, and `free_exhaustions` the
+settlement that used up a free month; apps stop asking once it is gone, so the
+service never sees later refusals, and a subscriber can never run out of free
+minutes, and a refunded purchase is no conversion. Rows older than 13 calendar
+months prune 100 at a time, and while the ledger uses more than half its page
+cap the oldest days prune too, so analytics never crowd out billing; that
+reports `analytics_capacity` once per process and UTC day.
+
+`subject_starts` keeps each subject's enrollment day and first charged
+dictation and is never pruned. Subjects created before it have no row: their
+start is unknown, not their first later activity.
+
+Analyse the sealed daily backup snapshot, never the live ledger:
+
+```sql
+-- Active accounts and minutes per day and platform
+SELECT day, platform, COUNT(*) AS accounts, SUM(dictations) AS dictations,
+       ROUND(SUM(charged_samples) / 960000.0, 1) AS minutes
+FROM activity WHERE dictations > 0 GROUP BY day, platform ORDER BY day;
+
+-- One account, day by day
+SELECT day, platform, dictations, ROUND(charged_samples / 960000.0, 1) AS minutes, free_exhaustions
+FROM activity WHERE subject = :subject ORDER BY day;
+
+-- Weekly retention by the week an account first dictated
+SELECT strftime('%Y-%W', s.first_dictation) AS cohort,
+       CAST((julianday(a.day) - julianday(s.first_dictation)) / 7 AS INTEGER) AS week,
+       COUNT(DISTINCT a.subject) AS accounts
+FROM activity a JOIN subject_starts s USING (subject)
+WHERE a.dictations > 0 AND s.first_dictation IS NOT NULL
+GROUP BY cohort, week ORDER BY cohort, week;
+
+-- Accounts that ran out of free minutes, and how many have bought or renewed Pro since
+WITH ran_out AS (SELECT subject, MIN(day) AS day FROM activity WHERE free_exhaustions > 0 GROUP BY subject)
+SELECT COUNT(*) AS ran_out,
+       SUM(EXISTS (SELECT 1 FROM subscriptions s WHERE s.owner = r.subject
+         AND s.environment = 'Production' AND s.revoked IS NULL
+         AND s.purchased >= unixepoch(r.day) * 1000)) AS subscribed
+FROM ran_out r;
+```
 
 ## Purchases
 

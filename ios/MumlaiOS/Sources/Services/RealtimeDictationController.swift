@@ -7,19 +7,20 @@ final class RealtimeDictationController {
 
     private let providerConfiguration: RealtimeDictationProviderConfiguration
     private let dictation: RealtimeDictation
+    private let session: GrantedRealtimeTranscriptionSession?
 
     init(providerConfiguration: RealtimeDictationProviderConfiguration) {
         self.providerConfiguration = providerConfiguration
-        self.dictation = RealtimeDictation(session: Self.session(for: providerConfiguration))
-    }
-
-    private static func session(for configuration: RealtimeDictationProviderConfiguration) -> any RealtimeTranscriptionSession {
 #if DEBUG && targetEnvironment(simulator)
         if let transcript = SimulatedDictation.transcript {
-            return SimulatedRealtimeTranscriptionSession(transcript: transcript)
+            session = nil
+            dictation = RealtimeDictation(session: SimulatedRealtimeTranscriptionSession(transcript: transcript))
+            return
         }
 #endif
-        return configuration.makeSession()
+        let session = providerConfiguration.makeSession()
+        self.session = session
+        dictation = RealtimeDictation(session: session)
     }
 
     var captureSampleRate: Int {
@@ -53,7 +54,8 @@ final class RealtimeDictationController {
             text: completion.text,
             originalAudio: nil,
             fallbackReason: completion.fallbackReason,
-            failure: completion.error
+            failure: completion.error,
+            timing: await session?.timing
         )
     }
 

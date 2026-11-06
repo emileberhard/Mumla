@@ -136,6 +136,13 @@ actor AccessClient {
         return AccessClient(origin: configuration.origin, identity: CloudKitAccessIdentity(configuration), store: store)
     }
 
+    nonisolated static let platformHeader = "Mumla-Platform"
+#if os(macOS)
+    nonisolated static let platform = "macos"
+#else
+    nonisolated static let platform = "ios"
+#endif
+
     nonisolated static func makeTransport() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.urlCache = nil
@@ -314,6 +321,7 @@ actor AccessClient {
         var request = URLRequest(url: origin.appending(path: path))
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(Self.platform, forHTTPHeaderField: Self.platformHeader)
         if let bearer { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
         if let body {
             request.httpBody = body

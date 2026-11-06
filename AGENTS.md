@@ -264,11 +264,9 @@ container `iCloud.emileberhard.WisprClone`.
   bundle ID `emileberhard.WisprClone` and one access group. Both apps delete
   retired provider-key items at launch. The `security` CLI cannot see these
   items; `--delete-credentials` removes them.
-- Fresh-user testing: `just kill-mac` quits every instance,
-  `just reset-permissions-mac` resets TCC (only while an app is installed, or
-  tccutil does nothing), `just fresh-user-mac` wipes in order (kill, TCC,
+- Fresh-user testing: `just fresh-user-mac` wipes in order (kill, TCC,
   defaults and history with backups, access session, installs; DMGs and iCloud
-  stay) and `just clean-dmgs` removes built DMGs.
+  stay). `just reset-permissions-mac` works only while an app is installed.
 
 ### iOS keyboard
 
@@ -365,7 +363,8 @@ container `iCloud.emileberhard.WisprClone`.
   environments and a `process` tag of `app` or `keyboard`. Every iOS
   `CrashReporting` breadcrumb and capture is also a Sentry structured log
   (attribute `category`; `sentry.release` separates app and keyboard). Logs
-  buffer up to 5 s, so a killed keyboard can lose its last entries.
+  buffer up to 5 s, so a killed keyboard can lose its last entries. Sentry gets
+  problems only; timing warns only past `DictationTiming.slowHandoff`.
 - The keyboard's Sentry setup stays lean: crashes and explicit errors, no hang
   tracking. `SystemDiagnostics` forwards MetricKit reports, the keyboard's
   included, without Objective-C exception messages.
@@ -377,9 +376,9 @@ container `iCloud.emileberhard.WisprClone`.
   containing apps only; the keyboard links no SpeechKit). Never render an error's
   description, user info or provider text into a message or metadata.
 - Metadata holds state, fixed reason strings, IDs, counts and timing, never
-  user-facing messages or transcript, dictionary or screen content. Sentry's
-  network breadcrumbs record full HTTP query strings, so keep user content out
-  of request URLs; it does not track WebSocket tasks.
+  user-facing messages, device or port names, or transcript, dictionary or
+  screen content. Sentry's network breadcrumbs record full HTTP query strings,
+  so keep user content out of request URLs; it does not track WebSocket tasks.
 - When the apps change what they store or send, update `PRIVACY.md` in the
   same change and tell the maintainer, because the App Store privacy label must
   match.

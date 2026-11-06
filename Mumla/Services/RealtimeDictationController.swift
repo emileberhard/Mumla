@@ -17,6 +17,7 @@ final class RealtimeDictationController {
     private var originalAudio: OriginalAudioWriter?
     private var finishedOriginalAudio: Result<URL, any Error>?
     private var dictation: RealtimeDictation?
+    private var session: GrantedRealtimeTranscriptionSession?
     private var isRunning = false
     private var isTerminating = false
     private var startedAt: Date?
@@ -34,7 +35,9 @@ final class RealtimeDictationController {
             try Task.checkCancellation()
             let configuration = try makeProviderConfiguration(originalAudio)
             providerConfiguration = configuration
-            let dictation = RealtimeDictation(session: configuration.makeSession())
+            let session = configuration.makeSession()
+            let dictation = RealtimeDictation(session: session)
+            self.session = session
             self.dictation = dictation
             isRunning = true
             isTerminating = false
@@ -57,7 +60,8 @@ final class RealtimeDictationController {
                 text: nil,
                 originalAudio: await finishOriginalAudio(),
                 fallbackReason: "realtime_not_started",
-                failure: RealtimeDictationNotStarted()
+                failure: RealtimeDictationNotStarted(),
+                timing: nil
             )
         }
 
@@ -72,7 +76,8 @@ final class RealtimeDictationController {
                 text: nil,
                 originalAudio: originalAudio,
                 fallbackReason: "realtime_not_started",
-                failure: RealtimeDictationNotStarted()
+                failure: RealtimeDictationNotStarted(),
+                timing: nil
             )
         }
         let completion = await RealtimeDictationCompletion.finish(dictation)
@@ -97,6 +102,7 @@ final class RealtimeDictationController {
                 ]) { _, new in new }
             )
         }
+        let timing = await session?.timing
         let originalAudio = await original
         await cleanup()
         return RealtimeDictationResult(
@@ -104,7 +110,8 @@ final class RealtimeDictationController {
             text: completion.text,
             originalAudio: originalAudio,
             fallbackReason: completion.fallbackReason,
-            failure: completion.error
+            failure: completion.error,
+            timing: timing
         )
     }
 
@@ -228,6 +235,7 @@ final class RealtimeDictationController {
         stopAudioCapture()
         await dictation?.cancel()
         dictation = nil
+        session = nil
         originalAudio?.discard()
         originalAudio = nil
         isRunning = false

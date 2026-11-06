@@ -437,6 +437,57 @@ operator storage, with the latest two recovery points retained. Restoring an old
 usage snapshot requires fencing admission and conservatively reconciling
 accepted work, never resetting a month's spend.
 
+## Diagnostics and usage analytics
+
+Decided 2026-11-06.
+Goals: explain a slow or failed dictation after the fact, from the device
+through the service and router to the provider, and see how many accounts use
+Mumla, how much, how that changes day by day, and who subscribes after running
+out. Constraints: no added latency on the dictation path, Sentry only for
+problems, no persistent identity in diagnostics, and a public repository.
+
+- **One random ID per dictation.** The service mints it, logs it on its
+  per-dictation journal line with phase timings and returns it in the stream
+  reply. The client attaches it to its own timing, so one dictation joins
+  across device log, Sentry and journal without any account identity. Client
+  messages stay unchanged because the service validates their exact keys.
+- **Phase timings, not traces.** The client measures capture start to stream
+  open, stop to `finish`, `finish` to result and result to delivery; the
+  service measures admission to dispatch, client audio end, router answer and
+  settlement; the router measures upload end and response headers. Each is a
+  clock read on an existing path. A distributed tracing SDK would add spans,
+  sampling policy and a dependency to answer the same question.
+- **Sentry gets problems.** Timings ride on the existing per-dictation iOS log
+  line and on local Mac logs. Only a dictation slower than two seconds from
+  stop to handoff (Mac paste, iOS publication to the keyboard) adds a warning
+  log; the Mac now sends its warnings as Sentry logs, and events stay for
+  errors. Keyboard insertion keeps its own delayed-insertion report.
+- **Usage lives in the ledger.** `activity` counts per subject, UTC day and
+  platform, upserted in the transactions that already enroll and settle, and
+  counts only charged attempts, so it cannot diverge from billing; each adds
+  one indexed write. `subject_starts` keeps first use past activity's
+  retention; older subjects have no row because their start is unknown. Product
+  analytics SDKs were rejected: they would add a processor, a device identity
+  and client traffic, and they would count less reliably than the ledger, which
+  sees every metered dictation. Free run-outs are recorded at the settlement
+  that crosses the free limit, since apps stop asking afterwards; a subscriber
+  cannot run out of free minutes, so a purchase on or after that day followed
+  it. Analysis reads backup
+  snapshots; no endpoint exposes the table.
+- **Retention.** Thirteen months covers a year-over-year comparison; older rows
+  prune 100 at a time through the day index. At about 150 bytes per account-day,
+  thirteen months would fill the 192 MiB ledger near 3,000 daily-active
+  accounts, so above half the cap the oldest days prune first: analytics yield
+  to billing instead of closing admission. Raising retention or the cap later is
+  free; pruned history cannot be recovered.
+- **Correlation.** The dictation ID joins device and service; router rows match
+  by time, since the router stays generic and Mumla's journal already splits
+  provider time (`upstream - audio_end`).
+
+Assumptions that would reopen this: a need for per-dictation analytics across
+accounts (today only aggregates per day), or users who must be counted without
+ever dictating, which needs app-side events.
+
 ## Client ownership and UI contract
 
 One shared `@MainActor @Observable MumlaAccess` owns published access state;

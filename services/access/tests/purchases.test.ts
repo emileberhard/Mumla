@@ -41,7 +41,7 @@ function open(overrides: Record<string, number> = {}) {
 }
 
 function account(store: AccessStore, identity: string, at = now) {
-  const enrolled = store.enroll(identity, at);
+  const enrolled = store.enroll(identity, at, "ios");
   return {
     subject: enrolled.subject,
     session: store.authenticate(enrolled.token, at),
@@ -287,7 +287,13 @@ test("Pro raises the same month's limit, keeps used minutes, and lapses at expir
   const buyer = account(store, "buyer");
   for (const _ of [1, 2]) {
     const grant = store.reserve(buyer.session, 1800, now);
-    store.settle(store.claim(grant.token, now), 1800 * sampleRate, true);
+    store.settle(
+      store.claim(grant.token, now),
+      1800 * sampleRate,
+      true,
+      now,
+      "ios",
+    );
   }
   expect(rejection(() => store.reserve(buyer.session, 60, now))).toBe(
     "allowance_exhausted",
@@ -318,7 +324,7 @@ test("an override larger than Pro wins whatever the plan", () => {
   resources.push(() => rmSync(directory, { recursive: true, force: true }));
   const path = join(directory, "access.sqlite");
   const initial = new AccessStore(path, policy, "initialize");
-  const subject = initial.enroll("operator", now).subject;
+  const subject = initial.enroll("operator", now, "ios").subject;
   initial.close();
   const store = new AccessStore(
     path,
@@ -343,7 +349,9 @@ test("a database from before Pro passes snapshot validation and gains the tables
   new AccessStore(path, policy, "initialize").close();
   {
     using db = new Database(path);
-    db.exec("DROP TABLE subscriptions; PRAGMA journal_mode = DELETE;");
+    db.exec(
+      "DROP TABLE subscriptions; DROP TABLE subject_starts; DROP TABLE activity; PRAGMA journal_mode = DELETE;",
+    );
   }
   validateSnapshot(path);
   const store = new AccessStore(path, policy, "open");
@@ -416,4 +424,47 @@ test("notifications yield their subscription transaction or nothing", async () =
   expect(await rejectionOf(verifier.notification("a.b.c"))).toBe(
     "invalid_purchase",
   );
+});
+
+test("only a free account's run-out counts as one, not a subscriber using up Pro", () => {
+  const directory = mkdtempSync(join(tmpdir(), "mumla-purchase-test-"));
+  resources.push(() => rmSync(directory, { recursive: true, force: true }));
+  const path = join(directory, "access.sqlite");
+  const store = new AccessStore(path, policy, "initialize");
+  const buyer = account(store, "buyer");
+  const spend = (seconds: number) => {
+    const grant = store.reserve(buyer.session, seconds, now);
+    store.settle(
+      store.claim(grant.token, now),
+      seconds * sampleRate,
+      true,
+      now,
+      "ios",
+    );
+  };
+  spend(1800);
+  spend(1800);
+  store.purchase(
+    buyer.session,
+    signed({ environment: "Sandbox", appAccountToken: buyer.subject }),
+    now,
+  );
+  spend(1800);
+  spend(1800);
+  expect(rejection(() => store.reserve(buyer.session, 60, now))).toBe(
+    "allowance_exhausted",
+  );
+  store.close();
+  using db = new Database(path, { readonly: true, strict: true });
+  expect(
+    db
+      .query(
+        "SELECT dictations, charged_samples, free_exhaustions FROM activity",
+      )
+      .get(),
+  ).toEqual({
+    dictations: 4,
+    charged_samples: 7200 * sampleRate,
+    free_exhaustions: 1,
+  });
 });

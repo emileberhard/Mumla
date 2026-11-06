@@ -41,6 +41,7 @@ struct AccessTranscriptionTests {
     @Test(arguments: [
         (AccessStreamFailure.refused(status: 401), TranscriptionRecovery.resendArchived),
         (AccessStreamFailure.refused(status: 503), .resendArchived),
+        (AccessStreamFailure.refused(status: 503, dictationID: "d1"), .resendArchived),
         (AccessStreamFailure.refused(status: 502), .keepForRetry),
         (AccessStreamFailure.refused(status: 413), .keepForRetry),
         (AccessStreamFailure.invalidReply, .keepForRetry),
@@ -58,6 +59,13 @@ struct AccessTranscriptionTests {
     ] as [(any Error & Sendable, TranscriptionRecovery)])
     func onlyAttemptsThatNeverReachedTheProviderAreResent(error: any Error & Sendable, recovery: TranscriptionRecovery) {
         #expect(TranscriptionRecovery(after: error) == recovery)
+    }
+
+    @Test func aRefusalReportsTheServiceDictationIDItCarries() {
+        let reported = DiagnosticError(AccessStreamFailure.refused(status: 502, dictationID: "d1")).metadata
+        #expect(reported["error_code"] == "502")
+        #expect(reported["service_dictation_id"] == "d1")
+        #expect(DiagnosticError(AccessStreamFailure.refused(status: 502)).metadata["service_dictation_id"] == nil)
     }
 
     @MainActor

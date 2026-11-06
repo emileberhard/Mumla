@@ -33,18 +33,23 @@ nonisolated enum TranscriptionRecovery: Equatable {
     }
 
     static func isUndispatched(_ error: any Error) -> Bool {
-        guard case AccessStreamFailure.refused(let status) = error else { return false }
+        guard case AccessStreamFailure.refused(let status, _) = error else { return false }
         return status == 401 || status == 503
     }
 }
 
 nonisolated enum AccessStreamFailure: Error, Equatable, StructuredDiagnosticError {
-    case refused(status: Int)
+    case refused(status: Int, dictationID: String? = nil)
     case invalidReply
 
     var diagnosticCode: Int? {
-        guard case .refused(let status) = self else { return nil }
+        guard case .refused(let status, _) = self else { return nil }
         return status
+    }
+
+    var diagnosticReference: String? {
+        guard case .refused(_, let dictationID) = self else { return nil }
+        return dictationID
     }
 
     var diagnosticKind: String {
@@ -55,12 +60,17 @@ nonisolated enum AccessStreamFailure: Error, Equatable, StructuredDiagnosticErro
     }
 }
 
+nonisolated struct AccessStreamReply: Equatable, Sendable {
+    let text: String
+    let dictationID: String?
+}
+
 nonisolated final class AccessStream: Sendable {
     static let vocabularyBudgetBytes = 128 * 1024
     private static let transport = AccessClient.makeTransport()
 
     private let socket: URLSessionWebSocketTask
-    private let reply: Task<String, any Error>
+    private let reply: Task<AccessStreamReply, any Error>
 
     private init(socket: URLSessionWebSocketTask) {
         self.socket = socket
@@ -73,6 +83,7 @@ nonisolated final class AccessStream: Sendable {
         guard let url = components?.url else { throw AccessFailure.serviceUnavailable }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(grant.token)", forHTTPHeaderField: "Authorization")
+        request.setValue(AccessClient.platform, forHTTPHeaderField: AccessClient.platformHeader)
         let socket = transport.webSocketTask(with: request)
         socket.delegate = RejectRedirects.shared
         socket.resume()
@@ -104,7 +115,7 @@ nonisolated final class AccessStream: Sendable {
         try await deliver(.string(#"{"type":"finish"}"#))
     }
 
-    var result: String {
+    var result: AccessStreamReply {
         get async throws {
             try await withTaskCancellationHandler { try await reply.value } onCancel: { cancel() }
         }
@@ -125,15 +136,15 @@ nonisolated final class AccessStream: Sendable {
         }
     }
 
-    private static func awaitReply(on socket: URLSessionWebSocketTask) async throws -> String {
+    private static func awaitReply(on socket: URLSessionWebSocketTask) async throws -> AccessStreamReply {
         let message: URLSessionWebSocketTask.Message
         do { message = try await socket.receive() } catch { throw failure(error, on: socket) }
         guard case .string(let text) = message, let reply = try? JSONDecoder().decode(Reply.self, from: Data(text.utf8)) else {
             throw AccessStreamFailure.invalidReply
         }
         switch (reply.type, reply.text, reply.status) {
-        case ("result", let text?, _): return text
-        case ("error", _, let status?): throw AccessStreamFailure.refused(status: status)
+        case ("result", let text?, _): return AccessStreamReply(text: text, dictationID: reply.id)
+        case ("error", _, let status?): throw AccessStreamFailure.refused(status: status, dictationID: reply.id)
         default: throw AccessStreamFailure.invalidReply
         }
     }
@@ -153,6 +164,7 @@ nonisolated final class AccessStream: Sendable {
         let type: String
         let text: String?
         let status: Int?
+        let id: String?
     }
 }
 
@@ -170,6 +182,7 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
     private var budget = AudioSampleBudget(samples: 0)
     private var reportedLimit = false
     private var isDisconnected = false
+    private(set) var timing = DictationTiming(captureStartedAt: .now)
 
     init(grant: Task<AccessGrant, any Error>, languageHints: [String], customVocabulary: [String], onAudioLimitReached: @escaping @Sendable () -> Void) {
         self.grant = grant
@@ -187,13 +200,14 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
             throw CancellationError()
         }
         self.stream = stream
+        timing.streamOpenedAt = .now
         budget = AudioSampleBudget(samples: grant.audioLimitSamples)
         let events = AsyncThrowingStream<RealtimeTranscriptionEvent, any Error>.makeStream(bufferingPolicy: .bufferingOldest(2))
         continuation = events.continuation
         outcome = Task { [weak self] in
             do {
-                let text = try await stream.result
-                await self?.complete(text)
+                let reply = try await stream.result
+                await self?.complete(reply)
             } catch {
                 await self?.fail(error)
             }
@@ -211,6 +225,7 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
     func requestCommit() async throws {
         guard let stream, !isDisconnected else { throw CancellationError() }
         try await stream.finish()
+        timing.finishSentAt = .now
     }
 
     func disconnect() async {
@@ -224,14 +239,20 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         stream = nil
     }
 
-    private func complete(_ text: String) {
+    private func complete(_ reply: AccessStreamReply) {
         guard !isDisconnected else { return }
-        continuation?.yield(.committedTranscript(text))
+        timing.resultReceivedAt = .now
+        timing.serviceDictationID = reply.dictationID
+        continuation?.yield(.committedTranscript(reply.text))
         continuation?.yield(.finalizationCompleted)
     }
 
     private func fail(_ error: any Error) {
         guard !isDisconnected else { return }
+        if case AccessStreamFailure.refused(_, let dictationID?) = error {
+            timing.resultReceivedAt = .now
+            timing.serviceDictationID = dictationID
+        }
         continuation?.finish(throwing: error)
     }
 
@@ -298,7 +319,7 @@ struct AccessTranscriber {
                     try await stream.send(Data(pcm[offset..<min(offset + chunkBytes, pcm.endIndex)]))
                 }
                 try await stream.finish()
-                return try await stream.result
+                return try await stream.result.text
             }
             group.addTask {
                 try await Task.sleep(for: deadline)

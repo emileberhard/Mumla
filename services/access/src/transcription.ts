@@ -95,6 +95,7 @@ export class TranscriptionUpload {
   private validationError: AccessError | undefined;
   private handedOff = false;
   private completed = false;
+  private audioEnded: number | undefined;
 
   constructor(
     request: Request,
@@ -310,6 +311,9 @@ export class TranscriptionUpload {
   get interruptedWhileWaitingForClient() {
     return this.clientWaitInterrupted;
   }
+  get audioEndedAt() {
+    return this.audioEnded;
+  }
 
   private async waitForClient<T>(operation: () => Promise<T>): Promise<T> {
     this.waitingSince ??= performance.now();
@@ -361,7 +365,10 @@ export class TranscriptionUpload {
             expectedBytes === null ? "audio_limit_exceeded" : "invalid_audio",
           );
         const next = await self.waitForClient(() => iterator.next());
-        if (next.done) break;
+        if (next.done) {
+          self.audioEnded = performance.now();
+          break;
+        }
         pcm = Buffer.from(next.value);
       }
       await self.waitForClient(() => self.parsed);

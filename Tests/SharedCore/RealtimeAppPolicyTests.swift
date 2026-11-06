@@ -63,3 +63,42 @@ private struct FailingRealtimeSession: RealtimeTranscriptionSession {
 
     func disconnect() async {}
 }
+
+@Suite("Dictation timing")
+struct DictationTimingTests {
+    let start = ContinuousClock.now
+
+    @Test func splitsTheWaitAfterStopIntoItsPhases() {
+        let timing = DictationTiming(
+            captureStartedAt: start,
+            streamOpenedAt: start + .milliseconds(180),
+            finishSentAt: start + .milliseconds(4_150),
+            resultReceivedAt: start + .milliseconds(4_620)
+        )
+
+        let measurements = DictationTiming.measurements(
+            of: timing, stoppedAt: start + .milliseconds(4_000), handedOffAt: start + .milliseconds(5_230)
+        )
+
+        #expect(measurements == [
+            "stop_to_handoff_ms": 1_230,
+            "stream_open_ms": 180,
+            "stop_to_finish_ms": 150,
+            "finish_to_result_ms": 470,
+            "result_to_handoff_ms": 610,
+        ])
+    }
+
+    @Test func reportsOnlyTheTotalWithoutStreamMarks() {
+        let measurements = DictationTiming.measurements(
+            of: DictationTiming(captureStartedAt: start), stoppedAt: start, handedOffAt: start + .milliseconds(90)
+        )
+
+        #expect(measurements == ["stop_to_handoff_ms": 90])
+    }
+
+    @Test func isSlowOnlyPastTwoSeconds() {
+        #expect(!DictationTiming.isSlow(stoppedAt: start, handedOffAt: start + .seconds(2)))
+        #expect(DictationTiming.isSlow(stoppedAt: start, handedOffAt: start + .milliseconds(2_001)))
+    }
+}

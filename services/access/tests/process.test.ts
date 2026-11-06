@@ -44,7 +44,7 @@ async function fixture(upstream: (request: Request) => Promise<Response>) {
     ...syntheticPolicy,
   };
   const store = new AccessStore(config.database, config, "initialize");
-  const session = store.enroll("synthetic-account", Date.now());
+  const session = store.enroll("synthetic-account", Date.now(), "ios");
   store.close();
   const configPath = join(directory, "config.json");
   await Bun.write(configPath, JSON.stringify(config));

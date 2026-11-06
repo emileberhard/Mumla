@@ -78,6 +78,7 @@ export class StreamUpload {
   private validationError: AccessError | undefined;
   private handedOff = false;
   private completed = false;
+  private finishedAt: number | undefined;
 
   constructor(
     private readonly socket: StreamSocket,
@@ -126,6 +127,9 @@ export class StreamUpload {
   get interruptedWhileWaitingForClient() {
     return this.clientWaitInterrupted;
   }
+  get audioEndedAt() {
+    return this.finishedAt;
+  }
 
   receive(message: string | Buffer) {
     try {
@@ -142,6 +146,7 @@ export class StreamUpload {
       ) {
         exactKeys(value, ["type"]);
         this.finished = true;
+        this.finishedAt = performance.now();
       } else throw new AccessError(400, "invalid_message");
       this.signalInput();
     } catch (error) {

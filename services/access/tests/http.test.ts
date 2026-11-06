@@ -627,7 +627,11 @@ test("one account cannot hold the data pool and its grant bodies time out prompt
     ),
   );
   try {
-    const otherDevice = store.enroll("verified-apple-identity", Date.now());
+    const otherDevice = store.enroll(
+      "verified-apple-identity",
+      Date.now(),
+      "ios",
+    );
     const busy = await service.handle(
       new Request("http://localhost/v1/access", {
         headers: { Authorization: `Bearer ${otherDevice.token}` },
@@ -636,7 +640,11 @@ test("one account cannot hold the data pool and its grant bodies time out prompt
     );
     expect(busy.status).toBe(503);
     expect(await busy.json()).toEqual({ error: { code: "service_busy" } });
-    const otherAccount = store.enroll("another-apple-account", Date.now());
+    const otherAccount = store.enroll(
+      "another-apple-account",
+      Date.now(),
+      "ios",
+    );
     const served = await service.handle(
       new Request("http://localhost/v1/dictations", {
         method: "POST",

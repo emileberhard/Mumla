@@ -394,7 +394,7 @@ kill-mac:
 reset-permissions-mac:
     tccutil reset All emileberhard.WisprClone
 
-# Simulate a brand-new user: kill, reset permissions, wipe defaults and the router key, delete installs.
+# Simulate a brand-new user: kill, reset permissions, wipe defaults, history and the access session, delete installs.
 fresh-user-mac:
     ./scripts/mac-fresh-user.sh
 

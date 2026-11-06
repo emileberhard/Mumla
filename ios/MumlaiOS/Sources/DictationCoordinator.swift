@@ -888,6 +888,7 @@ final class DictationCoordinator {
     }
 
     private func stopRealtimeDictation() async {
+        let stoppedAt = ContinuousClock.now
         let duration = dictationStartedAt.map { Date().timeIntervalSince($0) } ?? 0
         dictationStartedAt = nil
 
@@ -975,6 +976,7 @@ final class DictationCoordinator {
                         [
                             "fallback_reason": result?.fallbackReason ?? "none",
                             "realtime_character_count": String(result?.text?.count ?? 0),
+                            "service_dictation_id": result?.timing?.serviceDictationID ?? "none",
                         ]
                     ) { _, new in new }
                 )
@@ -1026,16 +1028,31 @@ final class DictationCoordinator {
                 }
                 let entryID = dataStore.record(text: text, audioRecordingID: recordingID)
                 publishTranscript(text, entryID: entryID)
+                let handedOffAt = ContinuousClock.now
                 phase = .success
+                let measurements = DictationTiming.measurements(of: result?.timing, stoppedAt: stoppedAt, handedOffAt: handedOffAt)
+                let timingDetails = captureDetails.merging([
+                    "fallback_reason": result?.fallbackReason ?? "none",
+                    "service_dictation_id": result?.timing?.serviceDictationID ?? "none",
+                ]) { _, new in new }
                 CrashReporting.breadcrumb(
                     "Realtime transcription succeeded",
                     category: "transcription",
                     metadata: diagnosticMetadata(
-                        extra: captureDetails.merging(
+                        extra: timingDetails.merging(
                             ["transcript_character_count": String(text.count)]
                         ) { _, new in new }
-                    )
+                    ),
+                    measurements: measurements
                 )
+                if DictationTiming.isSlow(stoppedAt: stoppedAt, handedOffAt: handedOffAt) {
+                    CrashReporting.warning(
+                        "Dictation text was slow to arrive",
+                        category: "transcription",
+                        metadata: diagnosticMetadata(extra: timingDetails),
+                        measurements: measurements
+                    )
+                }
                 try? await Task.sleep(for: .seconds(1))
                 if phase == .success {
                     phase = .idle
@@ -1045,7 +1062,9 @@ final class DictationCoordinator {
                 reportError(
                     TranscriptionFailureMessage.text(for: error, allowance: access.state),
                     error: error,
-                    metadata: captureDetails
+                    metadata: captureDetails.merging(
+                        ["service_dictation_id": result?.timing?.serviceDictationID ?? "none"]
+                    ) { current, _ in current }
                 )
             }
         }

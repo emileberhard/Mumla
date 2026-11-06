@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,9 +8,15 @@ import { AccessStore } from "../src/store";
 import { syntheticPolicy, syntheticVerifier } from "./appstore-fixture";
 
 const resources: (() => void | Promise<void>)[] = [];
+const logged: Record<string, unknown>[] = [];
+const consoleLog = spyOn(console, "log").mockImplementation((line: unknown) => {
+  if (typeof line === "string" && line.startsWith("{"))
+    logged.push(JSON.parse(line));
+});
 afterEach(async () => {
   for (const cleanup of resources.splice(0).reverse()) await cleanup();
 });
+afterAll(() => consoleLog.mockRestore());
 
 const operatorToken = "synthetic-operator-token-with-32-characters";
 const BunWebSocket = WebSocket as unknown as new (
@@ -189,7 +195,11 @@ test("a dictation streams over one socket and the service builds the provider de
   socket.send(pcm(8_000, 9));
   socket.send(JSON.stringify({ type: "finish" }));
   expect(await closed).toEqual([
-    { type: "result", text: "First line.\nSecond line." },
+    {
+      type: "result",
+      text: "First line.\nSecond line.",
+      id: expect.any(String),
+    },
   ]);
   expect(received?.definition).toEqual({
     enhancedMode: {
@@ -203,6 +213,19 @@ test("a dictation streams over one socket and the service builds the provider de
   expect(received?.header.readUInt32LE(40)).toBe(0xffff_ffff);
   expect(received?.pcm).toEqual(Buffer.concat([pcm(16_000, 7), pcm(8_000, 9)]));
   expect(await used()).toMatchObject({ used_seconds: 2, in_flight_seconds: 0 });
+  const [reply] = (await closed) as { id: string }[];
+  const line = logged.find((entry) => entry.id === reply?.id);
+  expect(line).toMatchObject({
+    event: "dictation",
+    route: "stream",
+    status: 200,
+    code: "ok",
+    audio_ms: 1500,
+  });
+  const mark = (name: string) => line?.[`${name}_ms`] as number;
+  expect(mark("dispatch")).toBeLessThanOrEqual(mark("upstream"));
+  expect(mark("audio_end")).toBeLessThanOrEqual(mark("upstream"));
+  expect(mark("upstream")).toBeLessThanOrEqual(mark("settled"));
 });
 
 test("several languages leave detection to the provider", async () => {
@@ -218,7 +241,9 @@ test("several languages leave detection to the provider", async () => {
   );
   socket.send(pcm(160));
   socket.send(JSON.stringify({ type: "finish" }));
-  expect(await closed).toEqual([{ type: "result", text: "" }]);
+  expect(await closed).toEqual([
+    { type: "result", text: "", id: expect.any(String) },
+  ]);
   expect(definition).toEqual({
     enhancedMode: {
       enabled: true,
@@ -265,7 +290,12 @@ test("fencing an undispatched stream refuses it with a retryable 503 and no char
     200,
   );
   expect(await closed).toEqual([
-    { type: "error", status: 503, code: "service_unavailable" },
+    {
+      type: "error",
+      status: 503,
+      code: "service_unavailable",
+      id: expect.any(String),
+    },
   ]);
   await call("/internal/reopen", "POST", operatorToken);
   expect(await used()).toMatchObject({ used_seconds: 0, in_flight_seconds: 0 });
@@ -281,7 +311,12 @@ test("audio past the grant is refused and the forwarded part is charged", async 
   await upstream.reached;
   socket.send(pcm(1));
   expect(await closed).toEqual([
-    { type: "error", status: 413, code: "audio_limit_exceeded" },
+    {
+      type: "error",
+      status: 413,
+      code: "audio_limit_exceeded",
+      id: expect.any(String),
+    },
   ]);
   expect(await used()).toMatchObject({ used_seconds: 2, in_flight_seconds: 0 });
 });
@@ -327,7 +362,9 @@ test("a burst faster than the provider reads is paused, not dropped or timed out
   for (let offset = 0; offset < audio.length; offset += 32_000)
     socket.send(audio.subarray(offset, offset + 32_000));
   socket.send(JSON.stringify({ type: "finish" }));
-  expect(await closed).toEqual([{ type: "result", text: "Burst." }]);
+  expect(await closed).toEqual([
+    { type: "result", text: "Burst.", id: expect.any(String) },
+  ]);
   expect(forwarded.includes(audio)).toBe(true);
 });
 
@@ -345,6 +382,11 @@ test("a settlement failure after dispatch is never reported as retryable", async
   socket.send(pcm(160));
   socket.send(JSON.stringify({ type: "finish" }));
   expect(await closed).toEqual([
-    { type: "error", status: 502, code: "transcription_failed" },
+    {
+      type: "error",
+      status: 502,
+      code: "transcription_failed",
+      id: expect.any(String),
+    },
   ]);
 });

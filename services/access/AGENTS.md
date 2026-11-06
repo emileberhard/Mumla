@@ -81,8 +81,14 @@ to SpeechKit or llm-router.
   a pre-Pro executable once it ships.
 
 - Keep config, operator values, real identity proofs and recovery snapshots
-  private. Logs contain fixed codes and counts only. Do not log requests or
-  URLs.
+  private. Logs contain fixed codes, counts, timings and random dictation IDs
+  only, never a subject, session or address. Do not log requests or URLs.
+
+- `activity` and `subject_starts` are the usage-analytics record, written in
+  the transaction of the event they count and matching billing. Activity keeps
+  13 months and yields to billing above half the page cap. Read them from backup
+  snapshots; never add an analytics endpoint or a hot-path query without an
+  index.
 
 - Service dependency notices live here, outside the app-bundled root notices.
   The canonical `ci.yml` admission includes this service's check, tests and

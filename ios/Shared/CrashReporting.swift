@@ -58,7 +58,7 @@ nonisolated enum CrashReporting {
         let message = event.message
         let metadata = event.metadata
         logger.error("\(context, privacy: .public): \(message, privacy: .public) \(metadata.description, privacy: .public)")
-        SentrySDK.logger.error(message, attributes: logAttributes(metadata, category: context))
+        SentrySDK.logger.error(message, attributes: logAttributes(metadata, measurements: [:], category: context))
         if let error = event.error {
             SentrySDK.capture(error: error) { scope in
                 scope.setTag(value: context, key: "context")
@@ -76,23 +76,44 @@ nonisolated enum CrashReporting {
     static func breadcrumb(
         _ message: StaticString,
         category: String,
-        metadata: [String: String] = [:]
+        metadata: [String: String] = [:],
+        measurements: [String: Int] = [:]
     ) {
         let message = message.description
-        logger.notice("\(category, privacy: .public): \(message, privacy: .public) \(metadata.description, privacy: .public)")
-        SentrySDK.logger.info(message, attributes: logAttributes(metadata, category: category))
+        let attributes = logAttributes(metadata, measurements: measurements, category: category)
+        logger.notice("\(category, privacy: .public): \(message, privacy: .public) \(metadata.description, privacy: .public) \(measurements.description, privacy: .public)")
+        SentrySDK.logger.info(message, attributes: attributes)
+        addBreadcrumb(message, category: category, level: .info, attributes: attributes)
+    }
+
+    static func warning(
+        _ message: StaticString,
+        category: String,
+        metadata: [String: String] = [:],
+        measurements: [String: Int] = [:]
+    ) {
+        let message = message.description
+        let attributes = logAttributes(metadata, measurements: measurements, category: category)
+        logger.warning("\(category, privacy: .public): \(message, privacy: .public) \(metadata.description, privacy: .public) \(measurements.description, privacy: .public)")
+        SentrySDK.logger.warn(message, attributes: attributes)
+        addBreadcrumb(message, category: category, level: .warning, attributes: attributes)
+    }
+
+    private static func addBreadcrumb(_ message: String, category: String, level: SentryLevel, attributes: [String: Any]) {
         let crumb = Breadcrumb()
         crumb.message = message
         crumb.category = category
-        crumb.level = .info
-        if !metadata.isEmpty {
-            crumb.data = metadata
-        }
+        crumb.level = level
+        let data = attributes.filter { $0.key != "category" }
+        crumb.data = data.isEmpty ? nil : data
         SentrySDK.addBreadcrumb(crumb)
     }
 
-    private static func logAttributes(_ metadata: [String: String], category: String) -> [String: Any] {
-        metadata.merging(["category": category]) { _, category in category }
+    private static func logAttributes(_ metadata: [String: String], measurements: [String: Int], category: String) -> [String: Any] {
+        var attributes: [String: Any] = metadata
+        attributes.merge(measurements) { _, measurement in measurement }
+        attributes["category"] = category
+        return attributes
     }
 
     private static func setExtras(_ metadata: [String: String], on scope: Scope) {

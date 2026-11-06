@@ -25,6 +25,7 @@ struct AccessClientTests {
         #expect(try requests[0].json([String: String].self) == ["web_auth_token": "proof-1"])
         #expect(requests[1].authorization == "Bearer s1")
         #expect(try requests[1].json([String: Int].self) == ["maximum_audio_seconds": 110])
+        #expect(requests.map(\.platform) == ["macos", "macos"])
     }
 
     @Test func aRejectedSessionIsReplacedOnceWithAFreshProof() async throws {
@@ -212,6 +213,7 @@ nonisolated final class StubAccessService: Sendable {
     struct Request: Sendable {
         let route: String
         let authorization: String?
+        let platform: String?
         let body: Data
 
         func json<Value: Decodable>(_ type: Value.Type) throws -> Value {
@@ -260,7 +262,12 @@ nonisolated final class StubAccessService: Sendable {
 
     fileprivate func respond(to request: URLRequest) -> (Int, String) {
         let route = "\(request.httpMethod ?? "GET") \(request.url?.path() ?? "")"
-        let recorded = Request(route: route, authorization: request.value(forHTTPHeaderField: "Authorization"), body: Self.body(of: request))
+        let recorded = Request(
+            route: route,
+            authorization: request.value(forHTTPHeaderField: "Authorization"),
+            platform: request.value(forHTTPHeaderField: AccessClient.platformHeader),
+            body: Self.body(of: request)
+        )
         return state.withLock { state in
             state.requests.append(recorded)
             guard var queue = state.replies[route], !queue.isEmpty else { return (500, "") }

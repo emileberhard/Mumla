@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import type { ServerWebSocket } from "bun";
 import type { AppStoreVerifier } from "./appstore";
@@ -12,9 +12,12 @@ import {
   jsonBody,
   maximumAudioSeconds,
   OperatorIncident,
+  type Platform,
   parseJSON,
+  platform,
   RequestIncident,
   record,
+  sampleRate,
   streamPath,
   transcriptionPath,
 } from "./protocol";
@@ -34,6 +37,7 @@ interface AudioInput {
   readonly bodyHandedOff: boolean;
   readonly isComplete: boolean;
   readonly interruptedWhileWaitingForClient: boolean;
+  readonly audioEndedAt: number | undefined;
   prepare(onDispatch: () => void): Promise<{
     signal: AbortSignal;
     contentType: string;
@@ -42,8 +46,26 @@ interface AudioInput {
   close(): Promise<void>;
 }
 
+class Phases {
+  private readonly origin = performance.now();
+  readonly marks: Record<string, number> = {};
+
+  mark(name: string, at = performance.now()) {
+    this.marks[`${name}_ms`] ??= Math.round(at - this.origin);
+  }
+}
+
+function outcome(error: unknown) {
+  if (error instanceof AccessError)
+    return { status: error.status, code: error.code };
+  if (error instanceof OperatorIncident)
+    return { status: 503, code: error.code };
+  return { status: 503, code: "unexpected_failure" };
+}
+
 interface StreamState {
   grant: Grant;
+  platform: Platform;
   claimedAt: number;
   client: AbortController;
   release: () => void;
@@ -372,6 +394,7 @@ export class AccessService {
         let released = false;
         const state: StreamState = {
           grant,
+          platform: platform(request),
           claimedAt: now,
           client: new AbortController(),
           release: () => {
@@ -381,7 +404,7 @@ export class AccessService {
           },
         };
         if (!server.upgrade(request, { data: state })) {
-          this.store.settle(grant, 0, false);
+          this.store.settle(grant, 0, false, Date.now(), state.platform);
           throw new AccessError(400, "unsupported_transport");
         }
         counted = false;
@@ -402,6 +425,9 @@ export class AccessService {
           (signal) =>
             new TranscriptionUpload(request, grant.limit_samples, signal),
           now,
+          "upload",
+          randomUUID(),
+          platform(request),
         );
         return json({ combinedPhrases: phrases.map((text) => ({ text })) });
       }
@@ -478,6 +504,7 @@ export class AccessService {
 
   private async stream(socket: ServerWebSocket<StreamState>) {
     const state = socket.data;
+    const id = randomUUID();
     try {
       const phrases = await this.transcribe(
         state.grant,
@@ -491,8 +518,13 @@ export class AccessService {
           return state.upload;
         },
         state.claimedAt,
+        "stream",
+        id,
+        state.platform,
       );
-      socket.send(JSON.stringify({ type: "result", text: phrases.join("\n") }));
+      socket.send(
+        JSON.stringify({ type: "result", text: phrases.join("\n"), id }),
+      );
     } catch (error) {
       if (error instanceof RequestIncident) this.requestIncident(error);
       else if (!(error instanceof AccessError)) this.incident(error);
@@ -505,6 +537,7 @@ export class AccessService {
           type: "error",
           status: refusal.status,
           code: refusal.code,
+          id,
         }),
       );
     } finally {
@@ -602,7 +635,10 @@ export class AccessService {
       const identity = await this.identity.verify(body.web_auth_token, signal);
       if (!this.admissionOpen || !this.healthy)
         throw new AccessError(503, "service_unavailable");
-      return json(this.store.enroll(identity, Date.now()), 201);
+      return json(
+        this.store.enroll(identity, Date.now(), platform(request)),
+        201,
+      );
     } catch (error) {
       if (error instanceof OperatorIncident) throw error;
       if (abort.signal.aborted)
@@ -618,8 +654,13 @@ export class AccessService {
     client: AbortSignal,
     input: (signal: AbortSignal) => AudioInput,
     now: number,
+    route: "stream" | "upload",
+    id: string,
+    origin: Platform,
   ): Promise<string[]> {
+    const phases = new Phases();
     let upload: AudioInput | undefined;
+    let result: { status: number; code: string } = { status: 200, code: "ok" };
     try {
       return await this.forward(
         grant,
@@ -629,16 +670,33 @@ export class AccessService {
           return upload;
         },
         now,
+        phases,
+        origin,
       );
     } catch (error) {
-      if (
+      const refusal =
         error instanceof AccessError ||
         error instanceof OperatorIncident ||
         !upload?.bodyHandedOff
-      )
-        throw error;
-      this.incident(error);
-      throw new AccessError(502, "transcription_failed");
+          ? error
+          : new AccessError(502, "transcription_failed");
+      result = outcome(refusal);
+      if (refusal !== error) this.incident(error);
+      throw refusal;
+    } finally {
+      if (upload?.audioEndedAt !== undefined)
+        phases.mark("audio_end", upload.audioEndedAt);
+      phases.mark("settled");
+      console.log(
+        JSON.stringify({
+          event: "dictation",
+          id,
+          route,
+          ...result,
+          audio_ms: Math.round(((upload?.samples ?? 0) * 1000) / sampleRate),
+          ...phases.marks,
+        }),
+      );
     }
   }
 
@@ -647,6 +705,8 @@ export class AccessService {
     client: AbortSignal,
     input: (signal: AbortSignal) => AudioInput,
     now: number,
+    phases: Phases,
+    origin: Platform,
   ): Promise<string[]> {
     const abort = new AbortController();
     this.pendingUploads.set(grant.hash, abort);
@@ -666,6 +726,7 @@ export class AccessService {
         }
         this.pendingUploads.delete(grant.hash);
         this.uploads.add(grant.hash);
+        phases.mark("dispatch");
       });
       const uploadSignal = AbortSignal.any([signal, prepared.signal]);
       const response = await fetch(
@@ -681,6 +742,7 @@ export class AccessService {
           redirect: "error",
         },
       );
+      phases.mark("upstream");
       if (!response.ok) {
         upstreamRefused = true;
         await response.body?.cancel();
@@ -743,6 +805,8 @@ export class AccessService {
           grant,
           inputRejected ? 0 : (upload?.samples ?? 0),
           charge,
+          Date.now(),
+          origin,
         );
       } finally {
         this.pendingUploads.delete(grant.hash);

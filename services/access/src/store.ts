@@ -6,6 +6,7 @@ import type { SignedTransaction } from "./appstore";
 import {
   AccessError,
   OperatorIncident,
+  type Platform,
   sampleRate,
   sessionLifetimeMs,
 } from "./protocol";
@@ -47,6 +48,31 @@ const subscriptionSchema = `
   ) STRICT;
   CREATE INDEX IF NOT EXISTS subscriptions_owner ON subscriptions(owner);
 `;
+
+const activitySchema = `
+  CREATE TABLE IF NOT EXISTS activity (
+    subject TEXT NOT NULL REFERENCES subjects(id),
+    day TEXT NOT NULL,
+    platform TEXT NOT NULL CHECK (platform IN ('ios', 'macos', 'unknown')),
+    enrollments INTEGER NOT NULL DEFAULT 0 CHECK (enrollments >= 0),
+    dictations INTEGER NOT NULL DEFAULT 0 CHECK (dictations >= 0),
+    charged_samples INTEGER NOT NULL DEFAULT 0 CHECK (charged_samples >= 0),
+    free_exhaustions INTEGER NOT NULL DEFAULT 0 CHECK (free_exhaustions >= 0),
+    PRIMARY KEY (subject, day, platform)
+  ) STRICT;
+  CREATE INDEX IF NOT EXISTS activity_day ON activity(day);
+  CREATE TABLE IF NOT EXISTS subject_starts (
+    subject TEXT PRIMARY KEY REFERENCES subjects(id),
+    enrolled TEXT NOT NULL,
+    first_dictation TEXT
+  ) STRICT;
+`;
+
+const activityRetentionMonths = 13;
+
+function utcDay(now: number) {
+  return new Date(now).toISOString().slice(0, 10);
+}
 
 interface Subscription {
   owner: string | null;
@@ -109,6 +135,7 @@ function month(now: number) {
 export class AccessStore {
   private readonly db: Database;
   private readonly path: string;
+  private analyticsCapacityReported: string | undefined;
   readonly recoveredReservations: number;
 
   constructor(
@@ -173,6 +200,7 @@ export class AccessStore {
       PRAGMA user_version = 1;
     `);
       this.db.exec(subscriptionSchema);
+      this.db.exec(activitySchema);
       validateDatabase(this.db, "required");
       const recovery = this.db
         .query<{ count: number }, []>("SELECT COUNT(*) AS count FROM grants")
@@ -197,7 +225,7 @@ export class AccessStore {
     this.checkCapacity();
   }
 
-  private checkCapacity() {
+  private storage() {
     const pages = this.db
       .query<{ page_count: number }, []>("PRAGMA page_count")
       .get()?.page_count;
@@ -209,8 +237,12 @@ export class AccessStore {
       .get()?.max_page_count;
     if (pages === undefined || free === undefined || limit === undefined)
       throw new Error("Missing storage capacity");
-    if (limit - pages + free < 256)
-      throw new OperatorIncident("storage_capacity");
+    return { used: pages - free, limit };
+  }
+
+  private checkCapacity() {
+    const { used, limit } = this.storage();
+    if (limit - used < 256) throw new OperatorIncident("storage_capacity");
   }
 
   async backup() {
@@ -251,9 +283,68 @@ export class AccessStore {
         "DELETE FROM usage WHERE rowid IN (SELECT rowid FROM usage WHERE period < ? AND period NOT IN (SELECT period FROM grants) LIMIT 1000)",
       )
       .run(cutoff);
+    const activityCutoff = new Date(
+      Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth() - activityRetentionMonths,
+        1,
+      ),
+    )
+      .toISOString()
+      .slice(0, 10);
+    this.db
+      .query(
+        "DELETE FROM activity WHERE rowid IN (SELECT rowid FROM activity WHERE day < ? LIMIT 100)",
+      )
+      .run(activityCutoff);
+    const { used, limit } = this.storage();
+    if (used <= limit / 2) return;
+    this.db
+      .query(
+        "DELETE FROM activity WHERE rowid IN (SELECT rowid FROM activity ORDER BY day LIMIT 100)",
+      )
+      .run();
+    if (this.analyticsCapacityReported === utcDay(now)) return;
+    this.analyticsCapacityReported = utcDay(now);
+    console.error(
+      JSON.stringify({
+        event: "access_service_incident",
+        code: "analytics_capacity",
+      }),
+    );
   }
 
-  enroll(identityHash: string, now: number) {
+  private recordActivity(
+    subject: string,
+    now: number,
+    platform: Platform,
+    counts: {
+      enrollments?: number;
+      dictations?: number;
+      charged_samples?: number;
+      free_exhaustions?: number;
+    },
+  ) {
+    this.db
+      .query(`INSERT INTO activity (subject, day, platform, enrollments, dictations, charged_samples, free_exhaustions)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (subject, day, platform) DO UPDATE SET
+          enrollments = enrollments + excluded.enrollments,
+          dictations = dictations + excluded.dictations,
+          charged_samples = charged_samples + excluded.charged_samples,
+          free_exhaustions = free_exhaustions + excluded.free_exhaustions`)
+      .run(
+        subject,
+        utcDay(now),
+        platform,
+        counts.enrollments ?? 0,
+        counts.dictations ?? 0,
+        counts.charged_samples ?? 0,
+        counts.free_exhaustions ?? 0,
+      );
+  }
+
+  enroll(identityHash: string, now: number, platform: Platform) {
     return this.db
       .transaction(() => {
         this.checkCapacity();
@@ -268,6 +359,9 @@ export class AccessStore {
           this.db
             .query("INSERT INTO subjects VALUES (?, ?)")
             .run(subject, identityHash);
+          this.db
+            .query("INSERT INTO subject_starts VALUES (?, ?, NULL)")
+            .run(subject, utcDay(now));
         }
         const count = this.db
           .query<{ count: number }, [string, number]>(
@@ -289,6 +383,7 @@ export class AccessStore {
         this.db
           .query("INSERT INTO sessions VALUES (?, ?, ?, ?)")
           .run(randomUUID(), hash, subject, expires);
+        this.recordActivity(subject, now, platform, { enrollments: 1 });
         return {
           token,
           expires_at: new Date(expires).toISOString(),
@@ -461,7 +556,13 @@ export class AccessStore {
     return grant;
   }
 
-  settle(grant: Grant, samples: number, shouldCharge: boolean) {
+  settle(
+    grant: Grant,
+    samples: number,
+    shouldCharge: boolean,
+    now: number,
+    platform: Platform,
+  ) {
     if (
       !Number.isSafeInteger(samples) ||
       samples < 0 ||
@@ -480,12 +581,29 @@ export class AccessStore {
           )
           .get(grant.hash);
         if (!deleted) throw new Error("Reservation already settled");
-        if (charged) {
-          this.db
-            .query(`INSERT INTO usage VALUES (?, ?, ?)
+        if (!charged) return;
+        const before = this.allowance(grant.subject, now);
+        const limit = before.limit_seconds * sampleRate;
+        const used = before.used_seconds * sampleRate;
+        const ranOutOfFree =
+          before.plan === "free" &&
+          before.period_start === grant.period &&
+          used < limit &&
+          used + charged >= limit;
+        this.db
+          .query(`INSERT INTO usage VALUES (?, ?, ?)
           ON CONFLICT (subject, period) DO UPDATE SET used_samples = used_samples + excluded.used_samples`)
-            .run(grant.subject, grant.period, charged);
-        }
+          .run(grant.subject, grant.period, charged);
+        this.recordActivity(grant.subject, now, platform, {
+          dictations: 1,
+          charged_samples: charged,
+          free_exhaustions: ranOutOfFree ? 1 : 0,
+        });
+        this.db
+          .query(
+            "UPDATE subject_starts SET first_dictation = ? WHERE subject = ? AND first_dictation IS NULL",
+          )
+          .run(utcDay(now), grant.subject);
       })
       .immediate();
   }
@@ -575,10 +693,7 @@ export class AccessStore {
   }
 }
 
-function validateDatabase(
-  db: Database,
-  subscriptions: "required" | "optional",
-) {
+function validateDatabase(db: Database, added: "required" | "optional") {
   const integrity = db
     .query<{ quick_check: string }, []>("PRAGMA quick_check")
     .all();
@@ -597,15 +712,25 @@ function validateDatabase(
   db.query(
     "SELECT token_hash, session_id, subject, period, limit_samples, claim_expires, deadline, claimed FROM grants LIMIT 0",
   ).all();
-  const tables = db
-    .query<{ count: number }, []>(
-      "SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = 'subscriptions'",
-    )
-    .get()?.count;
-  if (tables === 0 && subscriptions === "optional") return;
-  db.query(
-    "SELECT environment, original_transaction_id, owner, owner_transaction_id, owner_purchased, transaction_id, purchased, expires, revoked, signed FROM subscriptions LIMIT 0",
-  ).all();
+  for (const [table, columns] of [
+    [
+      "subscriptions",
+      "environment, original_transaction_id, owner, owner_transaction_id, owner_purchased, transaction_id, purchased, expires, revoked, signed",
+    ],
+    [
+      "activity",
+      "subject, day, platform, enrollments, dictations, charged_samples, free_exhaustions",
+    ],
+    ["subject_starts", "subject, enrolled, first_dictation"],
+  ]) {
+    const present = db
+      .query<{ count: number }, [string]>(
+        "SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name = ?",
+      )
+      .get(table as string)?.count;
+    if (present === 0 && added === "optional") continue;
+    db.query(`SELECT ${columns} FROM ${table} LIMIT 0`).all();
+  }
 }
 
 export function validateSnapshot(path: string) {

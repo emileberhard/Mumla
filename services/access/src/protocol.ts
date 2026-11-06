@@ -149,3 +149,10 @@ export async function jsonBody(
     throw new AccessError(400, "invalid_json");
   }
 }
+
+export type Platform = "ios" | "macos" | "unknown";
+
+export function platform(request: Request): Platform {
+  const value = request.headers.get("mumla-platform");
+  return value === "ios" || value === "macos" ? value : "unknown";
+}

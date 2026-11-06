@@ -2,8 +2,9 @@
 
 Last updated: 2026-11-06
 
-Mumla turns your speech into text on Mac and iPhone. It has no sign-up,
-advertising, analytics or tracking, and it sells no data. This policy describes
+Mumla turns your speech into text on Mac and iPhone. It has no sign-up or
+advertising, does not track you across other apps or websites, and sells no
+data. This policy describes
 the official builds: the App Store, TestFlight and Developer ID download. Their
 controller is Emil Eberhard, Sweden; send privacy questions and requests to
 [eberhard.emil@gmail.com](mailto:eberhard.emil@gmail.com). A build you make
@@ -35,8 +36,10 @@ The official builds send each recording to Mumla's access service, which the
 maintainer operates, over an encrypted connection through Cloudflare's network. The service
 checks your free minutes and forwards the recording through a router that
 holds Microsoft's credential. For each request the router records metadata
-under the service's own key: path, response status, byte counts, duration and
-model. Neither stores audio, transcripts or dictionary terms. Microsoft handles
+under the service's own key: path, response status, byte counts, timing and
+model. For each dictation the service logs a random identifier, the result,
+the length of the audio and how long each step took, without your account or
+network address. Neither stores audio, transcripts or dictionary terms. Microsoft handles
 what it receives under its own terms and retention policies, which this policy
 cannot change.
 
@@ -48,7 +51,11 @@ account, and the access service exchanges it with Apple for your account's
 CloudKit user identifier for Mumla, ignoring names and contact details. The
 service stores a hash of that identifier mapped to a random account number,
 hashes of the sessions it issued to your devices, and the seconds of audio you
-used each month, for the current and previous two months. It counts sign-ins
+used each month, for the current and previous two months. To understand how
+Mumla is used, it also keeps, for each day your account uses Mumla on iPhone or
+Mac, how many times its devices signed in and dictated, the seconds of audio
+and whether you used up your free minutes, for 13 months, and the day your
+account first signed in and first dictated. It counts sign-ins
 per network address in memory only, to limit abuse, and keeps no request log
 with your address. Each device keeps its own session in its Keychain, where it
 does not sync.
@@ -122,13 +129,15 @@ These requests stay on your devices.
 
 The official builds send crash and error reports to Sentry, in its European
 Union data region, so that problems can be fixed. Reports cover crashes, app
-hangs and errors; on Mac, timing for a sample of operations; and
+hangs, errors and warnings, such as a dictation that took long to arrive, with
+how long each step took; on Mac, timing for a sample of operations; and
 on iPhone, a running log of the app's and keyboard's state changes, such as
 sessions starting and transcripts being inserted. They include the app
-version, the device model and system version, the app's state, microphone and
-audio route names, the network connection type, the model, your
+version, the device model and system version, the app's state, the type of
+microphone and audio route, the network connection type, the model, your
 dictation languages, counts and durations, the address, status and size of the
-app's recent requests to the access service, and on iPhone the identifier of the app
+app's recent requests to the access service, a random identifier of a
+dictation that the access service's log also has, and on iPhone the identifier of the app
 the keyboard is typing in. An error is reported as a fixed description of what
 failed plus the error's type, domain and numeric code, such as an HTTP status;
 the text of error messages, including any a provider returned, is left out.

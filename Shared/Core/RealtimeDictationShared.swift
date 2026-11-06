@@ -7,6 +7,39 @@ struct RealtimeDictationResult: Sendable {
     let originalAudio: Result<URL, any Error>?
     let fallbackReason: String?
     let failure: (any Error)?
+    let timing: DictationTiming?
+}
+
+nonisolated struct DictationTiming: Equatable, Sendable {
+    static let slowHandoff: Duration = .seconds(2)
+
+    let captureStartedAt: ContinuousClock.Instant
+    var streamOpenedAt: ContinuousClock.Instant?
+    var finishSentAt: ContinuousClock.Instant?
+    var resultReceivedAt: ContinuousClock.Instant?
+    var serviceDictationID: String?
+
+    static func isSlow(stoppedAt: ContinuousClock.Instant, handedOffAt: ContinuousClock.Instant) -> Bool {
+        handedOffAt - stoppedAt > slowHandoff
+    }
+
+    static func measurements(
+        of timing: DictationTiming?, stoppedAt: ContinuousClock.Instant, handedOffAt: ContinuousClock.Instant
+    ) -> [String: Int] {
+        var measurements = ["stop_to_handoff_ms": milliseconds(from: stoppedAt, to: handedOffAt)]
+        guard let timing else { return measurements }
+        measurements["stream_open_ms"] = timing.streamOpenedAt.map { milliseconds(from: timing.captureStartedAt, to: $0) }
+        measurements["stop_to_finish_ms"] = timing.finishSentAt.map { milliseconds(from: stoppedAt, to: $0) }
+        if let finishSentAt = timing.finishSentAt {
+            measurements["finish_to_result_ms"] = timing.resultReceivedAt.map { milliseconds(from: finishSentAt, to: $0) }
+        }
+        measurements["result_to_handoff_ms"] = timing.resultReceivedAt.map { milliseconds(from: $0, to: handedOffAt) }
+        return measurements
+    }
+
+    private static func milliseconds(from start: ContinuousClock.Instant, to end: ContinuousClock.Instant) -> Int {
+        Int(((end - start) / .milliseconds(1)).rounded())
+    }
 }
 
 nonisolated struct RealtimeDictationNotStarted: Error {}
@@ -32,7 +65,7 @@ struct RealtimeDictationProviderConfiguration: Sendable {
     let languageHints: [String]
     let onAudioLimitReached: @Sendable () -> Void
 
-    func makeSession() -> any RealtimeTranscriptionSession {
+    func makeSession() -> GrantedRealtimeTranscriptionSession {
         GrantedRealtimeTranscriptionSession(
             grant: grant,
             languageHints: languageHints,

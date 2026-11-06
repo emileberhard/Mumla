@@ -5,6 +5,7 @@ nonisolated struct DiagnosticError: Error, Sendable {
     let domain: String
     let code: Int
     let kind: String?
+    let reference: String?
 
     init(_ error: any Error) {
         if let safe = error as? DiagnosticError {
@@ -22,16 +23,19 @@ nonisolated struct DiagnosticError: Error, Sendable {
         if let structured = error as? any StructuredDiagnosticError {
             code = structured.diagnosticCode ?? value.code
             kind = structured.diagnosticKind
+            reference = structured.diagnosticReference
             return
         }
 
         code = value.code
         kind = nil
+        reference = nil
     }
 
     var metadata: [String: String] {
         var values = ["error_type": typeName, "error_domain": domain, "error_code": String(code)]
         values["error_kind"] = kind
+        values["service_dictation_id"] = reference
         return values
     }
 
@@ -56,4 +60,9 @@ nonisolated struct DiagnosticEvent {
 nonisolated protocol StructuredDiagnosticError: Error {
     var diagnosticCode: Int? { get }
     var diagnosticKind: String { get }
+    var diagnosticReference: String? { get }
+}
+
+extension StructuredDiagnosticError {
+    nonisolated var diagnosticReference: String? { nil }
 }

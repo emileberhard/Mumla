@@ -38,6 +38,7 @@ enum AppDiagnostics {
             options.releaseName = releaseName
             options.attachStacktrace = true
             DiagnosticPrivacy.configure(options, tags: tags)
+            options.enableLogs = true
             options.tracesSampleRate = 0.2
             options.configureProfiling = { @Sendable in
                 $0.sessionSampleRate = 0.0
@@ -67,12 +68,16 @@ enum AppDiagnostics {
         record(level: .debug, message: message.description, category: category, metadata: metadata)
     }
 
-    static func info(_ message: StaticString, category: String, metadata: [String: String] = [:]) {
-        record(level: .info, message: message.description, category: category, metadata: metadata)
+    static func info(
+        _ message: StaticString, category: String, metadata: [String: String] = [:], measurements: [String: Int] = [:]
+    ) {
+        record(level: .info, message: message.description, category: category, metadata: metadata, measurements: measurements)
     }
 
-    static func warning(_ message: StaticString, category: String, metadata: [String: String] = [:]) {
-        record(level: .warning, message: message.description, category: category, metadata: metadata)
+    static func warning(
+        _ message: StaticString, category: String, metadata: [String: String] = [:], measurements: [String: Int] = [:]
+    ) {
+        record(level: .warning, message: message.description, category: category, metadata: metadata, measurements: measurements)
     }
 
     static func error(
@@ -139,8 +144,12 @@ enum AppDiagnostics {
         level: AppDiagnosticsLevel,
         message: String,
         category: String,
-        metadata: [String: String]
+        metadata: [String: String],
+        measurements: [String: Int] = [:]
     ) {
+        var attributes: [String: Any] = metadata
+        attributes.merge(measurements) { _, measurement in measurement }
+        let metadata = metadata.merging(measurements.mapValues(String.init)) { _, measurement in measurement }
         let rendered = render(message: message, metadata: metadata)
 
         switch level {
@@ -160,8 +169,13 @@ enum AppDiagnostics {
             breadcrumb.category = category
             breadcrumb.type = "debug"
             breadcrumb.message = message
-            breadcrumb.data = metadata.isEmpty ? nil : metadata
+            breadcrumb.data = attributes.isEmpty ? nil : attributes
             SentrySDK.addBreadcrumb(breadcrumb)
+        }
+
+        if level == .warning {
+            attributes["category"] = category
+            SentrySDK.logger.warn(message, attributes: attributes)
         }
 
         if shouldPersistToLocalLog(level: level) {
