@@ -22,6 +22,7 @@ enum ContentSheet: Identifiable {
 struct ContentView: View {
     @Environment(DictationCoordinator.self) private var coordinator
     @Namespace private var dictationTransition
+    @State private var microphoneLevels = MicrophoneLevelHistory()
 
     var body: some View {
         @Bindable var coordinator = coordinator
@@ -49,6 +50,7 @@ struct ContentView: View {
         .tabViewBottomAccessory {
             DictationStrip()
                 .matchedTransitionSource(id: DictationStrip.transitionID, in: dictationTransition)
+                .environment(microphoneLevels)
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .dictationFeedback(phase: coordinator.phase)
@@ -57,6 +59,7 @@ struct ContentView: View {
             case .dictation:
                 NowDictatingView()
                     .navigationTransition(.zoom(sourceID: DictationStrip.transitionID, in: dictationTransition))
+                    .environment(microphoneLevels)
             case .account:
                 AccountView()
             case .pro:
@@ -65,6 +68,9 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
             coordinator.refreshCopiedTranscript()
+        }
+        .task(id: coordinator.phase == .recording) {
+            await microphoneLevels.record(from: coordinator)
         }
     }
 }

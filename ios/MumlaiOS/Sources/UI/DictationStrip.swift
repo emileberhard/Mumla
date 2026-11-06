@@ -11,7 +11,7 @@ struct DictationStrip: View {
         HStack(spacing: 12) {
             Button(action: primaryAction) {
                 label
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                     .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -19,19 +19,24 @@ struct DictationStrip: View {
             .accessibilityLabel(accessibilityLabel)
             .accessibilityValue(accessibilityValue)
             .accessibilityAddTraits(.startsMediaSession)
+            .accessibilityHint(offersPro ? Text("Shows Mumla Pro") : Text(verbatim: ""))
             .accessibilityShowsLargeContentViewer()
             if coordinator.phase == .recording {
-                Button("Stop", systemImage: "stop.fill") {
+                Button {
                     coordinator.requestDictationStop()
+                } label: {
+                    Label("Stop", systemImage: "stop.fill")
+                        .labelStyle(.iconOnly)
+                        .font(.title3)
+                        .foregroundStyle(.red)
+                        .frame(width: 44, height: 44)
+                        .contentShape(.rect)
                 }
-                .labelStyle(.iconOnly)
-                .font(.title3)
-                .foregroundStyle(.red)
                 .buttonStyle(.plain)
-                .frame(minWidth: 44, minHeight: 44)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.leading, 16)
+        .padding(.trailing, coordinator.phase == .recording ? 4 : 16)
         .contextMenu {
             if coordinator.sessionActive {
                 Button("End Session", systemImage: "stop.circle", role: .destructive) {
@@ -83,9 +88,12 @@ struct DictationStrip: View {
                         .foregroundStyle(.tint)
                     Text("Dictate")
                         .font(.headline)
-                    if placement != .inline, !dynamicTypeSize.isAccessibilitySize {
+                    if placement != .inline, !dynamicTypeSize.isAccessibilitySize, let lowMinutes {
                         Spacer(minLength: 8)
-                        status
+                        Text("\(lowMinutes) min left")
+                            .font(.subheadline)
+                            .foregroundStyle(.orange)
+                            .contentTransition(.numericText(countsDown: true))
                     }
                 }
             }
@@ -93,23 +101,9 @@ struct DictationStrip: View {
         .lineLimit(1)
     }
 
-    @ViewBuilder
-    private var status: some View {
-        if case .available(let allowance) = coordinator.access.state, allowance.isRunningLow {
-            Text("\(allowance.remaining.wholeMinutes) min left")
-                .font(.subheadline)
-                .foregroundStyle(.orange)
-                .contentTransition(.numericText(countsDown: true))
-        } else if coordinator.sessionActive {
-            HStack(spacing: 6) {
-                Image(systemName: "keyboard")
-                if let end = coordinator.sessionEndDate {
-                    Text("until \(end, format: .dateTime.hour().minute())")
-                }
-            }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-        }
+    private var lowMinutes: Int? {
+        guard case .available(let allowance) = coordinator.access.state, allowance.isRunningLow else { return nil }
+        return allowance.remaining.wholeMinutes
     }
 
     private var blocked: DictationBlock? {
@@ -134,11 +128,8 @@ struct DictationStrip: View {
         if coordinator.phase == .error {
             return Text(coordinator.lastErrorMessage)
         }
-        if case .available(let allowance) = coordinator.access.state, allowance.isRunningLow {
-            return Text("\(allowance.remaining.wholeMinutes) minutes left")
-        }
-        if coordinator.sessionActive, let end = coordinator.sessionEndDate {
-            return Text("Keyboard session until \(end, format: .dateTime.hour().minute())")
+        if let lowMinutes {
+            return Text("\(lowMinutes) minutes left")
         }
         return Text(verbatim: "")
     }
@@ -206,30 +197,35 @@ struct NowDictatingView: View {
                 dismiss()
             }
             Spacer()
-            Button("Stop", systemImage: "stop.fill") {
+            Button {
                 coordinator.requestDictationStop()
                 dismiss()
+            } label: {
+                Label("Stop", systemImage: "stop.fill")
+                    .labelStyle(.iconOnly)
+                    .font(.system(size: 30, weight: .semibold))
+                    .frame(width: 76, height: 76)
             }
-            .labelStyle(.iconOnly)
-            .font(.system(size: 30, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(width: 84, height: 84)
-            .background(.red, in: .circle)
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+            .tint(.red)
             .disabled(coordinator.phase != .recording)
             Spacer()
             sideButton("Minimize", systemImage: "chevron.down") {
                 dismiss()
             }
         }
-        .buttonStyle(PressScaleButtonStyle())
     }
 
     private func sideButton(_ title: LocalizedStringKey, systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(title, systemImage: systemImage, action: action)
-            .labelStyle(.iconOnly)
-            .font(.title3.weight(.semibold))
-            .frame(width: 60, height: 60)
-            .background(.fill.tertiary, in: .circle)
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.iconOnly)
+                .font(.title3.weight(.semibold))
+                .frame(width: 56, height: 56)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
     }
 }
 
@@ -257,14 +253,6 @@ extension View {
             default: nil
             }
         }
-    }
-}
-
-private struct PressScaleButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
     }
 }
 
@@ -299,10 +287,10 @@ private struct RecordingTime: View {
         Text("0:14")
 #else
         if let start, let deadline {
-            let countdownStart = deadline.addingTimeInterval(-60)
-            TimelineView(.explicit([countdownStart])) { context in
-                if context.date >= countdownStart {
-                    Text(timerInterval: min(context.date, deadline)...deadline, countsDown: true, showsHours: false)
+            let schedule = RecordingTimeSchedule(deadline: deadline)
+            TimelineView(schedule) { context in
+                if context.date >= schedule.countdownStart {
+                    Text("\u{2212}\(Text(timerInterval: min(context.date, deadline)...deadline, countsDown: true, showsHours: false))")
                         .foregroundStyle(.orange)
                 } else {
                     elapsed(since: start)
@@ -333,16 +321,34 @@ private struct ProcessingIndicator: View {
     }
 }
 
+@Observable
+final class MicrophoneLevelHistory {
+    private(set) var levels: [Double] = []
+
+    private static let length = 96
+
+    func record(from coordinator: DictationCoordinator) async {
+        levels = []
+        guard coordinator.phase == .recording else { return }
+#if MUMLA_SCREENSHOTS
+        levels = (0..<Self.length).map { 0.22 + 0.6 * abs(sin(Double($0) * 0.7)) * (0.55 + 0.45 * cos(Double($0) * 0.29)) }
+#else
+        while !Task.isCancelled {
+            levels = Array((levels + [coordinator.microphoneLevel]).suffix(Self.length))
+            try? await Task.sleep(for: .milliseconds(60))
+        }
+#endif
+    }
+}
+
 private struct MicrophoneLevelBars: View {
     let spacing: CGFloat
     let barWidth: CGFloat
-    @Environment(DictationCoordinator.self) private var coordinator
-    @State private var levels: [Double] = []
-
-    private static let historyLength = 96
+    @Environment(MicrophoneLevelHistory.self) private var history
 
     var body: some View {
         GeometryReader { proxy in
+            let levels = history.levels
             let count = max(1, Int((proxy.size.width + spacing) / (barWidth + spacing)))
             let shown = Array(repeating: 0, count: max(0, count - levels.count)) + levels.suffix(count)
             HStack(alignment: .center, spacing: spacing) {
@@ -354,19 +360,5 @@ private struct MicrophoneLevelBars: View {
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .trailing)
         }
         .accessibilityHidden(true)
-        .task(id: coordinator.phase == .recording) {
-            guard coordinator.phase == .recording else {
-                levels = []
-                return
-            }
-#if MUMLA_SCREENSHOTS
-            levels = (0..<Self.historyLength).map { 0.22 + 0.6 * abs(sin(Double($0) * 0.7)) * (0.55 + 0.45 * cos(Double($0) * 0.29)) }
-#else
-            while !Task.isCancelled {
-                levels = Array((levels + [coordinator.microphoneLevel]).suffix(Self.historyLength))
-                try? await Task.sleep(for: .milliseconds(60))
-            }
-#endif
-        }
     }
 }
