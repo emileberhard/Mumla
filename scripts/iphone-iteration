@@ -65,8 +65,8 @@ if pathlib.Path(value['appPath']).resolve() != app or value['bundleIdentifier'] 
 print(value['appSHA256'])
 PY
     )"
-    "$devops/ios-deliver-app" --app-path "$app_path" "${device_args[@]}" \
+    "$devops/ios-deliver-app" --app-path "$app_path" ${device_args[@]+"${device_args[@]}"} \
         --expected-app-sha256 "$expected" \
         --delivery "$delivery" --launch --prepare-mdm "$PWD/scripts/prepare-iphone-mdm" \
-        --receipt "$receipt" "${replace_version[@]}"
+        --receipt "$receipt" ${replace_version[@]+"${replace_version[@]}"}
 fi
