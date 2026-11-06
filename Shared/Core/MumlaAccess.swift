@@ -41,6 +41,7 @@ final class MumlaAccess {
     }
 
     private(set) var state: State
+    private(set) var accountGeneration = 0
     @ObservationIgnored private let client: AccessClient?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var accountObserver: (any NSObjectProtocol)?
@@ -89,7 +90,10 @@ final class MumlaAccess {
 
     func submitPurchase(signedTransaction: String) async throws {
         guard let client else { throw AccessFailure.serviceUnavailable }
-        state = .available(try await client.submitPurchase(signedTransaction: signedTransaction))
+        let generation = accountGeneration
+        let allowance = try await client.submitPurchase(signedTransaction: signedTransaction)
+        guard generation == accountGeneration else { throw CancellationError() }
+        state = .available(allowance)
     }
 
     func grant(maximumAudioSeconds: Int) async throws -> AccessGrant {
@@ -113,6 +117,7 @@ final class MumlaAccess {
     }
 
     private func accountChanged() async {
+        accountGeneration += 1
         refreshTask?.cancel()
         refreshTask = nil
         state = .checking

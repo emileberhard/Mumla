@@ -20,6 +20,7 @@ struct ProOfferView: View {
             .onChange(of: pro.isPro) { _, isPro in
                 if isPro { dismiss() }
             }
+            .onChange(of: pro.access.accountGeneration) { token = nil }
             .manageSubscriptionsSheet(isPresented: $isManaging, subscriptionGroupID: MumlaPro.subscriptionGroupID)
     }
 
@@ -35,7 +36,7 @@ struct ProOfferView: View {
                 } description: {
                     Text("Your purchase went through.")
                 } actions: {
-                    Button("Try Again") { Task { await pro.retry() } }
+                    Button("Try Again") { Task { await pro.reconcile() } }
                         .buttonStyle(.borderedProminent)
                 }
             }
@@ -75,8 +76,8 @@ struct ProOfferView: View {
         .subscriptionStorePolicyDestination(url: MumlaPro.privacyPolicyURL, for: .privacyPolicy)
         .subscriptionStorePolicyDestination(url: MumlaPro.termsOfUseURL, for: .termsOfService)
         .inAppPurchaseOptions { _ in [.appAccountToken(token)] }
-        .subscriptionStatusTask(for: MumlaPro.subscriptionGroupID) { _ in
-            await pro.reconcile()
+        .subscriptionStatusTask(for: MumlaPro.subscriptionGroupID) { state in
+            if let statuses = state.value { await pro.reconcile(statuses) }
         }
     }
 
@@ -94,7 +95,7 @@ struct ProOfferView: View {
 
     private func loadToken() async {
         do {
-            token = .success(try await pro.accountToken())
+            token = .success(try await pro.access.accountToken())
         } catch is CancellationError {
         } catch {
             token = .failure(error)
@@ -156,18 +157,20 @@ struct ProUpgradeRow<Content: View>: View {
     }
 }
 
-struct ProPlanRows: View {
+struct ProPlanRows<Allowance: View>: View {
     @Environment(ProStore.self) private var pro
     @State private var isOffering = false
     @State private var isManaging = false
     @State private var isRestoring = false
-    @State private var restoreProblem: LocalizedStringKey?
+    @State private var restoreProblem: ProStore.RestoreProblem?
+    @ViewBuilder let allowance: Allowance
 
     var body: some View {
-        rows
+        allowance
             .sheet(isPresented: $isOffering) { ProOfferView() }
             .manageSubscriptionsSheet(isPresented: $isManaging, subscriptionGroupID: MumlaPro.subscriptionGroupID)
-            .alert(restoreProblem ?? "", isPresented: .init(get: { restoreProblem != nil }, set: { if !$0 { restoreProblem = nil } })) {}
+            .alert(restoreProblem.map(Self.title) ?? "", isPresented: .init(get: { restoreProblem != nil }, set: { if !$0 { restoreProblem = nil } })) {}
+        rows
     }
 
     @ViewBuilder
@@ -181,7 +184,7 @@ struct ProPlanRows: View {
             LabeledContent("Activating Mumla Pro") { ProgressView() }
         case (_, .pending):
             LabeledContent("Mumla Pro Isn't Active Yet") {
-                Button("Try Again") { Task { await pro.retry() } }
+                Button("Try Again") { Task { await pro.reconcile() } }
             }
         case (_, .ownedElsewhere):
             Text("Mumla Pro belongs to another iCloud account.")
@@ -202,10 +205,13 @@ struct ProPlanRows: View {
     private func restore() async {
         isRestoring = true
         defer { isRestoring = false }
-        switch await pro.restore() {
-        case .restored, .ownedElsewhere: break
-        case .nothingFound: restoreProblem = "No Mumla Pro Subscription Found"
-        case .failed: restoreProblem = "Couldn't Restore Purchases"
+        restoreProblem = await pro.restore()
+    }
+
+    private static func title(_ problem: ProStore.RestoreProblem) -> LocalizedStringKey {
+        switch problem {
+        case .nothingFound: "No Mumla Pro Subscription Found"
+        case .failed: "Couldn't Restore Purchases"
         }
     }
 }

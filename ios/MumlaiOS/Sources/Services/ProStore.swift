@@ -1,4 +1,3 @@
-import CloudKit
 import Observation
 import StoreKit
 
@@ -12,24 +11,24 @@ final class ProStore {
         case ownedElsewhere
     }
 
-    enum RestoreOutcome {
-        case restored
-        case ownedElsewhere
+    enum RestoreProblem {
         case nothingFound
         case failed
     }
 
-    private(set) var activation: Activation = .idle
-    let access: MumlaAccess
-    @ObservationIgnored private var pending: VerificationResult<Transaction>?
-    @ObservationIgnored private var answered: Set<Answer> = []
-    @ObservationIgnored private var updates: Task<Void, Never>?
-    @ObservationIgnored private var accountObserver: (any NSObjectProtocol)?
-
-    private struct Answer: Hashable {
-        let transactionID: UInt64
-        let revoked: Bool
+    private enum Answer: String {
+        case accepted
+        case ownedElsewhere = "owned_elsewhere"
+        case invalid
     }
+
+    let access: MumlaAccess
+    private var activating = 0
+    private var pending: (account: Int, result: VerificationResult<Transaction>)?
+    private var conflict: Int?
+    @ObservationIgnored private var answers: (account: Int, byJWS: [String: Answer]) = (0, [:])
+    @ObservationIgnored private var inFlight: Set<String> = []
+    @ObservationIgnored private var updates: Task<Void, Never>?
 
     init(access: MumlaAccess) {
         self.access = access
@@ -38,16 +37,18 @@ final class ProStore {
                 await self?.deliver(result)
             }
         }
-        accountObserver = NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.accountChanged() }
-        }
     }
 
     isolated deinit {
         updates?.cancel()
-        if let accountObserver {
-            NotificationCenter.default.removeObserver(accountObserver)
-        }
+    }
+
+    var activation: Activation {
+        let account = access.accountGeneration
+        if activating > 0 { return .activating }
+        if pending?.account == account { return .pending }
+        if conflict == account { return .ownedElsewhere }
+        return .idle
     }
 
     var plan: MumlaAccess.Plan? {
@@ -57,81 +58,93 @@ final class ProStore {
 
     var isPro: Bool { plan == .pro }
 
-    func accountToken() async throws -> UUID {
-        try await access.accountToken()
-    }
-
     func reconcile() async {
-        if let pending {
-            await deliver(pending)
-        }
         guard let statuses = try? await Product.SubscriptionInfo.status(for: MumlaPro.subscriptionGroupID) else { return }
-        for status in statuses where status.state == .subscribed {
-            guard case .verified(let transaction) = status.transaction, !answered.contains(Self.answer(for: transaction)) else { continue }
-            await deliver(status.transaction)
+        await reconcile(statuses)
+    }
+
+    func reconcile(_ statuses: [Product.SubscriptionInfo.Status]) async {
+        let account = access.accountGeneration
+        if let pending, pending.account == account {
+            await deliver(pending.result)
+        }
+        var ownedElsewhere = false
+        var settled = true
+        for status in statuses {
+            let answer = await deliver(status.transaction)
+            guard case .verified(let transaction) = status.transaction, Self.entitles(transaction) else { continue }
+            switch answer {
+            case .ownedElsewhere?: ownedElsewhere = true
+            case nil: settled = false
+            case .accepted?, .invalid?: break
+            }
+        }
+        guard account == access.accountGeneration else { return }
+        if ownedElsewhere {
+            conflict = account
+        } else if settled, conflict == account {
+            conflict = nil
         }
     }
 
-    func retry() async {
-        guard let pending else { return }
-        await deliver(pending)
-    }
-
-    func restore() async -> RestoreOutcome {
+    func restore() async -> RestoreProblem? {
         do {
             try await AppStore.sync()
         } catch StoreKitError.userCancelled {
-            return isPro ? .restored : .nothingFound
+            return nil
         } catch {
             return .failed
         }
-        answered.removeAll()
-        if activation == .ownedElsewhere { activation = .idle }
-        await reconcile()
-        if isPro { return .restored }
+        guard let statuses = try? await Product.SubscriptionInfo.status(for: MumlaPro.subscriptionGroupID) else { return .failed }
+        answers.byJWS.removeAll()
+        await reconcile(statuses)
         switch activation {
-        case .ownedElsewhere: return .ownedElsewhere
         case .pending: return .failed
-        case .idle, .activating: return .nothingFound
+        case .idle where !isPro: return .nothingFound
+        case .idle, .activating, .ownedElsewhere: return nil
         }
     }
 
-    private func deliver(_ result: VerificationResult<Transaction>) async {
+    @discardableResult
+    private func deliver(_ result: VerificationResult<Transaction>) async -> Answer? {
         guard case .verified(let transaction) = result else {
             CrashReporting.breadcrumb("Pro transaction failed verification", category: "pro")
-            return
+            return nil
         }
-        guard transaction.subscriptionGroupID == MumlaPro.subscriptionGroupID else { return }
-        activation = .activating
-        let outcome: String
+        guard transaction.subscriptionGroupID == MumlaPro.subscriptionGroupID else { return nil }
+        let account = access.accountGeneration
+        if answers.account != account { answers = (account, [:]) }
+        let jws = result.jwsRepresentation
+        if let answer = answers.byJWS[jws] { return answer }
+        guard inFlight.insert(jws).inserted else { return nil }
+        defer { inFlight.remove(jws) }
+        let entitles = Self.entitles(transaction)
+        if entitles { activating += 1 }
+        defer { if entitles { activating -= 1 } }
+        let answer: Answer
         do {
-            try await access.submitPurchase(signedTransaction: result.jwsRepresentation)
-            activation = .idle
-            outcome = "accepted"
+            try await access.submitPurchase(signedTransaction: jws)
+            answer = .accepted
         } catch PurchaseRejection.ownedElsewhere {
-            activation = .ownedElsewhere
-            outcome = "owned_elsewhere"
+            answer = .ownedElsewhere
         } catch PurchaseRejection.invalid {
-            activation = .idle
-            outcome = "invalid"
+            answer = .invalid
         } catch {
-            pending = result
-            activation = .pending
+            guard !(error is CancellationError), account == access.accountGeneration else { return nil }
+            if entitles { pending = (account, result) }
             CrashReporting.breadcrumb("Pro activation pending", category: "pro", metadata: DiagnosticError(error).metadata)
-            return
+            return nil
         }
-        CrashReporting.breadcrumb("Pro transaction answered", category: "pro", metadata: ["outcome": outcome])
-        if case .verified(let held)? = pending, held.id == transaction.id { pending = nil }
-        answered.insert(Self.answer(for: transaction))
         await transaction.finish()
+        guard account == access.accountGeneration else { return nil }
+        CrashReporting.breadcrumb("Pro transaction answered", category: "pro", metadata: ["outcome": answer.rawValue])
+        answers.byJWS[jws] = answer
+        if case .verified(let held)? = pending?.result, held.id == transaction.id { pending = nil }
+        if answer == .ownedElsewhere, entitles { conflict = account }
+        return answer
     }
 
-    private func accountChanged() {
-        answered.removeAll()
-        if activation == .ownedElsewhere { activation = .idle }
-    }
-
-    private static func answer(for transaction: Transaction) -> Answer {
-        Answer(transactionID: transaction.id, revoked: transaction.revocationDate != nil)
+    private static func entitles(_ transaction: Transaction) -> Bool {
+        transaction.revocationDate == nil && (transaction.expirationDate ?? .distantPast) > .now
     }
 }
