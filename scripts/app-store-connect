@@ -23,6 +23,9 @@ SUBSCRIPTIONS_PENDING = {"READY_TO_SUBMIT", "DEVELOPER_ACTION_NEEDED", "REJECTED
                          "WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_BINARY_APPROVAL"}
 SUBSCRIPTIONS_APPROVED = {"APPROVED", "DEVELOPER_REMOVED_FROM_SALE", "REMOVED_FROM_SALE"}
 IN_BETA = {"WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW", "BETA_APPROVED", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING"}
+EDITABLE_INFO = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED"}
+LISTING_LIMITS = {"name": 30, "subtitle": 30, "keywords": 100, "description": 4000}
+TERMS_OF_USE = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
 DEADLINE = time.monotonic() + 40 * 60
 
 
@@ -179,6 +182,77 @@ def submit_for_review(app, platform, version_id, version):
     print(f"Submitted App Store version {version} for App Review.", file=sys.stderr)
 
 
+def read_listing(root):
+    root = Path(root)
+    read = lambda path: path.read_text().strip() if path.is_file() else ""
+    primary = read(root / "primary_locale.txt")
+    urls = {"supportUrl": read(root / "support_url.txt"), "privacyPolicyUrl": read(root / "privacy_url.txt")}
+    locales = {}
+    for directory in sorted(path for path in root.iterdir() if path.is_dir()) if root.is_dir() else []:
+        fields = {name: read(directory / f"{name}.txt") for name in LISTING_LIMITS}
+        for name, limit in LISTING_LIMITS.items():
+            if not 1 <= len(fields[name]) <= limit:
+                sys.exit(f"{directory / name}.txt needs 1–{limit} characters.")
+        if TERMS_OF_USE not in fields["description"]:
+            sys.exit(f"{directory}/description.txt must link the Terms of Use ({TERMS_OF_USE}); App Review rejects subscriptions without it.")
+        locales[directory.name] = fields
+    if primary not in locales or not all(urls.values()):
+        sys.exit(f"{root} needs primary_locale.txt naming one of its locale directories, support_url.txt and privacy_url.txt.")
+    return primary, urls, locales
+
+
+def localized_notes(text):
+    sections, locale = {None: []}, None
+    for line in text.splitlines():
+        if marker := re.fullmatch(r"\[([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\]", line.strip()):
+            locale = marker.group(1)
+            if locale in sections:
+                sys.exit(f"The release notes have two [{locale}] sections.")
+            sections[locale] = []
+        else:
+            sections[locale].append(line)
+    return {locale: "\n".join(lines).strip() for locale, lines in sections.items()}
+
+
+def notes_by_locale(text, primary, locales):
+    notes = localized_notes(text)
+    expected = {None} | set(locales) - {primary}
+    if set(notes) != expected or not all(notes.values()):
+        wanted = ", ".join(f"[{locale}]" for locale in sorted(expected - {None}))
+        sys.exit(f"The release notes need {primary} lines first, then one non-empty section for each other App Store language: {wanted}.")
+    return {primary if locale is None else locale: value for locale, value in notes.items()}
+
+
+def update_listing(app, version_id, primary, urls, locales, notes):
+    if api("GET", f"apps/{app}")["attributes"]["primaryLocale"] != primary:
+        sys.exit(f"The app's primary App Store language is not {primary}, the listing's primary_locale.txt.")
+    infos = [info for info in api("GET", f"apps/{app}/appInfos", limit=50) if info["attributes"]["state"] in EDITABLE_INFO]
+    if len(infos) != 1:
+        sys.exit(f"App Store Connect shows {len(infos)} editable app infos; expected the one prepared with this version.")
+    sync_localizations(f"appInfos/{infos[0]['id']}/appInfoLocalizations", "appInfoLocalizations", "appInfo", "appInfos", infos[0]["id"],
+                       {locale: {"name": fields["name"], "subtitle": fields["subtitle"], "privacyPolicyUrl": urls["privacyPolicyUrl"]}
+                        for locale, fields in locales.items()})
+    return sync_localizations(f"appStoreVersions/{version_id}/appStoreVersionLocalizations", "appStoreVersionLocalizations",
+                              "appStoreVersion", "appStoreVersions", version_id,
+                              {locale: {"description": fields["description"], "keywords": fields["keywords"], "supportUrl": urls["supportUrl"]}
+                               | ({"whatsNew": notes[locale]} if notes else {}) for locale, fields in locales.items()})
+
+
+def sync_localizations(path, kind, parent, parent_kind, parent_id, wanted):
+    existing = {localization["attributes"]["locale"]: localization["id"] for localization in api("GET", path, limit=50)}
+    untracked = set(existing) - set(wanted)
+    if untracked:
+        sys.exit(f"App Store Connect has {', '.join(sorted(untracked))} {kind} that Apple/AppStore/listing does not track.")
+    for locale, attributes in wanted.items():
+        if locale in existing:
+            api("PATCH", f"{kind}/{existing[locale]}", {"type": kind, "id": existing[locale], "attributes": attributes})
+        else:
+            existing[locale] = api("POST", kind, {"type": kind, "attributes": {"locale": locale} | attributes,
+                                                   "relationships": {parent: link(parent_kind, parent_id)}})["id"]
+            print(f"Added the {locale} {kind}.", file=sys.stderr)
+    return existing
+
+
 def upload(library, slide, created):
     contents = slide.read_bytes()
     image = api("POST", "appAssetLibraryImages", {"type": "appAssetLibraryImages",
@@ -315,15 +389,22 @@ def testflight(app, platform, version, number, notes):
         submit_beta(app, version, build, notes)
 
 
-def app_store(app, platform, version, number, screenshots, notes):
-    root = Path(screenshots)
-    slides = {directory.name: sorted(p for p in directory.glob("*") if p.suffix.lower() in {".png", ".jpg", ".jpeg"})
-              for directory in root.iterdir() if directory.is_dir()} if root.is_dir() else {}
-    if not slides and platform == "IOS":
-        sys.exit(f"Capture the screenshots into one {root} subdirectory per placement group first.")
-    for display, files in slides.items():
+def screenshot_sets(root, locales, required):
+    root = Path(root)
+    slides = {(locale, display.name): sorted(p for p in display.glob("*") if p.suffix.lower() in {".png", ".jpg", ".jpeg"})
+              for locale in locales if (root / locale).is_dir() for display in sorted((root / locale).iterdir()) if display.is_dir()}
+    if required and {locale for locale, _ in slides} != set(locales):
+        sys.exit(f"Capture the screenshots into {root}/<locale>/<placement group> for {', '.join(sorted(locales))} first.")
+    for (locale, display), files in slides.items():
         if not 1 <= len(files) <= 10:
-            sys.exit(f"Provide 1–10 PNG or JPEG screenshots in {display}.")
+            sys.exit(f"Provide 1–10 PNG or JPEG screenshots in {locale}/{display}.")
+    return slides
+
+
+def app_store(app, platform, version, number, screenshots, listing, notes):
+    primary, urls, locales = read_listing(listing)
+    localized = notes_by_locale(notes, primary, locales)
+    slides = screenshot_sets(screenshots, locales, platform == "IOS")
     version_id, released = draft_version(app, platform, version)
     if version_id is None:
         return
@@ -334,17 +415,14 @@ def app_store(app, platform, version, number, screenshots, notes):
     try:
         if slides:
             with concurrent.futures.ThreadPoolExecutor(sum(map(len, slides.values()))) as pool:
-                for display, files in slides.items():
-                    images[display] = list(pool.map(lambda slide: upload(library, slide, created), files))
-        for localization in api("GET", f"appStoreVersions/{version_id}/appStoreVersionLocalizations", limit=50):
-            if released:
-                api("PATCH", f"appStoreVersionLocalizations/{localization['id']}", {"type": "appStoreVersionLocalizations",
-                    "id": localization["id"], "attributes": {"whatsNew": notes}})
-            for display, identifiers in images.items():
-                placed, replaced = place(localization["id"], identifiers, display)
-                placements += placed
-                displaced |= replaced
-                print(f"Placed {len(identifiers)} {display} screenshots on {localization['attributes']['locale']}.", file=sys.stderr)
+                for key, files in slides.items():
+                    images[key] = list(pool.map(lambda slide: upload(library, slide, created), files))
+        localizations = update_listing(app, version_id, primary, urls, locales, localized if released else None)
+        for (locale, display), identifiers in images.items():
+            placed, replaced = place(localizations[locale], identifiers, display)
+            placements += placed
+            displaced |= replaced
+            print(f"Placed {len(identifiers)} {display} screenshots on {locale}.", file=sys.stderr)
     except BaseException:
         try:
             reserved = []
@@ -369,6 +447,11 @@ def app_store(app, platform, version, number, screenshots, notes):
 
 
 def main(command, *arguments):
+    if command == "release-notes":
+        notes, listing = arguments
+        primary, _, locales = read_listing(listing)
+        print(notes_by_locale(Path(notes).read_text(), primary, locales)[primary])
+        return
     if command != "next-build-number" and arguments[0] not in {"IOS", "MAC_OS"}:
         sys.exit("The platform must be IOS or MAC_OS.")
     missing = [name for name in ("APP_STORE_CONNECT_KEY_ID", "APP_STORE_CONNECT_ISSUER_ID", "APP_STORE_CONNECT_KEY_PATH", "APP_BUNDLE_ID")
@@ -392,16 +475,16 @@ def main(command, *arguments):
         return
     if command == "testflight":
         platform, version, number, notes = arguments
-        testflight(apps[0]["id"], platform, version, number, Path(notes).read_text().strip())
+        testflight(apps[0]["id"], platform, version, number, localized_notes(Path(notes).read_text())[None])
     else:
-        platform, version, number, screenshots, notes = arguments
-        app_store(apps[0]["id"], platform, version, number, screenshots, Path(notes).read_text().strip())
+        platform, version, number, screenshots, listing, notes = arguments
+        app_store(apps[0]["id"], platform, version, number, screenshots, listing, Path(notes).read_text())
 
 
 if __name__ == "__main__":
-    counts = {"next-build-number": 2, "build-number": 6, "testflight": 6, "app-store": 7}
+    counts = {"next-build-number": 2, "build-number": 6, "testflight": 6, "app-store": 8, "release-notes": 4}
     if len(sys.argv) != counts.get(sys.argv[1] if len(sys.argv) > 1 else "", 0):
-        sys.exit("Usage: scripts/app-store-connect next-build-number\n       scripts/app-store-connect build-number IOS|MAC_OS VERSION RESERVED fenced|open\n       scripts/app-store-connect testflight IOS|MAC_OS VERSION BUILD NOTES\n       scripts/app-store-connect app-store IOS|MAC_OS VERSION BUILD SCREENSHOTS NOTES")
+        sys.exit("Usage: scripts/app-store-connect next-build-number\n       scripts/app-store-connect build-number IOS|MAC_OS VERSION RESERVED fenced|open\n       scripts/app-store-connect testflight IOS|MAC_OS VERSION BUILD NOTES\n       scripts/app-store-connect app-store IOS|MAC_OS VERSION BUILD SCREENSHOTS LISTING NOTES\n       scripts/app-store-connect release-notes NOTES LISTING")
     try:
         main(*sys.argv[1:])
     except RequestFailed as failure:

@@ -38,6 +38,11 @@ jobs:
           newest=$(git tag --list | grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -V | tail -1)
           [[ $newest == "$VERSION" ]] || { echo "::error::$newest is newer than $VERSION."; exit 1; }
 
+      - name: Check that the tag message has notes for every App Store language
+        run: |
+          git tag -l --format='%(contents)' "$VERSION" > "$RUNNER_TEMP/notes.md"
+          scripts/app-store-connect release-notes "$RUNNER_TEMP/notes.md" Apple/AppStore/listing > /dev/null
+
       - name: Wait for CI to pass on this commit
         timeout-minutes: 35
         env:
@@ -411,7 +416,7 @@ jobs:
           printf '%s' "$APP_STORE_CONNECT_KEY" > "$APP_STORE_CONNECT_KEY_PATH"
           tag=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" --jq .object.sha)
           gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag" --jq .message > "$RUNNER_TEMP/notes.md"
-          scripts/app-store-connect app-store IOS "$VERSION" "$BUILD_NUMBER" .local/screenshots "$RUNNER_TEMP/notes.md"
+          scripts/app-store-connect app-store IOS "$VERSION" "$BUILD_NUMBER" .local/screenshots Apple/AppStore/listing "$RUNNER_TEMP/notes.md"
 
       - name: Remove credentials
         if: always()
@@ -442,11 +447,11 @@ jobs:
           name: developer-id-dmg
           path: ${{ runner.temp }}/dmg
 
-      - name: Publish the DMG with the tag message as the release notes
+      - name: Publish the DMG with the tag message's English notes as the release notes
         run: |
           tag=$(gh api "repos/$GH_REPO/git/ref/tags/$VERSION" --jq .object.sha)
-          gh api "repos/$GH_REPO/git/tags/$tag" --jq .message > "$RUNNER_TEMP/notes.md"
-          [[ -s $RUNNER_TEMP/notes.md ]] || { echo "::error::The $VERSION tag has no message to publish."; exit 1; }
+          gh api "repos/$GH_REPO/git/tags/$tag" --jq .message > "$RUNNER_TEMP/message.md"
+          scripts/app-store-connect release-notes "$RUNNER_TEMP/message.md" Apple/AppStore/listing > "$RUNNER_TEMP/notes.md"
           dmg="$RUNNER_TEMP/Mumla.dmg"
           mv "$RUNNER_TEMP/dmg/Mumla-$VERSION.dmg" "$dmg"
           digest="sha256:$(shasum -a 256 "$dmg" | cut -d' ' -f1)"

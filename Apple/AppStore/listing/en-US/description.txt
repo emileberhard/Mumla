@@ -1,0 +1,17 @@
+Mumla turns your voice into text in any app. Start a session in Mumla, switch to the Mumla keyboard in any text field, tap to talk, and the text appears where you were typing.
+
+Mumla transcribes with Microsoft's MAI-Transcribe-2, guided by your own dictionary of names and terms, so the words you use most come out right.
+
+• Dictate anywhere: the Mumla keyboard starts, stops and inserts dictation in any text field, with special characters at hand. Switch back to your usual keyboard for letters.
+• Your dictionary: add names, brands and jargon once, and every dictation knows them.
+• Never lose a dictation: Mumla keeps the original audio of every dictation, so you can transcribe it again.
+• On all your devices: transcripts, your dictionary and recordings sync through your private iCloud database.
+• 60 free minutes of transcription every month for each iCloud account, with nothing to sign up for.
+• Mumla Pro: 30 hours of transcription a month, as a monthly or yearly subscription that renews automatically until you cancel it.
+
+Why an app and a keyboard? iOS doesn't let keyboards use the microphone, so the Mumla app records while the keyboard gives you the controls. The keyboard needs Full Access only to talk to the Mumla app on your iPhone.
+
+Mumla is source-available. The privacy policy describes exactly what goes where.
+
+Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Privacy Policy: https://github.com/emileberhard/mumla/blob/main/PRIVACY.md

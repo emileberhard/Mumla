@@ -1,0 +1,17 @@
+Mumla gör om din röst till text i alla appar. Starta en session i Mumla, byt till Mumla-tangentbordet i ett textfält, tryck och prata, så hamnar texten där du skrev.
+
+Mumla transkriberar med Microsofts MAI-Transcribe-2 och tar hjälp av din egen ordlista med namn och termer, så att orden du använder mest blir rätt.
+
+• Diktera var som helst: Mumla-tangentbordet startar, stoppar och infogar diktering i alla textfält och har specialtecken nära till hands. Byt tillbaka till ditt vanliga tangentbord för bokstäver.
+• Din ordlista: lägg till namn, varumärken och fackord en gång, så känner varje diktering till dem.
+• Tappa aldrig en diktering: Mumla sparar originalljudet från varje diktering, så att du kan transkribera den igen.
+• På alla dina enheter: transkriptioner, ordlistan och inspelningar synkas via din privata iCloud-databas.
+• 60 gratis minuter transkribering varje månad för varje iCloud-konto, utan att du behöver registrera dig.
+• Mumla Pro: 30 timmar transkribering i månaden, som månads- eller årsprenumeration som förnyas automatiskt tills du avslutar den.
+
+Varför en app och ett tangentbord? iOS låter inte tangentbord använda mikrofonen, så Mumla-appen spelar in medan tangentbordet ger dig reglagen. Tangentbordet behöver full åtkomst bara för att prata med Mumla-appen på din iPhone.
+
+Mumlas källkod är öppen att läsa. Integritetspolicyn beskriver exakt vad som skickas vart.
+
+Användarvillkor: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Integritetspolicy: https://github.com/emileberhard/mumla/blob/main/PRIVACY.md

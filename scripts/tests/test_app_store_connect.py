@@ -11,6 +11,23 @@ spec = importlib.util.spec_from_loader(loader.name, loader)
 asc = importlib.util.module_from_spec(spec)
 loader.exec_module(asc)
 
+NOTES = "Fixed a thing.\n\n[sv]\nFixade en sak.\n"
+
+
+def write_listing(root, locales=("en-US", "sv")):
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "primary_locale.txt").write_text("en-US\n")
+    (root / "support_url.txt").write_text("https://example.com/support\n")
+    (root / "privacy_url.txt").write_text("https://example.com/privacy\n")
+    for locale in locales:
+        (root / locale).mkdir(parents=True)
+        (root / locale / "name.txt").write_text(f"Name {locale}\n")
+        (root / locale / "subtitle.txt").write_text(f"Subtitle {locale}\n")
+        (root / locale / "keywords.txt").write_text("one,two\n")
+        (root / locale / "description.txt").write_text(f"About {locale}.\n\nTerms of Use: {asc.TERMS_OF_USE}\n")
+    return root
+
 
 class ScreenshotProcessingTests(unittest.TestCase):
     def test_a_draft_screenshot_finishes_at_the_documented_parent_state(self):
@@ -104,31 +121,94 @@ class DraftVersionTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "newer"):
                 asc.draft_version("app", "IOS", "0.20.0")
 
-    def test_each_platform_prepares_its_own_exact_build_without_replacing_existing_media(self):
+    def test_each_platform_prepares_its_own_exact_build_and_tracked_listing(self):
         for platform, number in (("IOS", "9101"), ("MAC_OS", "9102")):
             with self.subTest(platform=platform), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
+                listing = write_listing(Path(temporary) / "listing")
+                shots = Path(temporary) / "shots"
                 if platform == "IOS":
-                    (root / "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE").mkdir()
-                    (root / "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE/01.png").write_bytes(b"image")
-                draft = {"id": "draft", "attributes": {"appVersionState": "PREPARE_FOR_SUBMISSION", "versionString": "1.0"}}
-                renamed = {"attributes": {"versionString": "0.19.2", "releaseType": "MANUAL"}}
-                with patch.object(asc, "api", side_effect=[
-                    [draft], renamed, {"id": "library"}, [],
-                    [{"id": "selected", "attributes": {"processingState": "VALID"}}], None,
-                ]) as api, patch.object(asc, "upload", return_value="image"):
-                    asc.app_store("app", platform, "0.19.2", number, root, "notes")
-                self.assertEqual(platform, api.call_args_list[0].kwargs["filter[platform]"])
-                self.assertEqual({"versionString": "0.19.2", "releaseType": "MANUAL"}, api.call_args_list[1].args[2]["attributes"])
-                self.assertEqual(platform, api.call_args_list[4].kwargs["filter[preReleaseVersion.platform]"])
-                self.assertEqual(number, api.call_args_list[4].kwargs["filter[version]"])
-                self.assertEqual(("PATCH", "appStoreVersions/draft/relationships/build", {"type": "builds", "id": "selected"}), api.call_args_list[5].args)
+                    for locale in ("en-US", "sv"):
+                        (shots / locale / "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE").mkdir(parents=True)
+                        (shots / locale / "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE/01.png").write_bytes(locale.encode())
+                calls = []
+
+                def api(method, path, data=None, **params):
+                    calls.append((method, path, data, params))
+                    responses = {
+                        ("GET", "apps/app/appStoreVersions"): [{"id": "draft", "attributes": {"appVersionState": "PREPARE_FOR_SUBMISSION", "versionString": "1.0"}}],
+                        ("PATCH", "appStoreVersions/draft"): {"attributes": {"versionString": "0.19.2", "releaseType": "MANUAL"}},
+                        ("GET", "apps/app/assetLibrary"): {"id": "library"},
+                        ("GET", "apps/app"): {"attributes": {"primaryLocale": "en-US"}},
+                        ("GET", "apps/app/appInfos"): [{"id": "live-info", "attributes": {"state": "READY_FOR_DISTRIBUTION"}},
+                                                       {"id": "info", "attributes": {"state": "PREPARE_FOR_SUBMISSION"}}],
+                        ("GET", "appInfos/info/appInfoLocalizations"): [{"id": "info-en", "attributes": {"locale": "en-US"}}],
+                        ("POST", "appInfoLocalizations"): {"id": "info-sv"},
+                        ("GET", "appStoreVersions/draft/appStoreVersionLocalizations"): [{"id": "version-en", "attributes": {"locale": "en-US"}}],
+                        ("POST", "appStoreVersionLocalizations"): {"id": "version-sv"},
+                        ("GET", "builds"): [{"id": "selected", "attributes": {"processingState": "VALID"}}],
+                    }
+                    return responses.get((method, path))
+
+                with patch.object(asc, "api", side_effect=api), \
+                     patch.object(asc, "upload", side_effect=lambda library, slide, created: slide.read_text()), \
+                     patch.object(asc, "place", return_value=([], set())) as place:
+                    asc.app_store("app", platform, "0.19.2", number, shots, listing, NOTES)
+                writes = {(method, path): data for method, path, data, _ in calls if method != "GET"}
+                self.assertEqual({"versionString": "0.19.2", "releaseType": "MANUAL"}, writes[("PATCH", "appStoreVersions/draft")]["attributes"])
+                self.assertEqual({"locale": "sv", "name": "Name sv", "subtitle": "Subtitle sv", "privacyPolicyUrl": "https://example.com/privacy"},
+                                 writes[("POST", "appInfoLocalizations")]["attributes"])
+                self.assertEqual({"type": "appInfos", "id": "info"}, writes[("POST", "appInfoLocalizations")]["relationships"]["appInfo"]["data"])
+                self.assertEqual("Name en-US", writes[("PATCH", "appInfoLocalizations/info-en")]["attributes"]["name"])
+                self.assertEqual({"description", "keywords", "supportUrl"}, set(writes[("PATCH", "appStoreVersionLocalizations/version-en")]["attributes"]))
+                self.assertEqual("sv", writes[("POST", "appStoreVersionLocalizations")]["attributes"]["locale"])
+                build = next(params for method, path, _, params in calls if path == "builds")
+                self.assertEqual((platform, number), (build["filter[preReleaseVersion.platform]"], build["filter[version]"]))
+                self.assertEqual({"type": "builds", "id": "selected"}, writes[("PATCH", "appStoreVersions/draft/relationships/build")])
+                placed = sorted((call.args[0], call.args[1]) for call in place.call_args_list)
+                self.assertEqual([("version-en", ["en-US"]), ("version-sv", ["sv"])] if platform == "IOS" else [], placed)
 
     def test_a_platform_version_in_review_is_left_untouched(self):
         draft = {"id": "reviewing", "attributes": {"appVersionState": "IN_REVIEW", "versionString": "0.19.2"}}
         with tempfile.TemporaryDirectory() as temporary, patch.object(asc, "api", return_value=[draft]) as api:
-            asc.app_store("app", "MAC_OS", "0.19.3", "9104", temporary, "notes")
+            asc.app_store("app", "MAC_OS", "0.19.3", "9104", temporary, write_listing(Path(temporary) / "listing"), NOTES)
         self.assertEqual(1, api.call_count)
+
+
+class ListingTests(unittest.TestCase):
+    def test_the_tracked_listing_is_valid(self):
+        primary, _, locales = asc.read_listing(Path(__file__).resolve().parents[2] / "Apple/AppStore/listing")
+        self.assertEqual("en-US", primary)
+        self.assertIn("sv", locales)
+
+    def test_a_description_without_the_terms_of_use_is_refused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            listing = write_listing(temporary)
+            (listing / "sv/description.txt").write_text("Om appen.\n")
+            with self.assertRaisesRegex(SystemExit, "Terms of Use"):
+                asc.read_listing(listing)
+
+    def test_release_notes_need_one_section_per_other_language(self):
+        locales = {"en-US": {}, "sv": {}}
+        self.assertEqual({"en-US": "Fixed a thing.", "sv": "Fixade en sak."}, asc.notes_by_locale(NOTES, "en-US", locales))
+        for notes in ("Fixed a thing.\n", "Fixed a thing.\n[sv]\n\n", NOTES + "[de]\nEtwas.\n", NOTES + "[sv]\nIgen.\n", "[sv]\nBara svenska.\n"):
+            with self.subTest(notes=notes), self.assertRaises(SystemExit):
+                asc.notes_by_locale(notes, "en-US", locales)
+
+    def test_testflight_and_github_get_the_primary_lines(self):
+        self.assertEqual("Fixed a thing.", asc.localized_notes(NOTES)[None])
+
+    def test_an_untracked_store_language_stops_before_writing(self):
+        writes = []
+
+        def api(method, path, data=None, **params):
+            if method != "GET":
+                writes.append(path)
+            return [{"id": "de", "attributes": {"locale": "de-DE"}}, {"id": "en", "attributes": {"locale": "en-US"}}]
+
+        with patch.object(asc, "api", side_effect=api), self.assertRaisesRegex(SystemExit, "de-DE"):
+            asc.sync_localizations("appStoreVersions/v/appStoreVersionLocalizations", "appStoreVersionLocalizations",
+                                   "appStoreVersion", "appStoreVersions", "v", {"en-US": {"description": "About"}})
+        self.assertEqual([], writes)
 
 
 def submission(identifier, version, state):
@@ -350,9 +430,11 @@ class FirstSubscriptionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, \
                 patch.object(asc, "draft_version", return_value=("draft", True)), \
                 patch.object(asc, "api", side_effect=api), \
+                patch.object(asc, "update_listing", return_value={}) as listing, \
                 patch.object(asc, "wait", return_value="build"), \
                 patch.object(asc, "submit_for_review") as submit:
-            asc.app_store("app", "MAC_OS", "1.2.0", "9105", temporary, "notes")
+            asc.app_store("app", "MAC_OS", "1.2.0", "9105", temporary, write_listing(Path(temporary) / "listing"), NOTES)
+        self.assertEqual({"en-US": "Fixed a thing.", "sv": "Fixade en sak."}, listing.call_args.args[5])
         return submit.called
 
     def test_the_first_subscriptions_leave_the_version_for_the_website(self):
@@ -368,9 +450,9 @@ class FirstSubscriptionTests(unittest.TestCase):
 class UploadCleanupTests(unittest.TestCase):
     def test_a_failed_transfer_reclaims_its_reserved_image(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "display").mkdir()
-            (root / "display/01.png").write_bytes(b"fixture image")
+            root = Path(temporary) / "shots"
+            (root / "en-US/display").mkdir(parents=True)
+            (root / "en-US/display/01.png").write_bytes(b"fixture image")
             reservation = {"id": "reserved", "attributes": {"uploadOperations": [
                 {"url": "https://example.com/upload", "offset": 0, "length": 13, "method": "PUT", "requestHeaders": []}
             ]}}
@@ -379,5 +461,5 @@ class UploadCleanupTests(unittest.TestCase):
                  patch.object(asc, "send", side_effect=asc.RequestFailed("transfer failed")), \
                  patch.object(asc, "delete_unplaced") as cleanup:
                 with self.assertRaisesRegex(asc.RequestFailed, "transfer failed"):
-                    asc.app_store("app", "IOS", "1.3.2", "11", root, "notes")
+                    asc.app_store("app", "IOS", "1.3.2", "11", root, write_listing(Path(temporary) / "listing", ["en-US"]), "Fixed a thing.")
                 cleanup.assert_called_once_with(["reserved"])
