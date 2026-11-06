@@ -12,7 +12,7 @@ manages or cancels it. The access service stays the only authority on what an
 account may use; a client never asserts Pro or chooses its limit.
 
 - Free: 60 processing minutes per UTC calendar month per iCloud account.
-- Pro: $6.99 a month or $49.99 a year through StoreKit, for 30 hours of
+- Pro: $5.99 a month or $49.99 a year through StoreKit, for 30 hours of
   dictation a month. Every surface, App Store metadata included, states the 30
   hours; none calls Pro unlimited. Yearly billing keeps monthly windows. Both
   limits are service configuration.
@@ -163,7 +163,8 @@ release is live.
 Both products give the same service at one level, so switching between them
 takes effect at the next renewal. Both have Family Sharing off, multiseat off,
 App Store distribution only, every territory the app sells in, and prices at
-Apple's equalization of the US price. The apps reference only the group ID; the
+Apple's equalization of the US price, except Monthly in Sweden, the launch
+market, at 59 kr. The apps reference only the group ID; the
 service checks only the group; product IDs live in App Store Connect and
 `Apple/StoreKit/MumlaPro.storekit`. The sandbox notification URL is the
 production service's endpoint; the production URL is set once the endpoint has

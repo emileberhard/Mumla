@@ -23,7 +23,7 @@ account**, shared across iPhone, iPad and Mac. The service also supports a
 private, larger allowance for the maintainer's verified subject. That policy
 uses the same admission, metering and account checks; it grants no bypass key.
 
-Pro, $6.99/month or $49.99/year through StoreKit for 30 hours of dictation a
+Pro, $5.99/month or $49.99/year through StoreKit for 30 hours of dictation a
 month, came later; [Mumla Pro](mumla-pro.md) records its ownership policy,
 verification and schema.
 
