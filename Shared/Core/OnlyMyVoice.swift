@@ -49,7 +49,7 @@ struct VoiceProfiles {
     func forget() async throws {
         let date = max(forgottenAt ?? .distantPast, .now)
         preferences.set(date, forKey: SharedPreferenceKey.voiceForgottenAt)
-        try await dataStore.voiceProfiles?.forget(createdBefore: date)
+        do { try await dataStore.voiceProfiles?.forget(createdBefore: date) } catch VoiceFilterError.profileUnreadable {}
     }
 
     func applyForget() async throws {

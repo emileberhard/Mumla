@@ -301,7 +301,7 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
                     await self?.decide(.decided(.notHeard))
                 }
             } catch {
-                await self?.decide(.failed(error))
+                await self?.abandonVoices(error)
             }
         })
     }
@@ -324,6 +324,13 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         guard case .checking = voiceCheck else { return false }
         voiceCheck = check
         return true
+    }
+
+    private func abandonVoices(_ error: any Error) {
+        switch voiceCheck {
+        case .checking, .requested: voiceCheck = .failed(error)
+        case .idle, .decided, .failed: break
+        }
     }
 
     private func complete(_ reply: AccessStreamReply) async {
