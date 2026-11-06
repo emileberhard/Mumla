@@ -175,6 +175,37 @@ test("an older in-app transaction names the owner of a token-less subscription",
   expect(store.access(buyer.session, now).plan).toBe("pro");
 });
 
+test("the latest transaction that names an account owns the subscription whatever the delivery order", () => {
+  const first = signed({ purchased: now - 3 * day, expires: now - 2 * day });
+  const second = signed({
+    transactionId: "1002",
+    purchased: now - 2 * day,
+    expires: now - day,
+  });
+  const latest = signed({ transactionId: "1003" });
+  for (const order of [
+    [first, second, latest],
+    [latest, first, second],
+    [latest, second, first],
+    [second, latest, first],
+  ]) {
+    const { store } = open();
+    const a = account(store, "a");
+    const b = account(store, "b");
+    const token = { "1001": a.subject, "1002": b.subject, "1003": null };
+    for (const delivered of order)
+      store.notify(
+        {
+          ...delivered,
+          appAccountToken: token[delivered.transactionId as keyof typeof token],
+        },
+        now,
+      );
+    expect(store.access(b.session, now).plan).toBe("pro");
+    expect(store.access(a.session, now).plan).toBe("free");
+  }
+});
+
 test("a Sandbox purchase raises the limit only to the Sandbox ceiling", () => {
   const { store } = open();
   const tester = account(store, "tester");

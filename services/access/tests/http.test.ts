@@ -1633,7 +1633,14 @@ test("purchases and App Store notifications raise the account's plan over HTTP",
       appAccountToken: session.subject,
     }),
   );
-  expect((await notify(notification(renewal))).status).toBe(200);
+  expect(
+    (
+      await call("/v1/app-store/notifications", "POST", undefined, {
+        signedPayload: notification(renewal),
+        unknownField: true,
+      })
+    ).status,
+  ).toBe(200);
   const pro = await (await call("/v1/access", "GET", session.token)).json();
   expect(pro.allowance).toMatchObject({
     plan: "pro",

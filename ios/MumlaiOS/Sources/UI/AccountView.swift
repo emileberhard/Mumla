@@ -10,8 +10,7 @@ struct AccountView: View {
         NavigationStack {
             Form {
                 Section {
-                    AllowanceView(access: coordinator.access)
-                    ProPlanRows()
+                    ProPlanRows { AllowanceView(access: coordinator.access) }
                 }
 
                 Section {

@@ -36,6 +36,8 @@ const subscriptionSchema = `
     environment TEXT NOT NULL CHECK (environment IN ('Production', 'Sandbox')),
     original_transaction_id TEXT NOT NULL,
     owner TEXT,
+    owner_transaction_id TEXT,
+    owner_purchased INTEGER,
     transaction_id TEXT NOT NULL,
     purchased INTEGER NOT NULL,
     expires INTEGER NOT NULL,
@@ -48,17 +50,43 @@ const subscriptionSchema = `
 
 interface Subscription {
   owner: string | null;
+  owner_transaction_id: string | null;
+  owner_purchased: number | null;
   transaction_id: string;
   purchased: number;
+  expires: number;
+  revoked: number | null;
   signed: number;
+}
+
+function later(
+  transaction: SignedTransaction,
+  purchased: number,
+  transactionId: string,
+) {
+  if (transaction.purchased !== purchased)
+    return transaction.purchased > purchased;
+  return BigInt(transaction.transactionId) > BigInt(transactionId);
 }
 
 function supersedes(transaction: SignedTransaction, stored: Subscription) {
   if (transaction.transactionId === stored.transaction_id)
     return transaction.signed > stored.signed;
-  if (transaction.purchased !== stored.purchased)
-    return transaction.purchased > stored.purchased;
-  return BigInt(transaction.transactionId) > BigInt(stored.transaction_id);
+  return later(transaction, stored.purchased, stored.transaction_id);
+}
+
+function namesOwner(
+  transaction: SignedTransaction,
+  stored: Subscription | null,
+): transaction is SignedTransaction & { appAccountToken: string } {
+  if (!transaction.appAccountToken) return false;
+  if (stored?.owner_transaction_id == null || stored.owner_purchased == null)
+    return true;
+  return later(
+    transaction,
+    stored.owner_purchased,
+    stored.owner_transaction_id,
+  );
 }
 
 function digest(token: string) {
@@ -468,39 +496,45 @@ export class AccessStore {
   ) {
     const stored = this.db
       .query<Subscription, [string, string]>(
-        "SELECT owner, transaction_id, purchased, signed FROM subscriptions WHERE environment = ? AND original_transaction_id = ?",
+        "SELECT owner, owner_transaction_id, owner_purchased, transaction_id, purchased, expires, revoked, signed FROM subscriptions WHERE environment = ? AND original_transaction_id = ?",
       )
       .get(transaction.environment, transaction.originalTransactionId);
-    if (stored && !supersedes(transaction, stored)) {
-      const owner = stored.owner ?? transaction.appAccountToken ?? claimant;
-      if (owner !== stored.owner)
-        this.db
-          .query(
-            "UPDATE subscriptions SET owner = ? WHERE environment = ? AND original_transaction_id = ?",
-          )
-          .run(
-            owner,
-            transaction.environment,
-            transaction.originalTransactionId,
-          );
-      return owner;
-    }
-    const owner = transaction.appAccountToken ?? stored?.owner ?? claimant;
+    const ownership = namesOwner(transaction, stored)
+      ? [
+          transaction.appAccountToken,
+          transaction.transactionId,
+          transaction.purchased,
+        ]
+      : stored?.owner
+        ? [stored.owner, stored.owner_transaction_id, stored.owner_purchased]
+        : [claimant, null, null];
+    const state =
+      !stored || supersedes(transaction, stored)
+        ? [
+            transaction.transactionId,
+            transaction.purchased,
+            transaction.expires,
+            transaction.revoked,
+            transaction.signed,
+          ]
+        : [
+            stored.transaction_id,
+            stored.purchased,
+            stored.expires,
+            stored.revoked,
+            stored.signed,
+          ];
     this.db
       .query(
-        "INSERT OR REPLACE INTO subscriptions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO subscriptions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         transaction.environment,
         transaction.originalTransactionId,
-        owner,
-        transaction.transactionId,
-        transaction.purchased,
-        transaction.expires,
-        transaction.revoked,
-        transaction.signed,
+        ...ownership,
+        ...state,
       );
-    return owner;
+    return ownership[0];
   }
 
   purchase(session: Session, transaction: SignedTransaction, now: number) {
@@ -570,7 +604,7 @@ function validateDatabase(
     .get()?.count;
   if (tables === 0 && subscriptions === "optional") return;
   db.query(
-    "SELECT environment, original_transaction_id, owner, transaction_id, purchased, expires, revoked, signed FROM subscriptions LIMIT 0",
+    "SELECT environment, original_transaction_id, owner, owner_transaction_id, owner_purchased, transaction_id, purchased, expires, revoked, signed FROM subscriptions LIMIT 0",
   ).all();
 }
 

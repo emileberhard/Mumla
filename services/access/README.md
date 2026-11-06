@@ -142,7 +142,8 @@ schema changes need an explicit compatibility transition. Pro is a
 forward-only boundary: the pre-Pro executable rejects Pro's configuration and
 ignores purchases, so it is never a rollback target once Pro ships. The first
 Pro deploy's fallback restores the previous executable together with its
-previous configuration.
+previous configuration, and its pre-fence check runs the previous executable
+with that configuration too.
 
 The private poller prepares/checks while open, waits at most 900 seconds for idle,
 fences atomically, replaces, validates status, then reopens. Failure before fencing
@@ -209,11 +210,12 @@ Apple Root CA - G3 and apply one idempotent store operation. Allow only Apple's
 
 After any period the notification endpoint was unreachable or answered 5xx, or
 on a report of a missing renewal or refund, replay Apple's notification history
-from a checkout:
+from a checkout into the loopback listener, on the host or through an SSH port
+forward. The public origin answers 403, because its edge admits only Apple:
 
 ```sh
 MUMLA_IAP_KEY_PATH=<private .p8> MUMLA_IAP_KEY_ID=<id> MUMLA_IAP_ISSUER_ID=<id> \
-  bun scripts/replay-notifications.ts <Production|Sandbox> <since ISO 8601> <service origin>
+  bun scripts/replay-notifications.ts <Production|Sandbox> <since ISO 8601> http://127.0.0.1:<listenPort>
 ```
 
 History covers 180 days in Production and 30 in the Sandbox. Replays are safe:

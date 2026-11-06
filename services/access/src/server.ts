@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import type { ServerWebSocket } from "bun";
-import type { PurchaseVerifier } from "./appstore";
+import type { AppStoreVerifier } from "./appstore";
 import type { IdentityVerifier } from "./cloudkit";
 import type { AccessConfig } from "./config";
 import {
@@ -139,7 +139,7 @@ export class AccessService {
   constructor(
     private readonly config: AccessConfig,
     private readonly identity: IdentityVerifier,
-    private readonly purchases: PurchaseVerifier,
+    private readonly purchases: AppStoreVerifier,
     private readonly store: AccessStore,
     private readonly release: ReleaseIdentity,
     private readonly onFatal: () => void,
@@ -518,7 +518,7 @@ export class AccessService {
     checks: Set<AbortController>,
     request: Request,
     limit: number,
-    key: string,
+    read: (body: Record<string, unknown>) => unknown,
     work: (value: string) => Promise<T>,
   ) {
     const abort = new AbortController();
@@ -530,8 +530,7 @@ export class AccessService {
         limit,
         AbortSignal.any([signal, AbortSignal.timeout(2000)]),
       );
-      exactKeys(body, [key]);
-      const value = body[key];
+      const value = read(body);
       if (typeof value !== "string" || !value)
         throw new AccessError(400, "invalid_request");
       const result = await work(value);
@@ -552,7 +551,10 @@ export class AccessService {
       this.purchaseChecks,
       request,
       16 * 1024,
-      "signed_transaction",
+      (body) => {
+        exactKeys(body, ["signed_transaction"]);
+        return body.signed_transaction;
+      },
       (jws) => this.purchases.transaction(jws),
     );
     return json({
@@ -567,7 +569,7 @@ export class AccessService {
       this.notifications,
       request,
       64 * 1024,
-      "signedPayload",
+      (body) => body.signedPayload,
       (payload) => this.purchases.notification(payload),
     );
     if (transaction) this.store.notify(transaction, Date.now());
