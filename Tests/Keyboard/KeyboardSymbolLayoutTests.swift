@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @Suite("Keyboard symbol layout")
@@ -20,10 +21,10 @@ struct KeyboardSymbolLayoutTests {
 
     @Test func symbolPagesToggleBetweenNativeLabels() {
         #expect(KeyboardSymbolPage.numbers.switchTitle == "#+=")
-        #expect(KeyboardSymbolPage.numbers.switchAccessibilityLabel == "More symbols")
+        #expect(KeyboardSymbolPage.numbers.switchAccessibilityLabel.key == "More symbols")
         #expect(KeyboardSymbolPage.numbers.next == .symbols)
         #expect(KeyboardSymbolPage.symbols.switchTitle == "123")
-        #expect(KeyboardSymbolPage.symbols.switchAccessibilityLabel == "Numbers")
+        #expect(KeyboardSymbolPage.symbols.switchAccessibilityLabel.key == "Numbers")
         #expect(KeyboardSymbolPage.symbols.next == .numbers)
     }
 
