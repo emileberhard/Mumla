@@ -324,7 +324,7 @@ private enum CaptureFixture {
         case .search: .search
         default: .transcripts
         }
-        coordinator.captureSheet = switch screen {
+        coordinator.presentedSheet = switch screen {
         case .dictating: .dictation
         case .account: .account
         default: nil

@@ -11,11 +11,8 @@ struct SearchView: View {
     @State private var query = ""
     @State private var path: [TranscriptRoute] = []
 
-    private var results: [HistoryEntry] {
-        query.isEmpty ? [] : entries.latestPerRecording().matching(query)
-    }
-
     var body: some View {
+        let results = query.isEmpty ? [] : entries.latestPerRecording().matching(query)
         NavigationStack(path: $path) {
             List {
                 if query.isEmpty {

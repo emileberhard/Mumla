@@ -3,8 +3,6 @@ import SwiftUI
 struct DictationStrip: View {
     static let transitionID = "dictation"
 
-    let openDictation: () -> Void
-    let openAccount: () -> Void
     @Environment(DictationCoordinator.self) private var coordinator
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -42,6 +40,11 @@ struct DictationStrip: View {
             }
         }
         .animation(.snappy, value: coordinator.phase)
+        .onChange(of: coordinator.phase) { _, phase in
+            if phase == .error, !coordinator.lastErrorMessage.isEmpty {
+                AccessibilityNotification.Announcement(coordinator.lastErrorMessage).post()
+            }
+        }
     }
 
     @ViewBuilder
@@ -123,6 +126,9 @@ struct DictationStrip: View {
     }
 
     private var accessibilityValue: Text {
+        if coordinator.phase == .error {
+            return Text(coordinator.lastErrorMessage)
+        }
         if case .available(let allowance) = coordinator.access.state, allowance.isRunningLow {
             return Text("\(allowance.remaining.wholeMinutes) minutes left")
         }
@@ -135,15 +141,15 @@ struct DictationStrip: View {
     private func primaryAction() {
         switch coordinator.phase {
         case .recording:
-            openDictation()
+            coordinator.presentedSheet = .dictation
         case .processing:
             break
         case .idle where blocked != nil, .success where blocked != nil:
-            openAccount()
+            coordinator.presentedSheet = .account
         case .idle, .success, .error:
             let canRecord = coordinator.microphoneAuthorized
             coordinator.startDictation()
-            if canRecord { openDictation() }
+            if canRecord { coordinator.presentedSheet = .dictation }
         }
     }
 }

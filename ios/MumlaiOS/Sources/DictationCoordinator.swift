@@ -110,9 +110,10 @@ final class DictationCoordinator {
     private(set) var keyboardHasBeenActive = DictationBridge.keyboardHasBeenActive
 #endif
     private(set) var showSwipeBackHint = false
-    /// Settable: ContentView binds them to its tab view and the Transcripts stack.
+    /// Settable: ContentView binds them to its tab view, the Transcripts stack and its sheet.
     var selectedTab: MainTab = .transcripts
     var transcriptsPath: [TranscriptRoute] = []
+    var presentedSheet: ContentSheet?
 
     /// When false, the app root presents onboarding instead of the main view.
     var setupComplete: Bool {
@@ -137,8 +138,6 @@ final class DictationCoordinator {
     }
 
 #if MUMLA_SCREENSHOTS
-    var captureSheet: ContentSheet?
-
     func setCapturePhase(_ phase: DictationPhase) {
         self.phase = phase
         if phase == .recording {
@@ -361,6 +360,7 @@ final class DictationCoordinator {
             )
             selectedTab = .transcripts
             transcriptsPath = []
+            presentedSheet = nil
             return
         }
         guard DictationBridge.isStartSessionURL(url) else { return }

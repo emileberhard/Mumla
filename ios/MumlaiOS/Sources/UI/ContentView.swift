@@ -20,7 +20,6 @@ enum ContentSheet: Identifiable {
 
 struct ContentView: View {
     @Environment(DictationCoordinator.self) private var coordinator
-    @State private var sheet: ContentSheet?
     @Namespace private var dictationTransition
 
     var body: some View {
@@ -31,7 +30,7 @@ struct ContentView: View {
                     TranscriptsView { coordinator.transcriptsPath.append(.transcript($0)) }
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
-                                AccountButton(access: coordinator.access) { sheet = .account }
+                                AccountButton(access: coordinator.access) { coordinator.presentedSheet = .account }
                             }
                         }
                         .transcriptDestinations()
@@ -47,15 +46,12 @@ struct ContentView: View {
             }
         }
         .tabViewBottomAccessory {
-            DictationStrip(
-                openDictation: { sheet = .dictation },
-                openAccount: { sheet = .account }
-            )
-            .matchedTransitionSource(id: DictationStrip.transitionID, in: dictationTransition)
+            DictationStrip()
+                .matchedTransitionSource(id: DictationStrip.transitionID, in: dictationTransition)
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .dictationFeedback(phase: coordinator.phase)
-        .sheet(item: $sheet) { sheet in
+        .sheet(item: $coordinator.presentedSheet) { sheet in
             switch sheet {
             case .dictation:
                 NowDictatingView()
@@ -67,9 +63,6 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
             coordinator.refreshCopiedTranscript()
         }
-#if MUMLA_SCREENSHOTS
-        .onAppear { sheet = coordinator.captureSheet }
-#endif
     }
 }
 

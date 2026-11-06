@@ -70,10 +70,12 @@ struct AudioAttachmentControls: View {
     @State private var previewURL: URL?
     @State private var isDownloading = false
     @State private var downloadError: String?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
+            let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())
+            layout {
                 Button("Listen", systemImage: "play.circle") { Task { await listen() } }
                     .disabled(isDownloading)
                 ShareLink(
