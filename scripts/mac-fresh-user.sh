@@ -56,7 +56,7 @@ for account in "${LEGACY_KEY_ACCOUNTS[@]}"; do
     fi
 done
 
-echo "==> Wiping local transcription history (backup first; the iCloud copy"
+echo "==> Wiping local history and voice profile (backup first; the iCloud copy"
 echo "    is untouched and re-syncs into the next signed install)"
 APP_SUPPORT="$HOME/Library/Application Support/WisprClone"
 if [ -d "$APP_SUPPORT" ]; then

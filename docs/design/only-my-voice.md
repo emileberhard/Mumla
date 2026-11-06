@@ -1,7 +1,7 @@
 # Only my voice
 
-Status: proposed after two independent challenges. The validation at the end
-sets the thresholds and gates the release.
+Status: implemented after two independent design challenges, with thresholds
+calibrated on a random sample of the maintainer's dictations.
 
 With Only Mine selected, a dictation contains only what the dictating user
 said; other people in the room, a TV and a phone on speaker are left out.
@@ -107,7 +107,8 @@ stop ──▶ no:  deliver text, then learn from the dictation
 
 ### While capturing
 
-`VoiceWatch` is an actor fed the same 16 kHz PCM the provider receives. It
+`VoiceWatch` is fed the same 16 kHz PCM the provider receives, on its own
+task. It
 cuts voiced audio into pieces at pauses, capped at 10 s, and embeds each piece
 of at least 1 s as it ends. Each piece costs one model call on the CPU, about
 12 calls per minute of speech, or roughly 0.4% of one core. That keeps the work
@@ -119,9 +120,10 @@ one piece is still open, so the answer normally arrives while Azure is still
 transcribing. An answer that isn't ready when the first result arrives counts
 as not heard, so the watcher can never delay delivery.
 
-`VoiceWatch` runs only when Only Mine is selected and the profile is ready.
-Before that, nothing is filtered, so nothing needs detecting. Batch recovery of
-a capture reuses the answer its watcher gave.
+`VoiceWatch` runs whenever Only Mine is selected in a verified account, because
+learning needs its answer too, but asks for voices only while the profile is
+trusted. Batch recovery and Transcribe Again ask for diarization in their one
+request while the profile is trusted and the recording is at most 10 minutes.
 
 ### Service
 
@@ -192,11 +194,23 @@ labels to keep.
    interruption can leave the turn before it without closing punctuation; that
    is accepted.
 
-Starting values: a same-voice threshold of 0.3 and a detection threshold of
-0.35, both on mean-normalized ResNet34-LM embeddings. Detection may sit higher
-because a false alarm costs only a rerun. Calibration sets both, judged by how
-often the user's own speech fails both checks, not by each check alone. They
-are the only tunable values.
+The same-voice threshold is 0.35 and the detection threshold 0.30, both on
+mean-normalized ResNet34-LM embeddings, set by calibration on 300 random
+dictations of up to 10 minutes, a third each under 15 s, 15–60 s and over 60 s:
+
+- **The user's words:** no label of the user scored below 0.519 against the
+  profile, so none failed both checks (rule of three: at most 1.5% for labels
+  over 10 s, 9.1% for 2–4 s). Short labels start failing only at 0.55.
+- **Other voices:** they scored at most 0.20 against the profile and the
+  anchor. All three other-voice labels in an earlier screened set were
+  dropped; the random sample held none.
+- **Detector false alarms:** 4.7% of single-voice dictations at 0.30 against
+  6.4% at the starting 0.35, rising with length because longer dictations have
+  more pieces; nearly all came from pieces with almost no words.
+- **Azure splits:** 6 of 300 dictations had two labels, all the user, and every
+  one was kept.
+
+They are the only tunable values.
 
 ### Embeddings
 
@@ -245,17 +259,27 @@ goes away when the app is uninstalled.
 - **Updates** accept a candidate whose mean of its three best matches reaches
   the learning threshold. The profile freezes at 24 exemplars, so it cannot
   drift and stops costing work.
+- **Trust:** a ready profile also records whether each of the last 10
+  candidates reached the same-voice threshold against it. Filtering and the
+  `speakers` modes use it only once 8 of them did, so a profile learned from
+  someone else, or on a device two people share, never drops the person
+  dictating. When 8 of the last 10 miss, the profile starts over.
 - **Deletion** happens on Forget My Voice and when the model version changes;
-  learning then starts again. Selecting Everyone stops using and learning the
-  profile but keeps it. Because the setting syncs, a choice on one device must
-  not wipe the others.
+  learning then starts again. Forget My Voice writes its time to the KVS key
+  `voiceForgottenAt`, and every device deletes a profile created before it and
+  ignores candidates from dictations that started before it. Selecting
+  Everyone stops using and learning the profile but keeps it.
 
 ### Results and history
 
 `text` stays the delivered transcript everywhere, so search, the `mumla`
 CLI, agent tools, history matching and older app versions all read what the
 user received, with no reader changes. When voices were dropped, the
-complete transcript goes into a new optional `unfilteredText`:
+complete transcript goes into a new optional `unfilteredText` on
+`HistoryEntry`. In this first release it stays local: the shared-history
+projection carries it across rebuilds, but it has no CloudKit field.
+
+The next release syncs it:
 
 - on `HistoryEntry`, as an additive CloudKit field deployed through the
   [schema procedure](../cloudkit-schema.md);
@@ -263,10 +287,9 @@ complete transcript goes into a new optional `unfilteredText`:
   library. Results travel as an encrypted JSON payload, which older clients store
   byte for byte and decode while ignoring unknown keys.
 
-SpeechKit's outbox publication currently re-encodes results. It must publish
-the stored bytes instead, so a downgraded install cannot strip the field and
-then hit `contentConflict`. That fix ships one release before the first release
-that writes the field. A new `DictationResultKind` was rejected, because
+SpeechKit 0.2.3, pinned in the first release, publishes stored result bytes
+instead of re-encoding them, so a downgraded install cannot strip the field and
+then hit `contentConflict`. A new `DictationResultKind` was rejected, because
 one unknown kind fails the whole archive listing on older clients.
 
 Transcribe Again follows the current setting and profile, with one diarized request.
@@ -278,7 +301,8 @@ Transcribe Again follows the current setting and profile, with one diarized requ
   consent step (maintainer decision, 2026-11-06). The profile never leaves the
   device, `PRIVACY.md` describes it, and Forget My Voice deletes it. The
   choice syncs through KVS, so it applies on all of the user's devices.
-- **Settings:** a Voices picker (Only Mine, Everyone) and Forget My Voice.
+- **Settings:** a Voices picker (Only Mine, Everyone), the profile's status
+  (Learning or Learned, which means trusted) and Forget My Voice.
 - **History:** an entry with `unfilteredText` shows that other voices were left
   out, with Show Everyone and Copy Everything.
 - **Elsewhere:** nothing changes in the keyboard.
@@ -288,9 +312,10 @@ Transcribe Again follows the current setting and profile, with one diarized requ
 Any failure delivers everyone's text and reports a `DiagnosticError` under
 `voice_filter`. Failures include the model failing to load, inference
 throwing, `voices_unavailable`, a malformed reply, or the diarized reply
-missing the 2 s deadline after the plain result. Recordings over 10 minutes
-always take this path. The filter can delay delivery
-by at most that deadline; it never blocks or empties delivery.
+missing its deadline after the plain result: 2 s plus 5 ms per second of
+audio, so 2.15 s at 30 s and 5 s at 10 minutes. Recordings over 10 minutes are
+never filtered or learned from. The filter can delay delivery by at most that
+deadline; it never blocks or empties delivery.
 
 Diagnostics carry counts (pieces, labels, dropped labels), the decision path
 (not heard, filtered, kept everything) and timing. They never carry
@@ -298,15 +323,12 @@ embeddings, scores or text.
 
 ### Privacy
 
-`PRIVACY.md` gains three statements:
-
-- the on-device profile: what it is, that it never leaves the device, and how
-  to delete it;
-- that the provider may be asked to separate speakers;
-- that the service holds a stream's audio in memory until the stream ends.
-
-The App Store label counts only data that leaves the device, so it is
-unchanged; the maintainer confirms both. Bundling the CC-BY-4.0 weights adds
+`PRIVACY.md` describes the on-device profile, that it never leaves the device
+and how to delete it; that the provider may be asked to separate speakers; and
+that the service holds a stream's audio in memory until a few seconds after
+its transcript. Both microphone purpose strings say that Mumla recognizes the
+user's voice on the device. The App Store label counts only data that leaves
+the device, so it is unchanged. Bundling the CC-BY-4.0 weights adds
 their attribution to `THIRD_PARTY_NOTICES.md` and `LICENSES/`.
 
 ## Latency budget
@@ -314,8 +336,13 @@ their attribution to `THIRD_PARTY_NOTICES.md` and `LICENSES/`.
 | Dictation | Added at stop |
 | --- | --- |
 | One voice (nearly all) | the last open piece, overlapped with Azure; nothing expected |
-| Another voice heard | about +0.3 s for diarization, plus 2–3 embeddings (about 60 ms on CPU) |
+| Another voice heard | the second diarized request, plus 2–3 embeddings (about 60 ms on CPU) |
 | False alarm (0 of 15 under 30 s, 3 of 11 over) | the same, then today's text |
+
+Measured end to end against Azure on synthetic speech, two runs each, the
+diarized request takes 0.65–0.77 s at 30 s, 0.8–1.3 s at 2 minutes, 1.4–1.5 s
+at 5 minutes and 2.8–2.9 s at 10 minutes, against 0.35–1.8 s for today's
+request at the same lengths. The scaled deadline leaves margin at every length.
 
 ## Alternatives considered
 
@@ -339,6 +366,11 @@ their attribution to `THIRD_PARTY_NOTICES.md` and `LICENSES/`.
   BIPA for voice templates. The maintainer chose silent learning: the template
   is on-device only, Apple's privacy definitions count as collected only data
   that leaves the device, and Forget My Voice deletes it.
+- **A diarized request streamed alongside the plain one** and aborted at stop
+  when no other voice was heard. It would delete the kept audio, its budget
+  and the re-upload, but only if Azure does not bill aborted uploads, which is
+  unverified. Kept audio was built first; the billing check can still switch
+  to it.
 - **Target-speaker extraction (VoxLock).** It handles overlap, but at about
   80 MB and slower than real time. Revisit it later.
 
