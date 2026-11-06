@@ -522,7 +522,7 @@ nonisolated enum AudioPortDiagnostics {
     }
 
     static func describe(_ port: AVAudioSessionPortDescription) -> String {
-        "\(port.portType.rawValue):\(port.portName)"
+        port.portType.rawValue
     }
 }
 

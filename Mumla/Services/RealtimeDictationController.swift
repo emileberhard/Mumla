@@ -279,45 +279,16 @@ private enum PreferredInputMicrophone {
         return status == noErr ? value : 0
     }
 
-    private static func deviceName(for deviceID: AudioDeviceID) -> String {
-        stringProperty(
-            for: deviceID,
-            selector: kAudioObjectPropertyName,
-            scope: kAudioObjectPropertyScopeGlobal
-        ) ?? "unknown"
-    }
-
-    private static func stringProperty(
-        for deviceID: AudioDeviceID,
-        selector: AudioObjectPropertySelector,
-        scope: AudioObjectPropertyScope
-    ) -> String? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: selector,
-            mScope: scope,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var unmanagedString: CFString?
-        var dataSize = UInt32(MemoryLayout<CFString?>.size)
-        let status = withUnsafeMutablePointer(to: &unmanagedString) {
-            AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, $0)
-        }
-        guard status == noErr, let unmanagedString else { return nil }
-        return unmanagedString as String
-    }
-
     static func systemDefaultInputMetadata() -> [String: String] {
         guard let deviceID = try? defaultInputDeviceID() else {
             return [
                 "system_default_input_device_id": "unknown",
-                "system_default_input_device_name": "unknown",
                 "system_default_input_device_transport": "unknown",
             ]
         }
 
         return [
             "system_default_input_device_id": String(deviceID),
-            "system_default_input_device_name": deviceName(for: deviceID),
             "system_default_input_device_transport": transportDescription(for: deviceID),
         ]
     }
@@ -465,8 +436,6 @@ final class BuiltInMicrophoneCapture: NSObject, AVCaptureAudioDataOutputSampleBu
 
     var metadata: [String: String] {
         [
-            "selected_capture_device_name": device.localizedName,
-            "selected_capture_device_uid": device.uniqueID,
             "selected_capture_device_model": device.modelID,
             "selected_capture_device_transport": Self.transportDescription(for: device.transportType),
             "selected_capture_device_type": device.deviceType.rawValue,
@@ -608,7 +577,7 @@ final class BuiltInMicrophoneCapture: NSObject, AVCaptureAudioDataOutputSampleBu
 
         return discoverySession.devices
             .map {
-                "\($0.localizedName)#\($0.uniqueID){transport=\(transportDescription(for: $0.transportType)),connected=\($0.isConnected),suspended=\($0.isSuspended),in_use=\($0.isInUseByAnotherApplication)}"
+                "\(transportDescription(for: $0.transportType)){connected=\($0.isConnected),suspended=\($0.isSuspended),in_use=\($0.isInUseByAnotherApplication)}"
             }
             .joined(separator: ";")
     }
