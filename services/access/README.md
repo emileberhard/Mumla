@@ -213,7 +213,7 @@ answered) and `settled`. `upstream - audio_end` is the provider's finalization
 plus the router hop. The router's vendor rows add `request_body_ms` and
 `response_headers_ms`; they carry no dictation ID, so match them by time. The
 line carries no subject, session or address. A requested speaker pass adds one
-`voices` line with the same `id`, its `code` and its `ms`. The service unit's journal rate
+`voices` line with the same `id`, its `code`, its `ms` and its `audio_ms`. The service unit's journal rate
 limit and the poller's batch bound both count these lines; raise them with the
 dictation rate.
 

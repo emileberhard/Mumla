@@ -478,7 +478,7 @@ test("a requested voices pass diarizes the kept audio without charging again", a
   const [result] = messages as { id: string }[];
   expect(
     logged.find((entry) => entry.event === "voices" && entry.id === result?.id),
-  ).toMatchObject({ code: "ok" });
+  ).toMatchObject({ code: "ok", audio_ms: 1_500 });
 });
 
 test("a failed voices pass still delivers the result first", async () => {

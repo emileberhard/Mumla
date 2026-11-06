@@ -621,13 +621,21 @@ export class AccessService {
     const started = performance.now();
     const audio = upload.keptAudio;
     const definition = upload.voicesDefinition;
+    const bytes = audio?.reduce((total, chunk) => total + chunk.length, 0) ?? 0;
     let code = "ok";
     try {
       if (!audio?.length || !definition) throw new Error("voices_unavailable");
       if (!this.admissionOpen || !this.healthy)
         throw new Error("service_unavailable");
-      const bytes = audio.reduce((total, chunk) => total + chunk.length, 0);
       const boundary = randomUUID();
+      const parts = [
+        Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="definition"\r\n\r\n${definition}\r\n--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="recording.wav"\r\nContent-Type: audio/wav\r\n\r\n`,
+        ),
+        wavHeader(bytes),
+        ...audio,
+        Buffer.from(`\r\n--${boundary}--\r\n`),
+      ];
       const response = await fetch(
         `${this.config.routerOrigin}${transcriptionPath}?api-version=2025-10-15`,
         {
@@ -636,14 +644,13 @@ export class AccessService {
             Authorization: `Bearer ${this.config.routerKey}`,
             "Content-Type": `multipart/form-data; boundary=${boundary}`,
           },
-          body: Buffer.concat([
-            Buffer.from(
-              `--${boundary}\r\nContent-Disposition: form-data; name="definition"\r\n\r\n${definition}\r\n--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="recording.wav"\r\nContent-Type: audio/wav\r\n\r\n`,
-            ),
-            wavHeader(bytes),
-            ...audio,
-            Buffer.from(`\r\n--${boundary}--\r\n`),
-          ]),
+          body: new ReadableStream<Uint8Array>({
+            pull(controller) {
+              const part = parts.shift();
+              if (part) controller.enqueue(part);
+              else controller.close();
+            },
+          }),
           signal: AbortSignal.any([
             signal,
             AbortSignal.timeout(voicesTimeoutMs),
@@ -682,6 +689,7 @@ export class AccessService {
           id,
           code,
           ms: Math.round(performance.now() - started),
+          audio_ms: Math.round((bytes / 2 / sampleRate) * 1000),
         }),
       );
     }
