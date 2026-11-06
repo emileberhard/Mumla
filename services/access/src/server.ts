@@ -557,7 +557,11 @@ export class AccessService {
       );
       const upload = state.upload;
       const text = transcript.texts.join("\n");
-      if (upload?.diarized) {
+      if (upload?.diarized && !transcript.phrases)
+        console.log(
+          JSON.stringify({ event: "voices", id, code: "phrases_invalid" }),
+        );
+      if (upload?.diarized && transcript.phrases) {
         socket.send(
           JSON.stringify({
             type: "voices",
@@ -670,6 +674,7 @@ export class AccessService {
         ),
       );
       const transcript = this.transcript(result, true);
+      if (!transcript.phrases) throw new Error("phrases_invalid");
       return {
         type: "voices",
         text: transcript.texts.join("\n"),

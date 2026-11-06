@@ -82,32 +82,34 @@ export interface VoicePhrase {
   words: [number, number][];
 }
 
-function nonNegativeInteger(value: unknown) {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
-    throw new Error("Invalid provider result");
-  return value;
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-export function voicePhrases(result: Record<string, unknown>): VoicePhrase[] {
-  if (!Array.isArray(result.phrases))
-    throw new Error("Invalid provider result");
-  return result.phrases.map((item) => {
-    const phrase = record(item);
-    const words = phrase.words ?? [];
-    if (typeof phrase.text !== "string" || !Array.isArray(words))
-      throw new Error("Invalid provider result");
-    return {
-      speaker: nonNegativeInteger(phrase.speaker),
-      text: phrase.text,
-      words: words.map((word) => {
-        const value = record(word);
-        return [
-          nonNegativeInteger(value.offsetMilliseconds),
-          nonNegativeInteger(value.durationMilliseconds),
-        ];
-      }),
-    };
-  });
+export function voicePhrases(
+  result: Record<string, unknown>,
+): VoicePhrase[] | undefined {
+  if (!Array.isArray(result.phrases)) return undefined;
+  const phrases: VoicePhrase[] = [];
+  for (const item of result.phrases) {
+    if (!item || typeof item !== "object") return undefined;
+    const { speaker, text, words = [] } = item as Record<string, unknown>;
+    if (!isCount(speaker) || typeof text !== "string" || !Array.isArray(words))
+      return undefined;
+    const spans: [number, number][] = [];
+    for (const word of words) {
+      if (!word || typeof word !== "object") return undefined;
+      const { offsetMilliseconds, durationMilliseconds } = word as Record<
+        string,
+        unknown
+      >;
+      if (!isCount(offsetMilliseconds) || !isCount(durationMilliseconds))
+        return undefined;
+      spans.push([offsetMilliseconds, durationMilliseconds]);
+    }
+    phrases.push({ speaker, text, words: spans });
+  }
+  return phrases;
 }
 
 export function wavHeader(dataBytes = 0xffff_ffff) {
