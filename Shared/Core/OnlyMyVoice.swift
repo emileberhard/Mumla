@@ -1,3 +1,4 @@
+import DictationLibrary
 import Foundation
 
 nonisolated enum VoiceSelection: String, CaseIterable, Identifiable, Sendable {
@@ -47,7 +48,9 @@ struct VoiceProfiles {
         guard let modelURL = SpeakerEmbedder.bundledModelURL else { throw VoiceFilterError.modelMissing }
         let started = ContinuousClock.now
         let recordings: [VoiceHistoryRecording]
-        do { recordings = try await dataStore.localOriginals() } catch where dataStore.partitionID != partition {
+        do { recordings = try await dataStore.localOriginals() } catch DictationLibraryError.accountChanged {
+            throw CancellationError()
+        } catch where dataStore.partitionID != partition {
             throw CancellationError()
         }
         guard dataStore.partitionID == partition else { throw CancellationError() }
