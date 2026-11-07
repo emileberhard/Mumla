@@ -350,7 +350,7 @@ struct VoiceProfileTests {
         let forgottenAt = createdAt.addingTimeInterval(-60)
         try await store.forget(learnedBefore: forgottenAt)
         let window = try #require(try await store.beginHistory())
-        #expect(window == DateInterval(start: forgottenAt, end: createdAt))
+        #expect(window == VoiceHistoryWindow(start: forgottenAt, end: createdAt))
         let history = (0..<5).map { VoiceHistoryCandidate(embedding: near(0, $0), startedAt: forgottenAt.addingTimeInterval(-1)) }
 
         let learned = try #require(try await store.learnHistory(history, in: window))
@@ -407,7 +407,7 @@ struct VoiceHistoryTests {
             try recording(oneVoice, at: 600, seconds: 4),
         ]
 
-        let history = try await VoiceHistory.learn(from: recordings, in: DateInterval(start: start, end: start.addingTimeInterval(800)),
+        let history = try await VoiceHistory.learn(from: recordings, in: VoiceHistoryWindow(start: start, end: start.addingTimeInterval(800)),
                                                    modelURL: SpeakerFixtures.modelURL())
         #expect(history.checked == 4 && history.unreadable == 1)
         #expect(history.candidates.map(\.startedAt) == [older.startedAt, newer.startedAt])

@@ -84,7 +84,7 @@ actor VoiceProfileStore {
         cached = profile
     }
 
-    func beginHistory() throws -> DateInterval? {
+    func beginHistory() throws -> VoiceHistoryWindow? {
         var profile = try loaded()
         guard profile.historySince == nil else { return nil }
         guard !profile.isTrusted else {
@@ -93,10 +93,10 @@ actor VoiceProfileStore {
             cached = profile
             return nil
         }
-        return DateInterval(start: min(forgottenAt ?? .distantPast, profile.createdAt), end: profile.createdAt)
+        return VoiceHistoryWindow(start: forgottenAt ?? .distantPast, end: profile.createdAt)
     }
 
-    func learnHistory(_ candidates: [VoiceHistoryCandidate], in window: DateInterval) throws -> VoiceProfile? {
+    func learnHistory(_ candidates: [VoiceHistoryCandidate], in window: VoiceHistoryWindow) throws -> VoiceProfile? {
         var profile = try loaded()
         guard profile.createdAt == window.end, profile.historySince == nil else { return nil }
         profile.learnHistory(candidates.filter { $0.startedAt >= forgottenAt ?? .distantPast }, at: .now)

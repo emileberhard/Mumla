@@ -6,6 +6,11 @@ nonisolated struct VoiceHistoryRecording: Sendable {
     let finishedAt: Date
 }
 
+nonisolated struct VoiceHistoryWindow: Equatable, Sendable {
+    let start: Date
+    let end: Date
+}
+
 nonisolated struct VoiceHistoryCandidate: Sendable {
     let embedding: SpeakerEmbedding
     let startedAt: Date
@@ -21,7 +26,7 @@ nonisolated struct VoiceHistory: Sendable {
     private(set) var unreadable = 0
 
     @concurrent
-    static func learn(from recordings: [VoiceHistoryRecording], in window: DateInterval, modelURL: URL) async throws -> VoiceHistory {
+    static func learn(from recordings: [VoiceHistoryRecording], in window: VoiceHistoryWindow, modelURL: URL) async throws -> VoiceHistory {
         let shortest = TimeInterval(VoiceRecording.minimumLearningSamples) / TimeInterval(KaldiFilterbank.sampleRate)
         let eligible = recordings
             .filter { $0.startedAt >= window.start && $0.finishedAt < window.end }
