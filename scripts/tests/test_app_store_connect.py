@@ -232,30 +232,17 @@ class ReviewPolicyTests(unittest.TestCase):
             self.assertEqual((None, True), asc.draft_version("app", "IOS", "0.14.3"))
             self.assertEqual(["GET"], [call.args[0] for call in api.call_args_list])
 
-    def test_a_newer_tag_withdraws_only_its_versions_submission_and_keeps_manual_release(self):
-        writes = []
-
+    def test_a_newer_tag_leaves_an_earlier_version_in_review_untouched(self):
         def api(method, path, data=None, **params):
             if method != "GET":
-                writes.append((method, path, data))
+                raise AssertionError(f"{method} {path}")
             if path == "apps/app/appStoreVersions":
                 return [{"id": "review", "attributes": {"appVersionState": "IN_REVIEW", "versionString": "0.10.0"}}, LIVE]
-            if path == "reviewSubmissions":
-                return [submission("event", None, "IN_REVIEW"), submission("target", "review", "IN_REVIEW")]
-            if path == "appStoreVersions/review" and method == "GET":
-                return {"attributes": {"appVersionState": "DEVELOPER_REJECTED"}}
-            if path == "appStoreVersions/review":
-                return {"attributes": {"versionString": "0.14.3", "releaseType": "MANUAL"}}
             if path == "apps/app/subscriptionGroups":
                 return []
 
         with patch.object(asc, "api", side_effect=api):
-            self.assertEqual(("review", True), asc.draft_version("app", "IOS", "0.14.3"))
-        self.assertEqual([
-            ("PATCH", "reviewSubmissions/target", {"type": "reviewSubmissions", "id": "target", "attributes": {"canceled": True}}),
-            ("PATCH", "appStoreVersions/review", {"type": "appStoreVersions", "id": "review",
-                                                  "attributes": {"releaseType": "MANUAL", "versionString": "0.14.3"}}),
-        ], writes)
+            self.assertEqual((None, True), asc.draft_version("app", "IOS", "0.14.3"))
 
     def test_a_first_release_in_review_is_left_alone(self):
         with patch.object(asc, "api", return_value=[{"id": "review", "attributes": {
