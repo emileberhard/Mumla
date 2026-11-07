@@ -157,6 +157,27 @@ struct AudioArchiveTests {
         #expect(try await Data(contentsOf: store.audioFile(for: id)) == Data([1, 2, 3]))
     }
 
+    @Test @MainActor func localOriginalsStartWhenTheirRecordingStartedAndSkipMissingAudio() async throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = MumlaDataStore(directoryURL: root, cloudSyncEnabled: false)
+        let finished = Date(timeIntervalSinceReferenceDate: 10_000)
+        func save(_ bytes: [UInt8], milliseconds: Int?) async throws -> UUID {
+            try await store.saveAudio(.data(Data(bytes)), createdAt: finished, providerRawValue: "test", providerDisplayName: "Test",
+                                      source: "batch", durationMilliseconds: milliseconds, fileType: .wav)
+        }
+        _ = try await save([1, 2, 3], milliseconds: 4_000)
+        _ = try await save([4, 5, 6], milliseconds: nil)
+        let purged = try await save([7, 8, 9], milliseconds: 1_000)
+        try FileManager.default.removeItem(at: await store.audioFile(for: purged))
+
+        let originals = try await store.localOriginals()
+        #expect(originals.count == 1)
+        let original = try #require(originals.first)
+        #expect(original.startedAt == finished.addingTimeInterval(-4) && original.finishedAt == finished)
+        #expect(try Data(contentsOf: original.url) == Data([1, 2, 3]))
+    }
+
     @Test @MainActor func recoversFileCommittedBeforeDatabaseAndQueuesEachChunkOnce() async throws {
         let root = try directory()
         defer { try? FileManager.default.removeItem(at: root) }

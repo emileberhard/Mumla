@@ -121,8 +121,9 @@ wizard's style rules.
   credential. Provider-specific request rules belong to the access service.
 - Only Mine (default) filters with a voice profile once trusted
   ([design](docs/design/only-my-voice.md)). The profile never leaves its
-  device; failure or doubt keeps everyone's text. Changing the speaker model
-  changes `SpeakerEmbedder.modelVersion`.
+  device and learns once from local originals; failure or doubt keeps
+  everyone's text. Changing the speaker model changes
+  `SpeakerEmbedder.modelVersion`.
 
 ### Data sync
 

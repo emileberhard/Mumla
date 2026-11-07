@@ -1,3 +1,4 @@
+import DictationLibrary
 import Foundation
 
 nonisolated enum VoiceSelection: String, CaseIterable, Identifiable, Sendable {
@@ -41,6 +42,25 @@ struct VoiceProfiles {
         return OnlyMyVoice(profile: try await store.profile(), store: store, modelURL: modelURL, startedAt: .now, onFailure: onFailure)
     }
 
+    func learnFromHistory() async throws -> VoiceHistoryOutcome? {
+        let partition = dataStore.partitionID
+        guard let store = try await forgettingStore(), let window = try await store.beginHistory() else { return nil }
+        guard let modelURL = SpeakerEmbedder.bundledModelURL else { throw VoiceFilterError.modelMissing }
+        let started = ContinuousClock.now
+        let recordings: [VoiceHistoryRecording]
+        do { recordings = try await dataStore.localOriginals() } catch DictationLibraryError.accountChanged {
+            throw CancellationError()
+        } catch where dataStore.partitionID != partition {
+            throw CancellationError()
+        }
+        guard dataStore.partitionID == partition else { throw CancellationError() }
+        let history = try await VoiceHistory.learn(from: recordings, in: window, modelURL: modelURL)
+        try Task.checkCancellation()
+        guard let learned = try await store.learnHistory(history.candidates, in: window) else { return nil }
+        return VoiceHistoryOutcome(checked: history.checked, learned: history.candidates.count, unreadable: history.unreadable,
+                                   isTrusted: learned.isTrusted, elapsed: ContinuousClock.now - started)
+    }
+
     func status() async throws -> VoiceProfileStatus? {
         guard let store = try await forgettingStore() else { return nil }
         return VoiceProfileStatus(try await store.profile())
@@ -49,7 +69,7 @@ struct VoiceProfiles {
     func forget() async throws {
         let date = max(forgottenAt ?? .distantPast, .now)
         preferences.set(date, forKey: SharedPreferenceKey.voiceForgottenAt)
-        do { try await dataStore.voiceProfiles?.forget(createdBefore: date) } catch VoiceFilterError.profileUnreadable {}
+        do { try await dataStore.voiceProfiles?.forget(learnedBefore: date) } catch VoiceFilterError.profileUnreadable {}
     }
 
     func applyForget() async throws {
@@ -60,7 +80,7 @@ struct VoiceProfiles {
 
     private func forgettingStore() async throws -> VoiceProfileStore? {
         guard let store = dataStore.voiceProfiles else { return nil }
-        if let forgottenAt { try await store.forget(createdBefore: forgottenAt) }
+        if let forgottenAt { try await store.forget(learnedBefore: forgottenAt) }
         return store
     }
 }

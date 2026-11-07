@@ -373,6 +373,15 @@ actor AudioRecordingPersistence {
 
     func retainOriginal(_ info: AudioRecordingInfo) throws { try archive.retain(info) }
 
+    func localOriginals() throws -> [VoiceHistoryRecording] {
+        try context.fetch(FetchDescriptor<AudioRecording>()).compactMap { recording in
+            guard let info = recording.info, !info.source.hasPrefix("unified/"), let milliseconds = info.durationMilliseconds,
+                  let url = archive.localAudioURL(info) else { return nil }
+            return VoiceHistoryRecording(url: url, startedAt: info.createdAt.addingTimeInterval(-Double(milliseconds) / 1_000),
+                                         finishedAt: info.createdAt)
+        }
+    }
+
     func reseedRetainedOriginals() throws -> Int {
         var missing = 0
         do {

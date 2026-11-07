@@ -82,6 +82,7 @@ struct MenuBarStatusLabel: View {
             .onReceive(NotificationCenter.default.publisher(for: .mumlaOpenSettingsRequested)) { _ in
                 openSettingsWindow()
             }
+            .task(id: coordinator.voiceHistoryTrigger, priority: .utility) { await coordinator.learnVoiceFromHistory() }
     }
 
     private func openSettingsWindow() {
@@ -342,7 +343,7 @@ private struct VoicesSection: View {
                 }
             }
         }
-        .task { status = await coordinator.voiceProfileStatus() }
+        .task(id: coordinator.voiceHistoryLearnedAt) { status = await coordinator.voiceProfileStatus() }
     }
 }
 

@@ -13,12 +13,14 @@ nonisolated struct VoiceProfile: Codable, Equatable, Sendable {
     private(set) var candidates: [SpeakerEmbedding] = []
     private(set) var exemplars: [SpeakerEmbedding] = []
     private(set) var recentMatches: [Bool] = []
+    private(set) var historySince: Date?
 
     init(modelVersion: String, createdAt: Date) {
         self.modelVersion = modelVersion
         self.createdAt = createdAt
     }
 
+    var learnedSince: Date { historySince ?? createdAt }
     var isTrusted: Bool { recentMatches.count == Self.recentWindow && !recentMatches.contains(false) }
     var isFrozen: Bool { exemplars.count >= Self.maximumExemplars }
     var mean: SpeakerEmbedding? { SpeakerEmbedding.mean(of: exemplars) }
@@ -34,6 +36,12 @@ nonisolated struct VoiceProfile: Codable, Equatable, Sendable {
         guard !isFrozen else { return }
         let best = exemplars.map { candidate.similarity(to: $0) }.sorted(by: >).prefix(Self.updateMatches)
         if best.reduce(0, +) / Float(best.count) >= Self.learningThreshold { exemplars.append(candidate) }
+    }
+
+    mutating func learnHistory(_ candidates: [VoiceHistoryCandidate], at date: Date) {
+        let since = candidates.map(\.startedAt).min() ?? createdAt
+        for candidate in candidates { learn(candidate.embedding, at: date) }
+        historySince = since
     }
 
     private mutating func collect(_ candidate: SpeakerEmbedding) {
@@ -76,9 +84,30 @@ actor VoiceProfileStore {
         cached = profile
     }
 
-    func forget(createdBefore date: Date) throws {
+    func beginHistory() throws -> VoiceHistoryWindow? {
+        var profile = try loaded()
+        guard profile.historySince == nil else { return nil }
+        guard !profile.isTrusted else {
+            profile.learnHistory([], at: .now)
+            try write(profile)
+            cached = profile
+            return nil
+        }
+        return VoiceHistoryWindow(start: forgottenAt ?? .distantPast, end: profile.createdAt)
+    }
+
+    func learnHistory(_ candidates: [VoiceHistoryCandidate], in window: VoiceHistoryWindow) throws -> VoiceProfile? {
+        var profile = try loaded()
+        guard profile.createdAt == window.end, profile.historySince == nil else { return nil }
+        profile.learnHistory(candidates.filter { $0.startedAt >= forgottenAt ?? .distantPast }, at: .now)
+        try write(profile)
+        cached = profile
+        return profile
+    }
+
+    func forget(learnedBefore date: Date) throws {
         forgottenAt = max(forgottenAt ?? date, date)
-        guard try loaded().createdAt < date else { return }
+        guard try loaded().learnedSince < date else { return }
         try discard(createdAt: date)
     }
 
