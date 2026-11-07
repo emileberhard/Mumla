@@ -112,26 +112,42 @@ nonisolated final class VoiceWatch: Sendable {
     }
 
     @concurrent private static func listen(to stream: AsyncStream<Data>, modelURL: URL) async throws -> VoiceRecording {
-        let embedder = try SpeakerEmbedder(modelURL: modelURL)
-        var pcm = PCM16Audio()
-        var segmenter = VoicedPieceSegmenter()
-        var pieces: [VoicedPiece] = []
-        var isComplete = true
+        var listener = VoiceListener(embedder: try SpeakerEmbedder(modelURL: modelURL))
         for await chunk in stream {
             try Task.checkCancellation()
-            guard isComplete else { continue }
-            guard pcm.sampleCount + chunk.count / 2 <= maximumSamples else {
-                isComplete = false
-                pcm = PCM16Audio()
-                pieces = []
-                continue
-            }
-            pcm.append(chunk)
-            for piece in segmenter.append(PCM16Samples.floats(chunk)) {
-                pieces.append(VoicedPiece(samples: piece, embedding: try await embedder.embedding(of: pcm.samples(in: piece))))
-            }
+            try await listener.append(chunk)
         }
         try Task.checkCancellation()
+        return try await listener.finish()
+    }
+}
+
+nonisolated struct VoiceListener: Sendable {
+    private let embedder: SpeakerEmbedder
+    private var pcm = PCM16Audio()
+    private var segmenter = VoicedPieceSegmenter()
+    private var pieces: [VoicedPiece] = []
+    private var isComplete = true
+
+    init(embedder: SpeakerEmbedder) {
+        self.embedder = embedder
+    }
+
+    mutating func append(_ chunk: Data) async throws {
+        guard isComplete else { return }
+        guard pcm.sampleCount + chunk.count / 2 <= VoiceWatch.maximumSamples else {
+            isComplete = false
+            pcm = PCM16Audio()
+            pieces = []
+            return
+        }
+        pcm.append(chunk)
+        for piece in segmenter.append(PCM16Samples.floats(chunk)) {
+            pieces.append(VoicedPiece(samples: piece, embedding: try await embedder.embedding(of: pcm.samples(in: piece))))
+        }
+    }
+
+    mutating func finish() async throws -> VoiceRecording {
         guard isComplete else { return VoiceRecording(audio: SpeakerAudio(embedder: embedder, pcm: pcm), pieces: [], isComplete: false) }
         if let piece = segmenter.finish() {
             pieces.append(VoicedPiece(samples: piece, embedding: try await embedder.embedding(of: pcm.samples(in: piece))))

@@ -56,15 +56,20 @@ nonisolated enum OriginalAudio {
         case .wav:
             return try Data(contentsOf: url)
         case .caf:
-            let file = try AVAudioFile(forReading: url)
-            guard let input = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
-                  let format = pcm16Format(sampleRate: batchProviderSampleRate)
-            else { throw OriginalAudioError.conversionFailed }
-            try file.read(into: input)
-            guard let pcm = StreamingAudioConverter(outputFormat: format).convert(input, endOfStream: true)?.pcm16MonoData
-            else { throw OriginalAudioError.conversionFailed }
-            return try RealtimePCM16WAVFile.data(pcmData: pcm, sampleRate: batchProviderSampleRate)
+            return try RealtimePCM16WAVFile.data(pcmData: await pcm16(from: url), sampleRate: batchProviderSampleRate)
         }
+    }
+
+    @concurrent
+    static func pcm16(from url: URL) async throws -> Data {
+        let file = try AVAudioFile(forReading: url)
+        guard let input = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+              let format = pcm16Format(sampleRate: batchProviderSampleRate)
+        else { throw OriginalAudioError.conversionFailed }
+        try file.read(into: input)
+        guard let pcm = StreamingAudioConverter(outputFormat: format).convert(input, endOfStream: true)?.pcm16MonoData
+        else { throw OriginalAudioError.conversionFailed }
+        return pcm
     }
 }
 
