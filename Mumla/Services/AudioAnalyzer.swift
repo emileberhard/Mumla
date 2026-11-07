@@ -42,8 +42,8 @@ private final class AdaptiveNormalizer: @unchecked Sendable {
     }
 }
 
-private nonisolated(unsafe) let sharedLevel = AtomicLevel()
-private nonisolated(unsafe) let sharedNormalizer = AdaptiveNormalizer()
+private nonisolated let sharedLevel = AtomicLevel()
+private nonisolated let sharedNormalizer = AdaptiveNormalizer()
 
 @MainActor
 @Observable
