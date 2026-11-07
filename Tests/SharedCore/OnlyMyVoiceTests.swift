@@ -268,7 +268,7 @@ struct VoiceProfileTests {
         #expect(try await VoiceProfileStore(accountDirectory: directory).profile().mean != nil)
         #expect(try file.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
 
-        try await store.forget(createdBefore: .now.addingTimeInterval(1))
+        try await store.forget(learnedBefore: .now.addingTimeInterval(1))
         #expect(!FileManager.default.fileExists(atPath: file.path))
         #expect(try await store.profile().mean == nil)
 
@@ -298,24 +298,48 @@ struct VoiceProfileTests {
         try Data(saved.utf8).write(to: directory.appending(path: "VoiceProfile.json"))
 
         let profile = try await VoiceProfileStore(accountDirectory: directory).profile()
-        #expect(profile.createdAt == Date(timeIntervalSinceReferenceDate: 0) && profile.historyLearnedAt == nil)
+        #expect(profile.createdAt == Date(timeIntervalSinceReferenceDate: 0) && profile.historySince == nil)
     }
 
     @Test func historyTeachesOnceAndOnlyTheProfileItWasReadFor() async throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = VoiceProfileStore(accountDirectory: directory)
-        let createdAt = try await store.profile().createdAt
-        let history = (0..<15).map { VoiceHistoryCandidate(embedding: near(0, $0), startedAt: createdAt.addingTimeInterval(Double($0 - 100))) }
+        let window = try #require(try await store.beginHistory())
+        let history = (0..<15).map { VoiceHistoryCandidate(embedding: near(0, $0), startedAt: window.end.addingTimeInterval(Double($0 - 100))) }
 
-        let learned = try #require(try await store.learnHistory(history, profileCreatedAt: createdAt))
-        #expect(learned.isTrusted && learned.historyLearnedAt != nil)
+        let learned = try #require(try await store.learnHistory(history, in: window))
+        #expect(learned.isTrusted && learned.learnedSince == window.end.addingTimeInterval(-100))
         #expect(try await VoiceProfileStore(accountDirectory: directory).profile() == learned)
-        #expect(try await store.learnHistory(history, profileCreatedAt: createdAt) == nil)
+        #expect(try await store.beginHistory() == nil)
+        #expect(try await store.learnHistory(history, in: window) == nil)
 
-        try await store.forget(createdBefore: .now.addingTimeInterval(1))
-        #expect(try await store.learnHistory(history, profileCreatedAt: createdAt) == nil)
+        try await store.forget(learnedBefore: .now.addingTimeInterval(1))
+        #expect(try await store.learnHistory(history, in: window) == nil)
         #expect(try await store.profile().mean == nil)
+    }
+
+    @Test func aForgetThatArrivesAfterHistoryLearningStillForgetsIt() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = VoiceProfileStore(accountDirectory: directory)
+        let window = try #require(try await store.beginHistory())
+        let history = (0..<5).map { VoiceHistoryCandidate(embedding: near(0, $0), startedAt: window.end.addingTimeInterval(Double($0 - 100))) }
+        _ = try #require(try await store.learnHistory(history, in: window))
+
+        try await store.forget(learnedBefore: window.end.addingTimeInterval(-50))
+        #expect(try await store.profile().mean == nil)
+    }
+
+    @Test func aTrustedProfileSkipsHistory() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = VoiceProfileStore(accountDirectory: directory)
+        for seed in 0..<15 { try await store.learn(near(0, seed), startedAt: .now) }
+        #expect(try await store.profile().isTrusted)
+
+        #expect(try await store.beginHistory() == nil)
+        #expect(try await VoiceProfileStore(accountDirectory: directory).profile().historySince != nil)
     }
 
     @Test func historyFromBeforeAForgetTeachesNothing() async throws {
@@ -324,11 +348,14 @@ struct VoiceProfileTests {
         let store = VoiceProfileStore(accountDirectory: directory)
         let createdAt = try await store.profile().createdAt
         let forgottenAt = createdAt.addingTimeInterval(-60)
-        try await store.forget(createdBefore: forgottenAt)
+        try await store.forget(learnedBefore: forgottenAt)
+        let window = try #require(try await store.beginHistory())
+        #expect(window == DateInterval(start: forgottenAt, end: createdAt))
         let history = (0..<5).map { VoiceHistoryCandidate(embedding: near(0, $0), startedAt: forgottenAt.addingTimeInterval(-1)) }
 
-        let learned = try #require(try await store.learnHistory(history, profileCreatedAt: createdAt))
-        #expect(learned.candidates.isEmpty && learned.mean == nil && learned.historyLearnedAt != nil)
+        let learned = try #require(try await store.learnHistory(history, in: window))
+        #expect(learned.candidates.isEmpty && learned.mean == nil && learned.learnedSince == createdAt)
+        #expect(try await store.beginHistory() == nil)
     }
 
     @Test func aForgetOnAnotherDeviceClearsTheProfileAndEarlierDictationsTeachNothing() async throws {
@@ -337,11 +364,11 @@ struct VoiceProfileTests {
         let store = VoiceProfileStore(accountDirectory: directory)
         let started = Date.now
         for seed in 0..<5 { try await store.learn(near(0, seed), startedAt: started) }
-        try await store.forget(createdBefore: started.addingTimeInterval(-60))
+        try await store.forget(learnedBefore: started.addingTimeInterval(-60))
         #expect(try await store.profile().mean != nil)
 
         let forgottenAt = Date.now.addingTimeInterval(1)
-        try await store.forget(createdBefore: forgottenAt)
+        try await store.forget(learnedBefore: forgottenAt)
         #expect(try await store.profile().mean == nil)
         try await store.learn(near(0, 5), startedAt: started)
         #expect(try await store.profile().candidates.isEmpty)
@@ -377,9 +404,10 @@ struct VoiceHistoryTests {
             try recording(oneVoice, at: -100),
             try recording(oneVoice, at: 790),
             try recording(oneVoice, at: 500, seconds: 200),
+            try recording(oneVoice, at: 600, seconds: 4),
         ]
 
-        let history = try await VoiceHistory.learn(from: recordings, startedAfter: start, finishedBefore: start.addingTimeInterval(800),
+        let history = try await VoiceHistory.learn(from: recordings, in: DateInterval(start: start, end: start.addingTimeInterval(800)),
                                                    modelURL: SpeakerFixtures.modelURL())
         #expect(history.checked == 4 && history.unreadable == 1)
         #expect(history.candidates.map(\.startedAt) == [older.startedAt, newer.startedAt])

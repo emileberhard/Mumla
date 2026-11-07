@@ -323,13 +323,13 @@ final class DictationCoordinator {
         do {
             guard let outcome = try await voiceProfiles.learnFromHistory() else { return }
             voiceHistoryLearnedAt = .now
-            if outcome.history.unreadable > 0 {
+            if outcome.unreadable > 0 {
                 CrashReporting.warning("Learned voice from history with unreadable recordings", category: "voice_filter",
                                        measurements: outcome.measurements)
             } else {
                 CrashReporting.breadcrumb("Learned voice from history", category: "voice_filter", measurements: outcome.measurements)
             }
-        } catch is CancellationError {
+        } catch where error is CancellationError || Task.isCancelled {
         } catch {
             CrashReporting.capture(message: "Voice history could not be learned", context: "voice_filter", error: error)
         }

@@ -21,11 +21,11 @@ nonisolated struct VoiceHistory: Sendable {
     private(set) var unreadable = 0
 
     @concurrent
-    static func learn(
-        from recordings: [VoiceHistoryRecording], startedAfter start: Date, finishedBefore end: Date, modelURL: URL
-    ) async throws -> VoiceHistory {
+    static func learn(from recordings: [VoiceHistoryRecording], in window: DateInterval, modelURL: URL) async throws -> VoiceHistory {
+        let shortest = TimeInterval(VoiceRecording.minimumLearningSamples) / TimeInterval(KaldiFilterbank.sampleRate)
         let eligible = recordings
-            .filter { $0.startedAt >= start && $0.finishedAt < end && $0.finishedAt.timeIntervalSince($0.startedAt) <= longestRecording }
+            .filter { $0.startedAt >= window.start && $0.finishedAt < window.end }
+            .filter { (shortest...longestRecording).contains($0.finishedAt.timeIntervalSince($0.startedAt)) }
             .sorted { $0.startedAt > $1.startedAt }
             .prefix(recordingLimit)
         var history = VoiceHistory()
@@ -50,14 +50,15 @@ nonisolated struct VoiceHistory: Sendable {
 }
 
 nonisolated struct VoiceHistoryOutcome: Sendable {
-    let history: VoiceHistory
+    let checked: Int
+    let learned: Int
+    let unreadable: Int
     let isTrusted: Bool
     let elapsed: Duration
 
     var measurements: [String: Int] {
-        ["voice_history_checked": history.checked, "voice_history_learned": history.candidates.count,
-         "voice_history_unreadable": history.unreadable, "voice_history_trusted": isTrusted ? 1 : 0,
-         "voice_history_ms": Int(elapsed / .milliseconds(1))]
+        ["voice_history_checked": checked, "voice_history_learned": learned, "voice_history_unreadable": unreadable,
+         "voice_history_trusted": isTrusted ? 1 : 0, "voice_history_ms": Int(elapsed / .milliseconds(1))]
     }
 }
 

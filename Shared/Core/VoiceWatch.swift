@@ -157,7 +157,7 @@ nonisolated struct VoiceListener: Sendable {
 }
 
 nonisolated struct VoiceRecording: Sendable {
-    private static let minimumLearningSamples = 5 * KaldiFilterbank.sampleRate
+    static let minimumLearningSamples = 5 * KaldiFilterbank.sampleRate
 
     let audio: SpeakerAudio
     let pieces: [VoicedPiece]
