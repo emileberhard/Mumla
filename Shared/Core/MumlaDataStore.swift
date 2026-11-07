@@ -776,6 +776,12 @@ final class MumlaDataStore {
         return url
     }
 
+    func localOriginals() async throws -> [VoiceHistoryRecording] {
+        async let legacy = audioPersistence.localOriginals()
+        let unified = try await library?.localOriginals() ?? []
+        return try await legacy + unified
+    }
+
     func providerWAV(for id: UUID) async throws -> Data {
         let info = try recordingInfo(for: id)
         return try await OriginalAudio.providerWAV(from: audioFile(for: id), fileType: info.fileType)

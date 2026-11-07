@@ -48,7 +48,8 @@ cannot change.
 With **Voices** set to **Only Mine**, the default, Mumla learns your voice so it
 can leave other people's words out of your dictations. On each device signed in
 to iCloud, a speaker model built into the app turns your speech from dictations
-in which it hears only one voice into a voice profile: numbers that describe how
+in which it hears only one voice, including earlier recordings still on that
+device, into a voice profile: numbers that describe how
 your voice sounds, not what you said. The profile stays on that device. It is
 not synced to iCloud, not included in device backups and never sent anywhere,
 so each of your devices learns your voice on its own.

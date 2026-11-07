@@ -13,6 +13,7 @@ nonisolated struct VoiceProfile: Codable, Equatable, Sendable {
     private(set) var candidates: [SpeakerEmbedding] = []
     private(set) var exemplars: [SpeakerEmbedding] = []
     private(set) var recentMatches: [Bool] = []
+    private(set) var historyLearnedAt: Date?
 
     init(modelVersion: String, createdAt: Date) {
         self.modelVersion = modelVersion
@@ -34,6 +35,11 @@ nonisolated struct VoiceProfile: Codable, Equatable, Sendable {
         guard !isFrozen else { return }
         let best = exemplars.map { candidate.similarity(to: $0) }.sorted(by: >).prefix(Self.updateMatches)
         if best.reduce(0, +) / Float(best.count) >= Self.learningThreshold { exemplars.append(candidate) }
+    }
+
+    mutating func learnHistory(_ candidates: [SpeakerEmbedding], at date: Date) {
+        for candidate in candidates { learn(candidate, at: date) }
+        historyLearnedAt = date
     }
 
     private mutating func collect(_ candidate: SpeakerEmbedding) {
@@ -74,6 +80,15 @@ actor VoiceProfileStore {
         guard profile != before else { return }
         try write(profile)
         cached = profile
+    }
+
+    func learnHistory(_ candidates: [VoiceHistoryCandidate], profileCreatedAt: Date) throws -> VoiceProfile? {
+        var profile = try loaded()
+        guard profile.createdAt == profileCreatedAt, profile.historyLearnedAt == nil else { return nil }
+        profile.learnHistory(candidates.filter { $0.startedAt >= forgottenAt ?? .distantPast }.map(\.embedding), at: .now)
+        try write(profile)
+        cached = profile
+        return profile
     }
 
     func forget(createdBefore date: Date) throws {

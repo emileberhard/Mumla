@@ -41,6 +41,18 @@ struct VoiceProfiles {
         return OnlyMyVoice(profile: try await store.profile(), store: store, modelURL: modelURL, startedAt: .now, onFailure: onFailure)
     }
 
+    func learnFromHistory() async throws -> VoiceHistoryOutcome? {
+        guard let store = try await forgettingStore() else { return nil }
+        let profile = try await store.profile()
+        guard profile.historyLearnedAt == nil else { return nil }
+        guard let modelURL = SpeakerEmbedder.bundledModelURL else { throw VoiceFilterError.modelMissing }
+        let started = ContinuousClock.now
+        let history = try await VoiceHistory.learn(from: dataStore.localOriginals(), startedAfter: forgottenAt ?? .distantPast,
+                                                   finishedBefore: profile.createdAt, modelURL: modelURL)
+        guard let learned = try await store.learnHistory(history.candidates, profileCreatedAt: profile.createdAt) else { return nil }
+        return VoiceHistoryOutcome(history: history, isTrusted: learned.isTrusted, elapsed: ContinuousClock.now - started)
+    }
+
     func status() async throws -> VoiceProfileStatus? {
         guard let store = try await forgettingStore() else { return nil }
         return VoiceProfileStatus(try await store.profile())

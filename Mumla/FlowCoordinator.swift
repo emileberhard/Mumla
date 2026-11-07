@@ -265,6 +265,24 @@ final class FlowCoordinator {
         }
     }
 
+    var voiceHistoryTrigger: VoiceHistoryTrigger { VoiceHistoryTrigger(partition: dataStore.partitionID, voices: voices) }
+
+    func learnVoiceFromHistory() async {
+        guard voices == .onlyMine else { return }
+        do {
+            guard let outcome = try await voiceProfiles.learnFromHistory() else { return }
+            if outcome.history.unreadable > 0 {
+                AppDiagnostics.warning("Learned voice from history with unreadable recordings", category: "voice_filter",
+                                       measurements: outcome.measurements)
+            } else {
+                AppDiagnostics.info("Learned voice from history", category: "voice_filter", measurements: outcome.measurements)
+            }
+        } catch is CancellationError {
+        } catch {
+            AppDiagnostics.error("Voice history could not be learned", category: "voice_filter", error: error)
+        }
+    }
+
     func voiceProfileStatus() async -> VoiceProfileStatus? {
         do { return try await voiceProfiles.status() } catch {
             AppDiagnostics.error("Voice profile unavailable", category: "voice_filter", error: error)

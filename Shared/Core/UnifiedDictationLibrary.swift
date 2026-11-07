@@ -310,6 +310,15 @@ final class UnifiedDictationLibrary {
         return try await archiveReader().original(for: id)
     }
 
+    func localOriginals() async throws -> [VoiceHistoryRecording] {
+        guard let session = accountSession else { throw DictationLibraryError.accountUnavailable }
+        try await store.validateAccountSession(session)
+        return try await store.entries().compactMap { entry in
+            guard let url = entry.originalURL, let finishedAt = entry.capture.finishedAt else { return nil }
+            return VoiceHistoryRecording(url: url, startedAt: entry.capture.startedAt, finishedAt: finishedAt)
+        }
+    }
+
     func captureID(for originalURL: URL) -> UUID? {
         captures.first { $0.value.originalURL == originalURL }?.key
     }

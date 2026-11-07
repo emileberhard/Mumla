@@ -270,6 +270,17 @@ Forget My Voice.
   `voiceForgottenAt`, and every device deletes a profile created before it and
   ignores candidates from dictations that started before it. Selecting
   Everyone stops using and learning the profile but keeps it.
+- **History:** once per profile, while Only Mine is selected,
+  `VoiceProfiles.learnFromHistory` replays the newest 100 originals already on
+  the device, never downloading any, that started after Forget My Voice,
+  finished before the profile was created and last at most 2 minutes. They go
+  through `VoiceListener`, the same path as live dictation, so the same rules
+  pick candidates. Up to 30 are applied oldest first in one write that sets
+  `historyLearnedAt`. A profile that changed meanwhile, or one already
+  learned from history, takes nothing, and an interrupted pass runs again at
+  the next launch. Existing users are trusted on the first launch instead of
+  after about 15 dictations, and a speaker-model change relearns instead of
+  starting over.
 
 ### Results and history
 
@@ -300,7 +311,8 @@ result.
 ### Setting and history UI
 
 - **Default:** Only Mine is the default for new and existing users, and the
-  profile learns silently from ordinary one-voice dictations; there is no
+  profile learns silently from ordinary one-voice dictations, earlier ones
+  still on the device included; there is no
   consent step (maintainer decision, 2026-11-06). The profile never leaves the
   device, `PRIVACY.md` describes it, and Forget My Voice deletes it. The
   choice syncs through KVS, so it applies on all of the user's devices.

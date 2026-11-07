@@ -35,6 +35,7 @@ struct MumlaiOSApp: App {
             rootView
                 .modelContainer(coordinator.dataStore.container)
                 .id(coordinator.dataStore.partitionID)
+                .task(id: coordinator.voiceHistoryTrigger, priority: .utility) { await coordinator.learnVoiceFromHistory() }
 #endif
         }
 #if !MUMLA_SCREENSHOTS

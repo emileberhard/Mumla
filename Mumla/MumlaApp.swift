@@ -82,6 +82,7 @@ struct MenuBarStatusLabel: View {
             .onReceive(NotificationCenter.default.publisher(for: .mumlaOpenSettingsRequested)) { _ in
                 openSettingsWindow()
             }
+            .task(id: coordinator.voiceHistoryTrigger, priority: .utility) { await coordinator.learnVoiceFromHistory() }
     }
 
     private func openSettingsWindow() {
