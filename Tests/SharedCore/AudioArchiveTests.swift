@@ -169,7 +169,7 @@ struct AudioArchiveTests {
         _ = try await save([1, 2, 3], milliseconds: 4_000)
         _ = try await save([4, 5, 6], milliseconds: nil)
         let purged = try await save([7, 8, 9], milliseconds: 1_000)
-        try FileManager.default.removeItem(at: store.audioFile(for: purged))
+        try FileManager.default.removeItem(at: await store.audioFile(for: purged))
 
         let originals = try await store.localOriginals()
         #expect(originals.count == 1)
