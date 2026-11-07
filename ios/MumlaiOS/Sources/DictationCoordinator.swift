@@ -580,8 +580,8 @@ final class DictationCoordinator {
             await stopDictation()
         case .cancelDictation:
             await cancelDictation()
-        case .interruption(let type, let reasonValue, let wasSuspended):
-            await handleInterruption(type: type, reasonValue: reasonValue, wasSuspended: wasSuspended)
+        case .interruption(let type, let reasonValue):
+            await handleInterruption(type: type, reasonValue: reasonValue)
         case .mediaServicesReset:
             await handleMediaServicesReset()
         case .routeChanged(let routeMetadata):
@@ -1324,8 +1324,7 @@ final class DictationCoordinator {
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue)
             else { return }
             let reasonValue = notification.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt
-            let wasSuspended = notification.userInfo?[AVAudioSessionInterruptionWasSuspendedKey] as? Bool ?? false
-            audioCommands.yield(.interruption(type, reasonValue: reasonValue, wasSuspended: wasSuspended))
+            audioCommands.yield(.interruption(type, reasonValue: reasonValue))
         }
 
         let mediaReset = NotificationCenter.default.addObserver(
@@ -1376,8 +1375,7 @@ final class DictationCoordinator {
 
     private func handleInterruption(
         type: AVAudioSession.InterruptionType,
-        reasonValue: UInt?,
-        wasSuspended: Bool
+        reasonValue: UInt?
     ) async {
         CrashReporting.breadcrumb(
             "Audio session interruption",
@@ -1386,7 +1384,6 @@ final class DictationCoordinator {
                 extra: [
                     "interruption_type": audioInterruptionDescription(type),
                     "interruption_reason_value": reasonValue.map(String.init) ?? "none",
-                    "interruption_was_suspended": wasSuspended.description,
                 ]
             )
         )
@@ -1396,20 +1393,12 @@ final class DictationCoordinator {
             cancelRouteValidation()
             stopIdleSessionRecovery()
             guard phase == .recording else { break }
-            let action = DictationInterruptionPolicy.actionForInterruptionBegan(isStaleSuspensionNotice: wasSuspended)
-            switch action {
-            case .finalize:
-                // Stale post-suspension notices finish with what was
-                // captured so far.
-                await stopDictation()
-            case .pauseAndAutoResume:
-                // A Siri-class announcement (Watch workout feedback, AirPods
-                // readout) took the session. Park the capture and reclaim the
-                // mic as soon as the system releases it — `.ended` is not
-                // guaranteed and often omits `.shouldResume`, so probes drive
-                // the resume rather than the notification.
-                await pauseDictationForInterruption()
-            }
+            // A Siri-class announcement (Watch workout feedback, AirPods
+            // readout) took the session. Park the capture and reclaim the
+            // mic as soon as the system releases it — `.ended` is not
+            // guaranteed and often omits `.shouldResume`, so probes drive
+            // the resume rather than the notification.
+            await pauseDictationForInterruption()
         case .ended:
             audioSessionInterrupted = false
             if interruptionPause != nil {
@@ -1856,7 +1845,7 @@ private nonisolated enum AudioCommand: Sendable {
     case stopDictation
     case stopCapture(UUID)
     case cancelDictation
-    case interruption(AVAudioSession.InterruptionType, reasonValue: UInt?, wasSuspended: Bool)
+    case interruption(AVAudioSession.InterruptionType, reasonValue: UInt?)
     case mediaServicesReset
     case routeChanged([String: String])
     case resumePausedDictation(trigger: String)
