@@ -45,7 +45,7 @@ nonisolated enum DictationLibraryCloudProbe {
         defer { try? FileManager.default.removeItem(at: root) }
         let database = CKContainer(identifier: MumlaDataStore.cloudContainerIdentifier).privateCloudDatabase
         let store = try DictationLibraryStore(directory: root.appendingPathComponent("producer"), source: "synthetic-development-probe", capacityBytes: 16 * 1_024 * 1_024, containerIdentifier: MumlaDataStore.cloudContainerIdentifier)
-        guard try await store.refresh() == nil, let session = await store.accountSession() else { throw AudioArchiveError.invalidRecording }
+        guard try await store.refresh() == nil, let session = store.accountSession() else { throw AudioArchiveError.invalidRecording }
         var created: [CKRecord.ID] = []
         do {
             let term = "DictationProbe-\(UUID().uuidString)"
