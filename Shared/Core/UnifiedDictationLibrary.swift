@@ -114,10 +114,10 @@ final class UnifiedDictationLibrary {
             _ = try await store.recoverInterruptedCaptures()
             heldCaptures = try await store.heldCaptures().filter { $0.reason == .unverifiedPlan }
             let snapshot = try await store.refresh()
-            let session = await store.accountSession()
+            let session = store.accountSession()
             let state = await store.profileState()
-            if let session { try await store.validateAccountSession(session) }
-            guard await store.accountSession() == session else { throw DictationLibraryError.accountChanged }
+            if let session { try store.validateAccountSession(session) }
+            guard store.accountSession() == session else { throw DictationLibraryError.accountChanged }
             applyAccountSession(session)
             profile = snapshot?.profile
             profileState = state
@@ -171,7 +171,7 @@ final class UnifiedDictationLibrary {
 
     private func profileSaved(account: DictationAccountSession) async {
         guard accountSession == account else { return }
-        do { try await store.validateAccountSession(account) } catch { return }
+        do { try store.validateAccountSession(account) } catch { return }
         profileState = await store.profileState()
         if case .ready(let snapshot) = profileState {
             profile = snapshot.profile
@@ -244,7 +244,7 @@ final class UnifiedDictationLibrary {
         switch Self.dictationProfileSource(for: await store.profileState(), archivalConsentKnown: archivalConsentKnown) {
         case .sharedProfile:
             plan = try await currentPlan(context: context)
-            guard await store.accountSession() == frozenSession, accountSession == frozenSession else { throw DictationLibraryError.accountChanged }
+            guard store.accountSession() == frozenSession, accountSession == frozenSession else { throw DictationLibraryError.accountChanged }
         case .unverifiedProfile:
             var localProfile = DictationProfile(languages: [], dictionary: [])
             localProfile.archiveEnabled = true
@@ -274,13 +274,13 @@ final class UnifiedDictationLibrary {
 
     func refreshCatalog() async throws {
         guard let session = accountSession else { throw DictationLibraryError.accountUnavailable }
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         let reader = try archiveReader()
         try await reader.refresh()
         try await reader.publishPendingResults(session: session)
         let remote = try await reader.entries()
         let local = try await store.entries()
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         var combined = Dictionary(uniqueKeysWithValues: remote.map { ($0.id, $0) })
         for entry in local {
             combined[entry.id] = try combined[entry.id].map { try Self.merge(local: entry, remote: $0) } ?? entry
@@ -302,7 +302,7 @@ final class UnifiedDictationLibrary {
 
     func original(for id: UUID) async throws -> URL {
         guard let session = accountSession else { throw DictationLibraryError.accountUnavailable }
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         if try await store.ownership(ofCapture: id) == .otherAccount { throw DictationLibraryError.accountChanged }
         if let writer = captures[id], FileManager.default.fileExists(atPath: writer.originalURL.path) { return writer.originalURL }
         if let entry = try await store.entries().first(where: { $0.id == id }), let url = entry.originalURL,
@@ -312,7 +312,7 @@ final class UnifiedDictationLibrary {
 
     func localOriginals() async throws -> [VoiceHistoryRecording] {
         guard let session = accountSession else { throw DictationLibraryError.accountUnavailable }
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         return try await store.entries().compactMap { entry in
             guard let url = entry.originalURL, let finishedAt = entry.capture.finishedAt else { return nil }
             return VoiceHistoryRecording(url: url, startedAt: entry.capture.startedAt, finishedAt: finishedAt)
@@ -341,7 +341,7 @@ final class UnifiedDictationLibrary {
     }
 
     func releaseUploadedOriginals(session: DictationAccountSession) async throws {
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         _ = try await store.releasePublishedOriginals(finishedBefore: .now, session: session)
         publicationStatus = try await store.status()
         try await refreshArchive()
@@ -380,7 +380,7 @@ final class UnifiedDictationLibrary {
     func validateProviderCapture(_ id: UUID) async throws {
         if let prepared = plans[id], !prepared.plan.archiveEnabled {
             guard let session = prepared.session else { throw DictationLibraryError.accountUnavailable }
-            try await store.validateAccountSession(session)
+            try store.validateAccountSession(session)
             return
         }
         switch try await store.ownership(ofCapture: id) {
@@ -407,7 +407,7 @@ final class UnifiedDictationLibrary {
         -> (result: DictationResultVersion, source: String, unfilteredText: String?)
     {
         guard let session = accountSession else { throw DictationLibraryError.accountUnavailable }
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         let destination: ResultDestination
         switch try await store.ownership(ofCapture: id) {
         case .current, .held: destination = .producer
@@ -417,12 +417,12 @@ final class UnifiedDictationLibrary {
         guard let entry = entries.first(where: { $0.id == id }) else { throw DictationLibraryError.invalidCapture(id) }
         let plan = profile != nil ? try await currentPlan(context: entry.capture.plan.context) : entry.capture.plan
         let wav = try await OriginalAudio.providerWAV(from: original(for: id), fileType: .caf)
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         try Task.checkCancellation()
         let transcript = try await transcriber.transcribe(wav: wav, languageHints: plan.languages, customVocabulary: plan.dictionary)
         let result = try await recordProviderResult(destination: destination, captureID: id, text: transcript.text,
                                                     model: TranscriptionProviderType.dictation.batchResultModelID, plan: plan)
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         try Task.checkCancellation()
         try await refreshArchive()
         return (result, entry.capture.source, transcript.voices?.unfilteredText)
@@ -430,9 +430,9 @@ final class UnifiedDictationLibrary {
 
     func reseedRetainedLibrary() async throws {
         guard let session = accountSession else { throw DictationLibraryError.accountUnavailable }
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         _ = try await store.reseedPublication(session: session)
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         let report = try await archiveReader().reseedPublication(session: session)
         guard report.missingOriginalCaptureIDs.isEmpty else {
             throw SpeechKitError.invalidRequest(String(localized: "Restoration is incomplete: \(report.missingOriginalCaptureIDs.count) original recordings are unavailable."))
@@ -444,7 +444,7 @@ final class UnifiedDictationLibrary {
     func exportArchive() async throws -> URL {
         guard let session = accountSession else { throw DictationLibraryError.accountUnavailable }
         let result = try await onExportRequested()
-        try await store.validateAccountSession(session)
+        try store.validateAccountSession(session)
         lastExportURL = result
         return result
     }

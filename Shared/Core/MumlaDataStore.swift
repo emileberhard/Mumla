@@ -252,7 +252,7 @@ final class MumlaDataStore {
         await accountTask?.value
         guard container.configurations.allSatisfy({ !$0.isStoredInMemoryOnly }) else { throw LibraryAgentError.unavailable }
         guard let library, let session = library.accountSession else { throw LibraryAgentError.unavailable }
-        try await library.store.validateAccountSession(session)
+        try library.store.validateAccountSession(session)
         guard let lease = accountLease, lease.isActive, lease.ownerID == session.accountIdentifier,
               let sync = cloudSync else { throw LibraryAgentError.accountChanged }
         let hash = AccountPartition.directory(root: rootDirectory, ownerID: lease.ownerID).lastPathComponent
@@ -334,7 +334,7 @@ final class MumlaDataStore {
         default: throw LibraryAgentError.invalidRequest
         }
         guard lease.isActive else { throw LibraryAgentError.accountChanged }
-        try await library.store.validateAccountSession(session)
+        try library.store.validateAccountSession(session)
         guard lease.isActive else { throw LibraryAgentError.accountChanged }
         output["pendingHistoryChanges"] = try context.fetchCount(FetchDescriptor<HistorySyncChange>())
         output["pendingAudioChunks"] = try context.fetchCount(FetchDescriptor<AudioSyncChange>())

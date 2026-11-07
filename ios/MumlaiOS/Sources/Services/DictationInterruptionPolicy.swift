@@ -8,11 +8,6 @@ import Foundation
 /// in place and force-resumes on a probe schedule instead of finalizing.
 /// Platform-neutral on purpose: compiled into the macOS unit-test target.
 enum DictationInterruptionPolicy {
-    enum InterruptionBeganAction: Equatable {
-        case pauseAndAutoResume
-        case finalize
-    }
-
     /// Delays between resume attempts after an interruption begins. Reactivation
     /// is rejected until the interrupting system audio ends, so early probes are
     /// cheap failures. Cumulative wait (~25 s) stays inside one UIApplication
@@ -26,13 +21,4 @@ enum DictationInterruptionPolicy {
         .seconds(5),
         .seconds(10),
     ]
-
-    static func actionForInterruptionBegan(isStaleSuspensionNotice: Bool) -> InterruptionBeganAction {
-        // A delayed notification after app suspension describes an interruption
-        // that already happened; there is nothing live to wait out.
-        if isStaleSuspensionNotice {
-            return .finalize
-        }
-        return .pauseAndAutoResume
-    }
 }

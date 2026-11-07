@@ -3,14 +3,6 @@ import Testing
 
 @Suite("Dictation interruption policy")
 struct DictationInterruptionPolicyTests {
-    @Test func dictationPausesAndAutoResumes() {
-        #expect(DictationInterruptionPolicy.actionForInterruptionBegan(isStaleSuspensionNotice: false) == .pauseAndAutoResume)
-    }
-
-    @Test func staleSuspensionNoticeFinalizes() {
-        #expect(DictationInterruptionPolicy.actionForInterruptionBegan(isStaleSuspensionNotice: true) == .finalize)
-    }
-
     @Test func resumeWindowStaysInsideBackgroundTaskBudget() {
         // iOS grants roughly 30 seconds of background-task time; the probe
         // schedule must finalize the capture before that budget expires.
