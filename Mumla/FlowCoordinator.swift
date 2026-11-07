@@ -265,12 +265,15 @@ final class FlowCoordinator {
         }
     }
 
+    private(set) var voiceHistoryLearnedAt: Date?
+
     var voiceHistoryTrigger: VoiceHistoryTrigger { VoiceHistoryTrigger(partition: dataStore.partitionID, voices: voices) }
 
     func learnVoiceFromHistory() async {
         guard voices == .onlyMine else { return }
         do {
             guard let outcome = try await voiceProfiles.learnFromHistory() else { return }
+            voiceHistoryLearnedAt = .now
             if outcome.history.unreadable > 0 {
                 AppDiagnostics.warning("Learned voice from history with unreadable recordings", category: "voice_filter",
                                        measurements: outcome.measurements)

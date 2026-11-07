@@ -343,7 +343,7 @@ private struct VoicesSection: View {
                 }
             }
         }
-        .task { status = await coordinator.voiceProfileStatus() }
+        .task(id: coordinator.voiceHistoryLearnedAt) { status = await coordinator.voiceProfileStatus() }
     }
 }
 
