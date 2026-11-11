@@ -64,7 +64,7 @@ struct VoiceWireTests {
 struct VoiceSessionTests {
     private static let everyone = "Mine. Theirs."
 
-    @Test(.timeLimit(.minutes(1)), arguments: [
+    @Test(.serialized, .timeLimit(.minutes(1)), arguments: [
         (#"{"type":"voices_unavailable","id":"synthetic"}"#, "voices_unavailable"),
         (#"{"type":"voices","text":"Mine. Theirs.","id":"synthetic"}"#, "invalid_reply"),
         (nil, "deadline_exceeded"),
@@ -73,7 +73,9 @@ struct VoiceSessionTests {
         let service = try await ScriptedAccessService(voicesReply: reply, replyAfter: .voices)
         defer { service.stop() }
         let failures = OSAllocatedUnfairLock<[String]>(initialState: [])
-        let session = try await Self.session(origin: service.origin, failures: failures, trusted: true)
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = try await Self.session(origin: service.origin, directory: directory, failures: failures, trusted: true)
         let events = try await Self.dictateTwoVoices(into: session)
         var delivered: [String] = []
         for try await event in events {
@@ -91,7 +93,9 @@ struct VoiceSessionTests {
         let service = try await ScriptedAccessService(voicesReply: nil, replyAfter: .voices)
         defer { service.stop() }
         let failures = OSAllocatedUnfairLock<[String]>(initialState: [])
-        let session = try await Self.session(origin: service.origin, failures: failures, trusted: true)
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = try await Self.session(origin: service.origin, directory: directory, failures: failures, trusted: true)
         let events = try await Self.dictateTwoVoices(into: session)
         while await session.timing.resultReceivedAt == nil { try await Task.sleep(for: .milliseconds(10)) }
         await session.disconnect()
@@ -109,7 +113,9 @@ struct VoiceSessionTests {
         let service = try await ScriptedAccessService(voicesReply: nil, replyAfter: .finish)
         defer { service.stop() }
         let failures = OSAllocatedUnfairLock<[String]>(initialState: [])
-        let session = try await Self.session(origin: service.origin, failures: failures, trusted: false)
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = try await Self.session(origin: service.origin, directory: directory, failures: failures, trusted: false)
         let events = try await Self.dictateTwoVoices(into: session)
         var delivered: [String] = []
         for try await event in events {
@@ -122,15 +128,22 @@ struct VoiceSessionTests {
         await session.disconnect()
     }
 
-    private static func session(origin: URL, failures: OSAllocatedUnfairLock<[String]>, trusted: Bool) async throws -> GrantedRealtimeTranscriptionSession {
-        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    private static func session(origin: URL, directory: URL, failures: OSAllocatedUnfairLock<[String]>, trusted: Bool) async throws -> GrantedRealtimeTranscriptionSession {
         let store = VoiceProfileStore(accountDirectory: directory)
-        var payload = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(await store.profile())) as? [String: Any])
+        let profile: VoiceProfile
         if trusted {
-            payload["exemplars"] = (0..<5).map { _ in ["values": [Float(1)] + [Float](repeating: 0, count: 255)] }
-            payload["recentMatches"] = [Bool](repeating: true, count: 10)
+            let window = try #require(try await store.beginHistory())
+            let pcm = SpeakerFixtures.pcm16(try SpeakerFixtures.speech("en-teen-note"))
+            let fixture = SpeakerFixtures.repository.appending(path: "Evaluations/RealtimeTranscription/fixtures/en-teen-note.wav")
+            let recordings = (0..<15).map { index in
+                let start = window.end.addingTimeInterval(Double(index - 30) * 60)
+                return VoiceHistoryRecording(url: fixture, startedAt: start, finishedAt: start.addingTimeInterval(30))
+            }
+            let history = try await VoiceHistory.learn(from: recordings, in: window, decode: { _ in pcm })
+            profile = try #require(try await store.learnHistory(history.candidates, in: window))
+        } else {
+            profile = try await store.profile()
         }
-        let profile = try JSONDecoder().decode(VoiceProfile.self, from: JSONSerialization.data(withJSONObject: payload))
         try #require(profile.isTrusted == trusted)
         let voice = OnlyMyVoice(profile: profile, store: store, startedAt: .now) { stage, error in
             failures.withLock { $0.append("\(stage.rawValue):\(error.kind ?? error.typeName)") }

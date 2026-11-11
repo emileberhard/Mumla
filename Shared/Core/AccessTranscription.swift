@@ -305,7 +305,7 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         guard let stream, !isDisconnected else { throw CancellationError() }
         try await stream.finish()
         timing.finishSentAt = .now
-        await voiceCheck?.finish {
+        await voiceCheck?.finish { _ in
             try await stream.requestVoices()
             guard let phrases = try await stream.voices?.phrases else { throw VoiceFilterError.voicesUnavailable }
             return phrases

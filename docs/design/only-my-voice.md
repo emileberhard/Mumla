@@ -3,19 +3,50 @@
 Mumla defaults to Only Mine and learns its voice profile on the device. The
 engine, its model, rules, calibration and profile persistence are owned by
 SpeechKit's optional `SpeakerRecognition` product; see the
-[speaker recognition design](https://github.com/emileberhard/SpeechKit/blob/feat/speaker-recognition/docs/speaker-recognition.md).
+[speaker recognition design](https://github.com/emileberhard/SpeechKit/blob/3590785752845895dc3d3d4058844afe8bb7ebed/docs/speaker-recognition.md).
 Mumla owns the setting, access protocol, account partition, synced forget date,
 status wording, diagnostics and where everyone's text is retained.
 
 `AccessStream` decodes the service's `[offsetMs, durationMs]` word pairs into
 `SpeechKit.SpeakerPhrase` with typed ranges from audio start. The live session
 feeds a `VoiceCheck`, sends `finish` to the service, then lets the check request
-labels. It resolves the plain result with an added wait of 4 seconds plus
-5 milliseconds per second of admitted audio, capped at 6 seconds. Batch transcription uses the same
-package's one-shot filter and does not relearn replayed audio. Cancellation
+labels. The callback receives the admitted PCM16; Mumla ignores that argument
+because the access service already holds the audio. It resolves the plain result
+with an added wait of 4 seconds plus 5 milliseconds per second of admitted audio,
+capped at 6 seconds. Batch transcription uses the same package's one-shot filter and does not relearn replayed audio. Cancellation
 before delivery prevents handoff; teardown after delivery allows learning.
 Account changes retire the previous store before replacing it. Forget My Voice
 continues to sync `voiceForgottenAt`; earlier checks cannot filter or learn.
+
+### Recognition and learning
+
+With a trusted profile, the package watches voiced pieces and overlapping
+2-second windows every second. It requests labels when a piece or window
+matches the profile at 0.35 and either the piece detector fires or at least two
+windows score below 0.20 against the profile. A coherent mismatch alone cannot
+request a check with no recognizable owner. If the watcher is still checking
+when the ordinary transcript arrives, everyone's text is delivered immediately.
+
+A label's duration is the length of its merged word spans, including gaps of up
+to 150 milliseconds. Labels shorter than 1 second stay unjudged. A 1–2-second
+label can anchor only at 0.50 against the profile and can be dropped only below
+0.25 against both the profile and the recording's anchor. Labels of at least
+2 seconds retain the 0.35 anchor and rejection bars. Doubt, an empty labelled
+reply or no dropped label keeps the caller's original transcript.
+
+Learning requires at least 5 seconds of speech and always passes the standalone
+coherence gate: the existing piece rule, or two supported windows below 0.05
+against each other, identifies mixed voices. Each supported window must match
+another window at 0.50. A labelled reply can only withhold learning: more than
+one attributed speaker or any dropped label teaches neither exemplars nor trust
+observations. A single-speaker reply cannot override mixed-voice evidence.
+Profile mismatch alone never vetoes learning, so coherent misses can still
+reset a wrong profile. Batch replay does not learn the recording again.
+
+Recognition admits at most 600 seconds of audio. Beyond that bound it discards
+its recognition audio, does not request labels, filter a prefix or learn; normal
+capture and transcription continue. The service's separate retained-audio cap
+also remains in force.
 
 ### Service
 
@@ -130,15 +161,11 @@ regressions stay in Mumla; model and policy tests live in SpeechKit.
 
 ### Calibrated delivery budget
 
-The budget `min(6 s, 4 s + 5 ms per second of audio)` is based on 54 fresh
-labelled requests. Under 15 seconds of audio, the median was 0.87 seconds and
-the maximum 1.61; for 15–60 seconds, 1.60 and 2.65; for 60–120 seconds, 1.93
-and 2.60; for 120–600 seconds, 2.33 and 2.91. The minimum also covers the
-previously observed 2.165-second reply. Numeric `voice_labels_reply_ms`
+The budget `min(6 s, 4 s + 5 ms per second of audio)` is calibrated for the
+access service's retained-audio transport. Across 67 fresh labelled requests,
+the median reply was 1.589 seconds, p95 3.538 seconds and maximum 6.442 seconds.
+The budget covered 65 of 67 replies; two tail replies intentionally time out
+and deliver everyone. The package's design records the calibration's bounds
+and remaining short-interjection misses. Numeric `voice_labels_reply_ms`
 measurements accompany the existing decision metadata on every attempted
-live check so this transport policy can be checked against real traffic.
-
-Three later serial requests took 3.83 seconds for 10.4 seconds of audio, 1.25
-for 27.4, and 6.44 for 86.9. The final 4-second base covers 57 of the 58
-measured replies and fails open on the 6.44-second outlier; the earlier
-3-second base covered 56 of 58.
+live check so this policy can be checked against real traffic.
