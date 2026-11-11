@@ -967,7 +967,7 @@ final class FlowCoordinator {
                 "duration_ms": durationMilliseconds,
                 "realtime_session_id": result.diagnosticsSessionID,
                 "service_dictation_id": result.timing?.serviceDictationID ?? "none",
-            ]
+            ].merging(result.voices?.metadata ?? [:]) { _, new in new }
             AppDiagnostics.info(
                 "Pasting buffered realtime transcript",
                 category: "realtime",

@@ -9,9 +9,9 @@ do not sponsor or endorse Mumla.
 | Distribution | Component | License and notices |
 | --- | --- | --- |
 | macOS and iOS apps, keyboard extension | [Sentry Cocoa SDK 9.17.1](https://github.com/getsentry/sentry-cocoa/tree/9.17.1) | MIT; [license](LICENSES/sentry-cocoa.txt) and [Sentry's third-party notices](LICENSES/sentry-cocoa-THIRD_PARTY_NOTICES.md) for KSCrash (MIT), Yandex LLC code (MIT), fishhook (BSD-3-Clause) and Apple Original Code (APSL 2.0) |
-| macOS and iOS apps | [SpeechKit 0.2.3](https://github.com/emileberhard/SpeechKit/tree/d6951288386b78500d406d3adfaafaf3592ec4de), including its `DictationLibrary` product | MIT; [license](LICENSES/SpeechKit.txt) |
+| macOS and iOS apps | [SpeechKit revision c02e7d8](https://github.com/emileberhard/SpeechKit/tree/c02e7d81c543cde7e100f87b726dfdcf51fec157), including its `DictationLibrary` and `SpeakerRecognition` products | MIT; [license](LICENSES/SpeechKit.txt) |
 | macOS and iOS apps | [GrantKit 0.2.0](https://github.com/emileberhard/GrantKit/tree/95bf7f44c19e9ce8e2d0d311ab3a4af351893eb2) | MIT; [license](LICENSES/GrantKit.txt) |
-| macOS and iOS apps | [WeSpeaker ResNet34-LM speaker model](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM/tree/f0c48c298fd835726c27956a5d617bad7115627e) by the [WeSpeaker](https://github.com/wenet-e2e/wespeaker) project, trained on VoxCeleb2; Mumla converted it to Core ML with [`scripts/convert-speaker-model`](scripts/convert-speaker-model), stored its weights at 16-bit precision and palettized them to 8 bits | CC BY 4.0; [license](LICENSES/CC-BY-4.0.txt) |
+| macOS and iOS apps | [WeSpeaker ResNet34-LM speaker model](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM/tree/f0c48c298fd835726c27956a5d617bad7115627e) by the [WeSpeaker](https://github.com/wenet-e2e/wespeaker) project, trained on VoxCeleb2; converted to Core ML with [SpeechKit’s conversion script](https://github.com/emileberhard/SpeechKit/blob/c02e7d81c543cde7e100f87b726dfdcf51fec157/scripts/convert-speaker-model), stored its weights at 16-bit precision and palettized them to 8 bits | CC BY 4.0; [license](LICENSES/CC-BY-4.0.txt) |
 
 ## Apple Public Source License source availability
 

@@ -48,7 +48,9 @@ for the owner. Machine-specific values belong in ignored local files.
 | `.agents/skills/mumla-local-install/` | Replacing the locally installed macOS dev app |
 | `.xcode-version`, `scripts/select-xcode` | The Xcode that CI, the release and local `just` commands build with |
 
-`SpeechKit` is an exact-version-pinned public Swift package. GrantKit 0.2.0 is
+`SpeechKit` is a public Swift package, normally pinned to an exact version.
+The SpeakerRecognition adoption temporarily pins a pushed revision until its
+coordinated package release; restore the exact version before release. GrantKit 0.2.0 is
 pinned by revision and fetched over public HTTPS. It owns the guided permission
 flows and their text (`SystemPermission`, `PermissionGuide`,
 `PermissionMonitor`): Microphone, Input Monitoring, Accessibility and Screen
@@ -122,8 +124,12 @@ wizard's style rules.
 - Only Mine (default) filters with a voice profile once trusted
   ([design](docs/design/only-my-voice.md)). The profile never leaves its
   device and learns once from local originals; failure or doubt keeps
-  everyone's text. Changing the speaker model changes
-  `SpeakerEmbedder.modelVersion`.
+  everyone's text. SpeechKit's optional `SpeakerRecognition` product owns the
+  model, watcher, filter, learning, profile file store, history replay and
+  fail-open sequence. Mumla supplies the profile directory and decoder, maps
+  diagnostics, and retains the access protocol and transport wait budget.
+  Retire the old profile store before an account transition. Changing the speaker model changes
+  the model version owned by SpeechKit's `SpeakerRecognition` product.
 
 ### Data sync
 

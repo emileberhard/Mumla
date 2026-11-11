@@ -1,3 +1,4 @@
+import SpeakerRecognition
 import AVFAudio
 import CloudKit
 import Foundation

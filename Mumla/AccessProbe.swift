@@ -1,3 +1,4 @@
+import SpeakerRecognition
 #if DEBUG
 import CloudKit
 import Foundation
@@ -202,18 +203,16 @@ enum AccessProbe {
     private static func syntheticVoice(
         speaking fixture: URL, directory: URL, onFailure: @escaping @Sendable (VoiceFilterStage, DiagnosticError) -> Void
     ) async throws -> OnlyMyVoice {
-        guard let modelURL = SpeakerEmbedder.bundledModelURL else { throw VoiceFilterError.modelMissing }
-        let samples = PCM16Samples.floats(try await providerPCM(of: fixture))
-        let embedder = try SpeakerEmbedder(modelURL: modelURL)
+        let pcm = try await providerPCM(of: fixture)
         let store = VoiceProfileStore(accountDirectory: directory)
-        let window = 6 * AccessGrant.sampleRate
-        var profile = try await store.profile()
-        for start in stride(from: 0, through: samples.count - window, by: 5 * AccessGrant.sampleRate / 2) where !profile.isTrusted {
-            try await store.learn(try await embedder.embedding(of: Array(samples[start..<start + window])), startedAt: .now)
-            profile = try await store.profile()
+        guard let window = try await store.beginHistory() else { throw UntrustedSyntheticVoice() }
+        let recordings = (0..<15).map { index in
+            let startedAt = window.end.addingTimeInterval(Double(index - 30) * 60)
+            return VoiceHistoryRecording(url: fixture, startedAt: startedAt, finishedAt: startedAt.addingTimeInterval(30))
         }
-        guard profile.isTrusted else { throw UntrustedSyntheticVoice() }
-        return OnlyMyVoice(profile: profile, store: store, modelURL: modelURL, startedAt: .now, onFailure: onFailure)
+        let history = try await VoiceHistory.learn(from: recordings, in: window, decode: { _ in pcm })
+        guard let profile = try await store.learnHistory(history.candidates, in: window), profile.isTrusted else { throw UntrustedSyntheticVoice() }
+        return OnlyMyVoice(profile: profile, store: store, startedAt: .now, onFailure: onFailure)
     }
 
     private static func streamVoices(_ pcm: Data, access: MumlaAccess, voice: OnlyMyVoice, failures: OSAllocatedUnfairLock<[String]>) async throws -> Voices {
