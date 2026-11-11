@@ -10,6 +10,7 @@ struct RealtimeDictationResult: Sendable {
     let failure: (any Error)?
     let timing: DictationTiming?
     let voices: VoiceFilterOutcome?
+    let unfilteredText: String?
 }
 
 nonisolated struct DictationTiming: Equatable, Sendable {

@@ -56,8 +56,8 @@ enum AccessProbe {
         let path: String?; let labels: Int; let dropped: Int; let keptUser: Bool; let droppedOther: Bool; let keptEveryone: Bool; let failures: [String]
         var passed: Bool { path == "filtered" && labels >= 2 && dropped >= 1 && keptUser && droppedOther && keptEveryone && failures.isEmpty }
 
-        init(text: String, outcome: VoiceFilterOutcome?, failures: [String]) {
-            let delivered = text.lowercased(), everyone = outcome?.unfilteredText?.lowercased() ?? ""
+        init(text: String, outcome: VoiceFilterOutcome?, unfilteredText: String?, failures: [String]) {
+            let delivered = text.lowercased(), everyone = unfilteredText?.lowercased() ?? ""
             path = outcome?.path.rawValue
             labels = outcome?.labelCount ?? 0
             dropped = outcome?.droppedCount ?? 0
@@ -168,7 +168,7 @@ enum AccessProbe {
         receipt.voicesOnRequest = try await streamVoices(twoVoices, access: access, voice: voice, failures: failures)
         let batch = try await AccessTranscriber(access: access, voice: { voice })
             .transcribe(wav: try RealtimePCM16WAVFile.data(pcmData: twoVoices, sampleRate: AccessGrant.sampleRate), languageHints: languages, customVocabulary: vocabulary)
-        receipt.voicesDiarized = Voices(text: batch.text, outcome: batch.voices, failures: failures.withLock { $0 })
+        receipt.voicesDiarized = Voices(text: batch.text, outcome: batch.voices, unfilteredText: batch.unfilteredText, failures: failures.withLock { $0 })
 
         let paced = pacedPCM(speech: wav.dropFirst(PCM16WAVHeader.byteCount))
         receipt.stage = "paced-completion"
@@ -230,7 +230,7 @@ enum AccessProbe {
         }
         let completion = await RealtimeDictationCompletion.finish(dictation)
         if let error = completion.error { throw error }
-        return Voices(text: completion.text ?? "", outcome: await session.voices, failures: failures.withLock { $0 })
+        return Voices(text: completion.text ?? "", outcome: await session.voices, unfilteredText: await session.unfilteredText, failures: failures.withLock { $0 })
     }
 
     private static func pacedPCM(speech: Data) -> Data {

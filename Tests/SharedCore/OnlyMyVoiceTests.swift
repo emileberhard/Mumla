@@ -70,10 +70,10 @@ struct VoiceSessionTests {
         (nil, "deadline_exceeded"),
     ])
     func aVoicesPassThatFailsDeliversEveryoneAndReportsWhy(reply: String?, kind: String) async throws {
-        let service = try await ScriptedAccessService(voicesReply: reply)
+        let service = try await ScriptedAccessService(voicesReply: reply, replyAfter: .voices)
         defer { service.stop() }
         let failures = OSAllocatedUnfairLock<[String]>(initialState: [])
-        let session = try await Self.session(origin: service.origin, failures: failures)
+        let session = try await Self.session(origin: service.origin, failures: failures, trusted: true)
         let events = try await Self.dictateTwoVoices(into: session)
         var delivered: [String] = []
         for try await event in events {
@@ -88,10 +88,10 @@ struct VoiceSessionTests {
 
     @Test(.timeLimit(.minutes(1)))
     func disconnectingDuringTheVoicesPassDeliversNothingAndReportsNothing() async throws {
-        let service = try await ScriptedAccessService(voicesReply: nil)
+        let service = try await ScriptedAccessService(voicesReply: nil, replyAfter: .voices)
         defer { service.stop() }
         let failures = OSAllocatedUnfairLock<[String]>(initialState: [])
-        let session = try await Self.session(origin: service.origin, failures: failures)
+        let session = try await Self.session(origin: service.origin, failures: failures, trusted: true)
         let events = try await Self.dictateTwoVoices(into: session)
         while await session.timing.resultReceivedAt == nil { try await Task.sleep(for: .milliseconds(10)) }
         await session.disconnect()
@@ -104,14 +104,34 @@ struct VoiceSessionTests {
         #expect(failures.withLock { $0 }.isEmpty)
     }
 
-    private static func session(origin: URL, failures: OSAllocatedUnfairLock<[String]>) async throws -> GrantedRealtimeTranscriptionSession {
+    @Test(.timeLimit(.minutes(1)))
+    func aLearningProfileDoesNotReportAVoiceFilterOutcome() async throws {
+        let service = try await ScriptedAccessService(voicesReply: nil, replyAfter: .finish)
+        defer { service.stop() }
+        let failures = OSAllocatedUnfairLock<[String]>(initialState: [])
+        let session = try await Self.session(origin: service.origin, failures: failures, trusted: false)
+        let events = try await Self.dictateTwoVoices(into: session)
+        var delivered: [String] = []
+        for try await event in events {
+            if case .committedTranscript(let text) = event { delivered.append(text) }
+            if case .finalizationCompleted = event { break }
+        }
+        #expect(delivered == [Self.everyone])
+        #expect(await session.voices == nil)
+        #expect(failures.withLock { $0 }.isEmpty)
+        await session.disconnect()
+    }
+
+    private static func session(origin: URL, failures: OSAllocatedUnfairLock<[String]>, trusted: Bool) async throws -> GrantedRealtimeTranscriptionSession {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let store = VoiceProfileStore(accountDirectory: directory)
         var payload = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(await store.profile())) as? [String: Any])
-        payload["exemplars"] = (0..<5).map { _ in ["values": [Float(1)] + [Float](repeating: 0, count: 255)] }
-        payload["recentMatches"] = [Bool](repeating: true, count: 10)
+        if trusted {
+            payload["exemplars"] = (0..<5).map { _ in ["values": [Float(1)] + [Float](repeating: 0, count: 255)] }
+            payload["recentMatches"] = [Bool](repeating: true, count: 10)
+        }
         let profile = try JSONDecoder().decode(VoiceProfile.self, from: JSONSerialization.data(withJSONObject: payload))
-        try #require(profile.isTrusted)
+        try #require(profile.isTrusted == trusted)
         let voice = OnlyMyVoice(profile: profile, store: store, startedAt: .now) { stage, error in
             failures.withLock { $0.append("\(stage.rawValue):\(error.kind ?? error.typeName)") }
         }
@@ -139,7 +159,12 @@ nonisolated private final class ScriptedAccessService: Sendable {
     let origin: URL
     private let listener: NWListener
 
-    init(voicesReply: String?) async throws {
+    enum PlainReplyTrigger: Sendable, Equatable {
+        case finish
+        case voices
+    }
+
+    init(voicesReply: String?, replyAfter: PlainReplyTrigger) async throws {
         let parameters = NWParameters.tcp
         parameters.defaultProtocolStack.applicationProtocols.insert(NWProtocolWebSocket.Options(), at: 0)
         parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
@@ -147,7 +172,7 @@ nonisolated private final class ScriptedAccessService: Sendable {
         let queue = DispatchQueue(label: "scripted-access-service")
         listener.newConnectionHandler = { connection in
             connection.start(queue: queue)
-            Self.receive(on: connection, voicesReply: voicesReply)
+            Self.receive(on: connection, voicesReply: voicesReply, replyAfter: replyAfter)
         }
         let port = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt16, any Error>) in
             listener.stateUpdateHandler = { state in
@@ -170,14 +195,17 @@ nonisolated private final class ScriptedAccessService: Sendable {
 
     func stop() { listener.cancel() }
 
-    private static func receive(on connection: NWConnection, voicesReply: String?) {
+    private static func receive(on connection: NWConnection, voicesReply: String?, replyAfter: PlainReplyTrigger) {
         connection.receiveMessage { content, context, _, error in
             guard error == nil else { return connection.cancel() }
-            if let content, type(of: content, context: context) == "voices" {
-                send(#"{"type":"result","text":"Mine. Theirs.","id":"synthetic"}"#, on: connection)
-                if let voicesReply { send(voicesReply, on: connection) }
+            if let content {
+                let type = type(of: content, context: context)
+                if (type == "finish" && replyAfter == .finish) || (type == "voices" && replyAfter == .voices) {
+                    send(#"{"type":"result","text":"Mine. Theirs.","id":"synthetic"}"#, on: connection)
+                }
+                if type == "voices", let voicesReply { send(voicesReply, on: connection) }
             }
-            receive(on: connection, voicesReply: voicesReply)
+            receive(on: connection, voicesReply: voicesReply, replyAfter: replyAfter)
         }
     }
 

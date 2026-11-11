@@ -36,6 +36,7 @@ final class RealtimeDictationController {
     func stop(recordingDurationMilliseconds: Int) async -> RealtimeDictationResult {
         let completion = await RealtimeDictationCompletion.finish(dictation)
         let voices = await session?.voices
+        let unfilteredText = await session?.unfilteredText
         let metadata = diagnosticsMetadata(extra: [
             "fallback_reason": completion.fallbackReason ?? "none",
             "recording_duration_ms": String(recordingDurationMilliseconds),
@@ -57,7 +58,8 @@ final class RealtimeDictationController {
             fallbackReason: completion.fallbackReason,
             failure: completion.error,
             timing: await session?.timing,
-            voices: voices
+            voices: voices,
+            unfilteredText: unfilteredText
         )
     }
 

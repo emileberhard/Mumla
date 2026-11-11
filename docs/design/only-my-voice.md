@@ -114,7 +114,7 @@ the app cancels history work when its partition changes.
 
 ### Diagnostics
 
-Mumla maps `VoiceCheckFailure.underlying` through `DiagnosticError`, with a
+Mumla maps the original error through `DiagnosticError`, with a
 public stage of `filter` or `learning`. The existing `voice_filter` values remain
 `not_heard`, `too_long`, `undecided`, `kept_everyone`, `filtered` and `failed`,
 with `voice_labels` and `voice_labels_dropped` counts. Every attempted live

@@ -244,6 +244,7 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
     private var isDelivered = false
     private(set) var timing = DictationTiming(captureStartedAt: .now)
     private(set) var voices: VoiceFilterOutcome?
+    private(set) var unfilteredText: String?
 
     init(grant: Task<AccessGrant, any Error>, languageHints: [String], customVocabulary: [String], voice: OnlyMyVoice?,
          onAudioLimitReached: @escaping @Sendable () -> Void) {
@@ -255,7 +256,7 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         do {
             voiceCheck = try voice.map { voice in
                 try VoiceCheck(profile: voice.profile, store: voice.store, startedAt: voice.startedAt) { stage, failure in
-                    voice.onFailure(stage, DiagnosticError(failure.underlying))
+                    voice.onFailure(stage, DiagnosticError(failure))
                 }
             }
         } catch {
@@ -332,7 +333,8 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
             do {
                 let result = try await voiceCheck.resolve(everyone: reply.text, waitingUpTo: AccessVoiceCheck.waitBudget(forSamples: voiceSamples))
                 text = result.text
-                voices = result.outcome
+                voices = voice?.speakers == nil ? nil : result.outcome
+                unfilteredText = result.outcome.path == .filtered ? result.everyone : nil
                 timing.labelledReplyTime = result.labelledReplyTime
             } catch is CancellationError {
                 guard !isDisconnected else { return }
@@ -391,6 +393,7 @@ nonisolated struct AudioSampleBudget: Equatable {
 nonisolated struct AccessTranscript: Sendable {
     let text: String
     let voices: VoiceFilterOutcome?
+    let unfilteredText: String?
 }
 
 @MainActor
@@ -419,7 +422,7 @@ struct AccessTranscriber {
             do {
                 let reply = try await Self.upload(pcm, grant: grant, languages: languageHints, vocabulary: customVocabulary,
                                                   speakers: isTrusted ? .diarize : nil, deadline: .seconds(seconds) + Self.serviceMargin)
-                guard let voice, isTrusted else { return AccessTranscript(text: reply.text, voices: nil) }
+                guard let voice, isTrusted else { return AccessTranscript(text: reply.text, voices: nil, unfilteredText: nil) }
                 return await Self.filter(reply, pcm: pcm, voice: voice)
             } catch where attempt < Self.maximumAttempts && TranscriptionRecovery.isUndispatched(error) {
                 attempt += 1
@@ -430,9 +433,10 @@ struct AccessTranscriber {
     @concurrent nonisolated private static func filter(_ reply: AccessStreamReply, pcm: Data, voice: OnlyMyVoice) async -> AccessTranscript {
         let result = await VoiceCheck.filter(pcm16: pcm, phrases: reply.phrases, everyone: reply.text, profile: voice.profile,
                                              store: voice.store, startedAt: voice.startedAt) { stage, failure in
-            voice.onFailure(stage, DiagnosticError(failure.underlying))
+            voice.onFailure(stage, DiagnosticError(failure))
         }
-        return AccessTranscript(text: result.text, voices: result.outcome)
+        return AccessTranscript(text: result.text, voices: result.outcome,
+                                unfilteredText: result.outcome.path == .filtered ? result.everyone : nil)
     }
 
     nonisolated private static func upload(

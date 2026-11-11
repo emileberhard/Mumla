@@ -893,7 +893,7 @@ final class DictationCoordinator {
         if let lastChar = text.last, ".?!".contains(lastChar) {
             text.append(" ")
         }
-        return AccessTranscript(text: text, voices: transcript.voices)
+        return AccessTranscript(text: text, voices: transcript.voices, unfilteredText: transcript.unfilteredText)
     }
 
     // MARK: - Realtime Transcription
@@ -1057,6 +1057,7 @@ final class DictationCoordinator {
             do {
                 let text: String
                 var voices = result?.voices
+                var unfilteredText = result?.unfilteredText
                 if let realtimeText = result?.text, !realtimeText.isEmpty {
                     if let library = dataStore.library, library.plan(for: recordingID) != nil {
                         try await library.recordProviderOutput(realtimeText, captureID: recordingID, model: TranscriptionProviderType.dictation.libraryModelID)
@@ -1077,6 +1078,7 @@ final class DictationCoordinator {
                         let transcript = try await transcribe(wavData: wavData, recordingID: recordingID)
                         text = transcript.text
                         voices = transcript.voices
+                        unfilteredText = transcript.unfilteredText
                     case .canceled:
                         phase = .idle
                         return
@@ -1101,7 +1103,7 @@ final class DictationCoordinator {
                     phase = .idle
                     return
                 }
-                let entryID = dataStore.record(text: text, audioRecordingID: recordingID, unfilteredText: voices?.unfilteredText)
+                let entryID = dataStore.record(text: text, audioRecordingID: recordingID, unfilteredText: unfilteredText)
                 publishTranscript(text, entryID: entryID)
                 let handedOffAt = ContinuousClock.now
                 phase = .success

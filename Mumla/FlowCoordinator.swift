@@ -423,7 +423,7 @@ final class FlowCoordinator {
                 }
                 let transcript = try await transcribeRecoverableRecording(recording)
                 let text = transcript.text
-                dataStore.record(text: text, audioRecordingID: recording.id, unfilteredText: transcript.voices?.unfilteredText)
+                dataStore.record(text: text, audioRecordingID: recording.id, unfilteredText: transcript.unfilteredText)
                 recoveryStatusMessage = String(localized: "Recovered transcript updated.")
                 AppDiagnostics.info(
                     "Recoverable recording transcription retry succeeded",
@@ -514,7 +514,7 @@ final class FlowCoordinator {
                 return nil
             }
 
-            dataStore.record(text: text, audioRecordingID: recording.id, unfilteredText: recovered.voices?.unfilteredText)
+            dataStore.record(text: text, audioRecordingID: recording.id, unfilteredText: recovered.unfilteredText)
             state = .success
             transcript = text
             paste(text)
@@ -681,7 +681,7 @@ final class FlowCoordinator {
         if let lastChar = text.last, ".?!".contains(lastChar) {
             text.append(" ")
         }
-        return AccessTranscript(text: text, voices: transcript.voices)
+        return AccessTranscript(text: text, voices: transcript.voices, unfilteredText: transcript.unfilteredText)
     }
 
     private func showError(_ message: String) {
@@ -961,7 +961,7 @@ final class FlowCoordinator {
                 }
             }
             guard !Task.isCancelled else { return }
-            self.dataStore.record(text: text, audioRecordingID: recoverableRecording?.id, unfilteredText: result.voices?.unfilteredText)
+            self.dataStore.record(text: text, audioRecordingID: recoverableRecording?.id, unfilteredText: result.unfilteredText)
             let handedOffAt = ContinuousClock.now
             let measurements = DictationTiming.measurements(of: result.timing, stoppedAt: stoppedAt, handedOffAt: handedOffAt)
             let timingMetadata = [
