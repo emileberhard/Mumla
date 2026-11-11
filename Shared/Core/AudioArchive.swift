@@ -1,3 +1,4 @@
+import SpeakerRecognition
 import CloudKit
 import CryptoKit
 import Foundation

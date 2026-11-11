@@ -122,8 +122,17 @@ wizard's style rules.
 - Only Mine (default) filters with a voice profile once trusted
   ([design](docs/design/only-my-voice.md)). The profile never leaves its
   device and learns once from local originals; failure or doubt keeps
-  everyone's text. Changing the speaker model changes
-  `SpeakerEmbedder.modelVersion`.
+  everyone's text. SpeechKit's optional `SpeakerRecognition` product owns the
+  model, watcher, filter, learning, profile file store, history replay and
+  fail-open sequence. Mumla supplies the profile directory and decoder, maps
+  diagnostics, and retains the access protocol and transport wait budget.
+  Retire the old profile store before an account transition. The package watches
+  pieces and 2-second windows every second, requests labels on profile contrast,
+  and judges 1–2-second labels with stricter anchor and rejection bars. Its
+  standalone coherence gate always applies to learning; labelled replies can
+  only withhold it. Recognition stops at 600 seconds without truncating ordinary
+  capture. The access transport's added wait is `min(6 s, 4 s + 5 ms per second)`.
+  Changing the speaker model changes the package-owned model version.
 
 ### Data sync
 

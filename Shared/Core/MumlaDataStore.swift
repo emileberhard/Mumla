@@ -1,3 +1,4 @@
+import SpeakerRecognition
 import CloudKit
 import DictationLibrary
 import Observation
@@ -383,6 +384,7 @@ final class MumlaDataStore {
         cloudDeletionNeedsDecision = false
         cloudSync = nil
         let directory = AccountPartition.directory(root: rootDirectory, ownerID: ownerID)
+        voiceProfiles?.retire()
         voiceProfiles = ownerID.map { _ in VoiceProfileStore(accountDirectory: directory) }
         container = Self.makeContainer(directory: directory, onPersistenceError: onPersistenceError)
         container.mainContext.autosaveEnabled = false

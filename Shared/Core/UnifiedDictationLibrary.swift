@@ -1,3 +1,4 @@
+import SpeakerRecognition
 import DictationLibrary
 import Foundation
 import Observation
@@ -425,7 +426,7 @@ final class UnifiedDictationLibrary {
         try store.validateAccountSession(session)
         try Task.checkCancellation()
         try await refreshArchive()
-        return (result, entry.capture.source, transcript.voices?.unfilteredText)
+        return (result, entry.capture.source, transcript.unfilteredText)
     }
 
     func reseedRetainedLibrary() async throws {

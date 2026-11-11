@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: 2026-11-06
+Last updated: 2026-11-11
 
 Mumla turns your speech into text on Mac and iPhone. It has no sign-up or
 advertising, does not track you across other apps or websites, and sells no
@@ -54,11 +54,12 @@ your voice sounds, not what you said. The profile stays on that device. It is
 not synced to iCloud, not included in device backups and never sent anywhere,
 so each of your devices learns your voice on its own.
 
-While you dictate, Mumla compares the voices it hears with each other on the
-device. Once Mumla has learned your voice, the access service keeps each
-dictation's audio in memory until a few seconds after its transcript. Only when
-Mumla heard more than one voice does it ask the service to have Microsoft also
-tell the speakers apart, with the timing of each word; when you transcribe a
+While you dictate, Mumla compares the voices it hears with each other and,
+once learned, with your voice profile on the device. Once Mumla has learned
+your voice, the access service keeps each dictation's audio in memory until a
+few seconds after its transcript. When Mumla detects possible other voices,
+it asks the service to have Microsoft also tell the speakers apart, with the
+timing of each word; when you transcribe a
 saved recording again, it asks for the speakers in the same request. Mumla then
 compares each speaker with your profile on the device and leaves out the words
 of voices that are not yours. The full transcript, with everyone's words, stays

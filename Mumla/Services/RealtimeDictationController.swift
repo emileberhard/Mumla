@@ -62,7 +62,8 @@ final class RealtimeDictationController {
                 fallbackReason: "realtime_not_started",
                 failure: RealtimeDictationNotStarted(),
                 timing: nil,
-                voices: nil
+                voices: nil,
+                unfilteredText: nil
             )
         }
 
@@ -79,7 +80,8 @@ final class RealtimeDictationController {
                 fallbackReason: "realtime_not_started",
                 failure: RealtimeDictationNotStarted(),
                 timing: nil,
-                voices: nil
+                voices: nil,
+                unfilteredText: nil
             )
         }
         let completion = await RealtimeDictationCompletion.finish(dictation)
@@ -95,6 +97,7 @@ final class RealtimeDictationController {
         }
 
         let voices = await session?.voices
+        let unfilteredText = await session?.unfilteredText
         if completion.error == nil {
             AppDiagnostics.info(
                 "Realtime recording stopped",
@@ -115,7 +118,8 @@ final class RealtimeDictationController {
             fallbackReason: completion.fallbackReason,
             failure: completion.error,
             timing: timing,
-            voices: voices
+            voices: voices,
+            unfilteredText: unfilteredText
         )
     }
 

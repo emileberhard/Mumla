@@ -266,7 +266,7 @@ private struct SyntheticPrivateError: Error, LocalizedError, CustomStringConvert
     var errorDescription: String? { value }
 }
 
-private nonisolated final class DiagnosticEnvelopeProtocol: URLProtocol, @unchecked Sendable {
+private nonisolated final class DiagnosticEnvelopeProtocol: URLProtocol {
     static let envelopes = OSAllocatedUnfairLock(initialState: [Data]())
     static let arrival = OSAllocatedUnfairLock<AsyncStream<Data>.Continuation?>(initialState: nil)
 

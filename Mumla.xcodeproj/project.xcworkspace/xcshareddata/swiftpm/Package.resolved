@@ -1,5 +1,5 @@
 {
-  "originHash" : "2b34b52a5674a38874e519a2ae7c135f94558cc6dd9b3791b842acf9ef4d1837",
+  "originHash" : "c841c853671a53d2566ac279e682bd90c3c2c77b0a6da42ce1f8c8d9bcea1807",
   "pins" : [
     {
       "identity" : "sentry-cocoa",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/emileberhard/SpeechKit.git",
       "state" : {
-        "revision" : "b46e78e07f8d3872bca31dc817578a723d9140ae",
-        "version" : "0.5.0"
+        "revision" : "3590785752845895dc3d3d4058844afe8bb7ebed",
+        "version" : "0.6.0"
       }
     }
   ],

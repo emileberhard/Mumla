@@ -1,3 +1,4 @@
+import SpeakerRecognition
 import Foundation
 import SpeechKit
 
@@ -9,6 +10,7 @@ struct RealtimeDictationResult: Sendable {
     let failure: (any Error)?
     let timing: DictationTiming?
     let voices: VoiceFilterOutcome?
+    let unfilteredText: String?
 }
 
 nonisolated struct DictationTiming: Equatable, Sendable {
@@ -19,6 +21,7 @@ nonisolated struct DictationTiming: Equatable, Sendable {
     var finishSentAt: ContinuousClock.Instant?
     var resultReceivedAt: ContinuousClock.Instant?
     var serviceDictationID: String?
+    var labelledReplyTime: Duration?
 
     static func isSlow(stoppedAt: ContinuousClock.Instant, handedOffAt: ContinuousClock.Instant) -> Bool {
         handedOffAt - stoppedAt > slowHandoff
@@ -35,6 +38,7 @@ nonisolated struct DictationTiming: Equatable, Sendable {
             measurements["finish_to_result_ms"] = timing.resultReceivedAt.map { milliseconds(from: finishSentAt, to: $0) }
         }
         measurements["result_to_handoff_ms"] = timing.resultReceivedAt.map { milliseconds(from: $0, to: handedOffAt) }
+        measurements["voice_labels_reply_ms"] = timing.labelledReplyTime.map { Int($0 / .milliseconds(1)) }
         return measurements
     }
 

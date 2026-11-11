@@ -1,5 +1,6 @@
 import DictationLibrary
 import Foundation
+import SpeakerRecognition
 
 nonisolated enum VoiceSelection: String, CaseIterable, Identifiable, Sendable {
     case onlyMine
@@ -25,7 +26,6 @@ nonisolated enum VoiceSelection: String, CaseIterable, Identifiable, Sendable {
 nonisolated struct OnlyMyVoice: Sendable {
     let profile: VoiceProfile
     let store: VoiceProfileStore
-    let modelURL: URL
     let startedAt: Date
     let onFailure: @Sendable (VoiceFilterStage, DiagnosticError) -> Void
 
@@ -38,14 +38,12 @@ struct VoiceProfiles {
 
     func voice(onFailure: @escaping @Sendable (VoiceFilterStage, DiagnosticError) -> Void) async throws -> OnlyMyVoice? {
         guard let store = try await forgettingStore() else { return nil }
-        guard let modelURL = SpeakerEmbedder.bundledModelURL else { throw VoiceFilterError.modelMissing }
-        return OnlyMyVoice(profile: try await store.profile(), store: store, modelURL: modelURL, startedAt: .now, onFailure: onFailure)
+        return OnlyMyVoice(profile: try await store.profile(), store: store, startedAt: .now, onFailure: onFailure)
     }
 
     func learnFromHistory() async throws -> VoiceHistoryOutcome? {
         let partition = dataStore.partitionID
         guard let store = try await forgettingStore(), let window = try await store.beginHistory() else { return nil }
-        guard let modelURL = SpeakerEmbedder.bundledModelURL else { throw VoiceFilterError.modelMissing }
         let started = ContinuousClock.now
         let recordings: [VoiceHistoryRecording]
         do { recordings = try await dataStore.localOriginals() } catch DictationLibraryError.accountChanged {
@@ -54,7 +52,7 @@ struct VoiceProfiles {
             throw CancellationError()
         }
         guard dataStore.partitionID == partition else { throw CancellationError() }
-        let history = try await VoiceHistory.learn(from: recordings, in: window, modelURL: modelURL)
+        let history = try await VoiceHistory.learn(from: recordings, in: window, decode: { try await OriginalAudio.pcm16(from: $0) })
         try Task.checkCancellation()
         guard let learned = try await store.learnHistory(history.candidates, in: window) else { return nil }
         return VoiceHistoryOutcome(checked: history.checked, learned: history.candidates.count, unreadable: history.unreadable,
@@ -99,54 +97,26 @@ nonisolated enum VoiceProfileStatus: Sendable {
     }
 }
 
-nonisolated enum VoiceFilterStage: String, Sendable {
-    case filter
-    case learning
+nonisolated struct VoiceHistoryOutcome: Sendable {
+    let checked: Int
+    let learned: Int
+    let unreadable: Int
+    let isTrusted: Bool
+    let elapsed: Duration
+
+    var measurements: [String: Int] {
+        ["voice_history_checked": checked, "voice_history_learned": learned, "voice_history_unreadable": unreadable,
+         "voice_history_trusted": isTrusted ? 1 : 0, "voice_history_ms": Int(elapsed / .milliseconds(1))]
+    }
 }
 
-nonisolated struct VoiceFilterOutcome: Sendable {
-    enum Path: String, Sendable {
-        case notHeard = "not_heard"
-        case tooLong = "too_long"
-        case undecided
-        case keptEveryone = "kept_everyone"
-        case filtered
-        case failed
-    }
+nonisolated struct VoiceHistoryTrigger: Hashable {
+    let partition: UUID
+    let voices: VoiceSelection
+}
 
-    let path: Path
-    let labelCount: Int
-    let droppedCount: Int
-    let unfilteredText: String?
-
-    static let notHeard = Self(path: .notHeard, labelCount: 0, droppedCount: 0, unfilteredText: nil)
-    static let tooLong = Self(path: .tooLong, labelCount: 0, droppedCount: 0, unfilteredText: nil)
-    static let undecided = Self(path: .undecided, labelCount: 0, droppedCount: 0, unfilteredText: nil)
-    static let failed = Self(path: .failed, labelCount: 0, droppedCount: 0, unfilteredText: nil)
-
-    var metadata: [String: String] {
+extension VoiceFilterOutcome {
+    nonisolated var metadata: [String: String] {
         ["voice_filter": path.rawValue, "voice_labels": String(labelCount), "voice_labels_dropped": String(droppedCount)]
-    }
-}
-
-extension VoiceFilter {
-    static func deadline(forSamples samples: Int) -> Duration {
-        .seconds(2) + .milliseconds(samples * 5 / KaldiFilterbank.sampleRate)
-    }
-
-    static func apply(_ voices: AccessStreamReply, everyone: String, audio: SpeakerAudio, profile: SpeakerEmbedding)
-        async throws -> (text: String, outcome: VoiceFilterOutcome)
-    {
-        let phrases = voices.phrases ?? []
-        let labels = labels(in: phrases)
-        var embeddings: [Int: SpeakerEmbedding] = [:]
-        for label in labels where label.isJudged {
-            embeddings[label.speaker] = try await audio.embedding(of: label.evidenceSamples(sampleRate: KaldiFilterbank.sampleRate))
-        }
-        guard let kept = keptSpeakers(of: labels, embeddings: embeddings, profile: profile) else {
-            return (everyone, VoiceFilterOutcome(path: .keptEveryone, labelCount: labels.count, droppedCount: 0, unfilteredText: nil))
-        }
-        return (text(of: phrases, keeping: kept), VoiceFilterOutcome(path: .filtered, labelCount: labels.count,
-                                                                    droppedCount: labels.count - kept.count, unfilteredText: everyone))
     }
 }
