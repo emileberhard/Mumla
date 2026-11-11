@@ -10,8 +10,8 @@ status wording, diagnostics and where everyone's text is retained.
 `AccessStream` decodes the service's `[offsetMs, durationMs]` word pairs into
 `SpeechKit.SpeakerPhrase` with typed ranges from audio start. The live session
 feeds a `VoiceCheck`, sends `finish` to the service, then lets the check request
-labels. It resolves the plain result with an added wait of 2 seconds plus
-5 milliseconds per second of admitted audio. Batch transcription uses the same
+labels. It resolves the plain result with an added wait of 4 seconds plus
+5 milliseconds per second of admitted audio, capped at 6 seconds. Batch transcription uses the same
 package's one-shot filter and does not relearn replayed audio. Cancellation
 before delivery prevents handoff; teardown after delivery allows learning.
 Account changes retire the previous store before replacing it. Forget My Voice
@@ -127,3 +127,18 @@ through the real session, package watcher, service and filter with a trusted
 synthetic profile, then diarizes the same mix in a batch request. Both must
 drop the second voice and retain the first. Wire decoding and lifecycle
 regressions stay in Mumla; model and policy tests live in SpeechKit.
+
+### Calibrated delivery budget
+
+The budget `min(6 s, 4 s + 5 ms per second of audio)` is based on 54 fresh
+labelled requests. Under 15 seconds of audio, the median was 0.87 seconds and
+the maximum 1.61; for 15–60 seconds, 1.60 and 2.65; for 60–120 seconds, 1.93
+and 2.60; for 120–600 seconds, 2.33 and 2.91. The minimum also covers the
+previously observed 2.165-second reply. Numeric `voice_labels_reply_ms`
+measurements accompany the existing decision metadata on every attempted
+live check so this transport policy can be checked against real traffic.
+
+Three later serial requests took 3.83 seconds for 10.4 seconds of audio, 1.25
+for 27.4, and 6.44 for 86.9. The final 4-second base covers 57 of the 58
+measured replies and fails open on the 6.44-second outlier; the earlier
+3-second base covered 56 of 58.

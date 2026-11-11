@@ -330,7 +330,7 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         var text = reply.text
         if let voiceCheck {
             do {
-                let result = try await voiceCheck.resolve(everyone: reply.text, waitingUpTo: AccessVoiceCheck.deadline(forSamples: voiceSamples))
+                let result = try await voiceCheck.resolve(everyone: reply.text, waitingUpTo: AccessVoiceCheck.waitBudget(forSamples: voiceSamples))
                 text = result.text
                 voices = result.outcome
                 timing.labelledReplyTime = result.labelledReplyTime
@@ -367,8 +367,8 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
 }
 
 nonisolated enum AccessVoiceCheck {
-    static func deadline(forSamples samples: Int) -> Duration {
-        .seconds(2) + .milliseconds(samples * 5 / AccessGrant.sampleRate)
+    static func waitBudget(forSamples samples: Int) -> Duration {
+        min(.seconds(6), .seconds(4) + .milliseconds(samples * 5 / AccessGrant.sampleRate))
     }
 }
 

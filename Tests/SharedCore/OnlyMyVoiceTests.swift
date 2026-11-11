@@ -193,3 +193,11 @@ nonisolated private final class ScriptedAccessService: Sendable {
         connection.send(content: Data(text.utf8), contentContext: context, isComplete: true, completion: .idempotent)
     }
 }
+
+@Suite("Voice budget")
+struct VoiceBudgetTests {
+    @Test(arguments: [(0, 4_000), (30, 4_150), (600, 6_000), (1_800, 6_000)])
+    func theAddedWaitUsesTheCalibratedMinimumAndCap(seconds: Int, milliseconds: Int) {
+        #expect(AccessVoiceCheck.waitBudget(forSamples: seconds * AccessGrant.sampleRate) == .milliseconds(milliseconds))
+    }
+}
