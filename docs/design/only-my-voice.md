@@ -3,7 +3,7 @@
 Mumla defaults to Only Mine and learns its voice profile on the device. The
 engine, its model, rules, calibration and profile persistence are owned by
 SpeechKit's optional `SpeakerRecognition` product; see the
-[speaker recognition design](https://github.com/emileberhard/SpeechKit/blob/3590785752845895dc3d3d4058844afe8bb7ebed/docs/speaker-recognition.md).
+[speaker recognition design](https://github.com/emileberhard/SpeechKit/blob/0.6.0/docs/speaker-recognition.md).
 Mumla owns the setting, access protocol, account partition, synced forget date,
 status wording, diagnostics and where everyone's text is retained.
 

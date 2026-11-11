@@ -48,9 +48,7 @@ for the owner. Machine-specific values belong in ignored local files.
 | `.agents/skills/mumla-local-install/` | Replacing the locally installed macOS dev app |
 | `.xcode-version`, `scripts/select-xcode` | The Xcode that CI, the release and local `just` commands build with |
 
-`SpeechKit` is a public Swift package, normally pinned to an exact version.
-The SpeakerRecognition adoption temporarily pins a pushed revision until its
-coordinated package release; restore the exact version before release. GrantKit 0.2.0 is
+`SpeechKit` is an exact-version-pinned public Swift package. GrantKit 0.2.0 is
 pinned by revision and fetched over public HTTPS. It owns the guided permission
 flows and their text (`SystemPermission`, `PermissionGuide`,
 `PermissionMonitor`): Microphone, Input Monitoring, Accessibility and Screen
