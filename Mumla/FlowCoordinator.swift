@@ -1,3 +1,4 @@
+import SpeakerRecognition
 import DictationLibrary
 import AVFoundation
 import AppKit
