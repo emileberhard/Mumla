@@ -76,7 +76,7 @@ struct VoiceSessionTests {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let session = try await Self.session(origin: service.origin, directory: directory, failures: failures, trusted: true)
-        let events = try await Self.dictateTwoVoices(into: session)
+        let events = try await Self.dictate(["en-teen-note", "en-landlord-email"], into: session)
         var delivered: [String] = []
         for try await event in events {
             if case .committedTranscript(let text) = event { delivered.append(text) }
@@ -96,7 +96,7 @@ struct VoiceSessionTests {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let session = try await Self.session(origin: service.origin, directory: directory, failures: failures, trusted: true)
-        let events = try await Self.dictateTwoVoices(into: session)
+        let events = try await Self.dictate(["en-teen-note", "en-landlord-email"], into: session)
         while await session.timing.resultReceivedAt == nil { try await Task.sleep(for: .milliseconds(10)) }
         await session.disconnect()
         var delivered: [String] = []
@@ -109,14 +109,14 @@ struct VoiceSessionTests {
     }
 
     @Test(.timeLimit(.minutes(1)))
-    func aLearningProfileDoesNotReportAVoiceFilterOutcome() async throws {
+    func aLearningProfileSendsNoSpeakerRequestAndReportsNoVoiceFilterOutcome() async throws {
         let service = try await ScriptedAccessService(voicesReply: nil, replyAfter: .finish)
         defer { service.stop() }
         let failures = OSAllocatedUnfairLock<[String]>(initialState: [])
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let session = try await Self.session(origin: service.origin, directory: directory, failures: failures, trusted: false)
-        let events = try await Self.dictateTwoVoices(into: session)
+        let events = try await Self.dictate(["en-teen-note", "en-landlord-email"], into: session)
         var delivered: [String] = []
         for try await event in events {
             if case .committedTranscript(let text) = event { delivered.append(text) }
@@ -125,6 +125,27 @@ struct VoiceSessionTests {
         #expect(delivered == [Self.everyone])
         #expect(await session.voices == nil)
         #expect(failures.withLock { $0 }.isEmpty)
+        #expect(service.received.withLock { $0 }.allSatisfy { $0.type != "voices" && !$0.namesSpeakers })
+        await session.disconnect()
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func aTrustedProfileHearingOneVoiceDeliversThePlainResultWithoutAVoicesRequest() async throws {
+        let service = try await ScriptedAccessService(voicesReply: nil, replyAfter: .finish)
+        defer { service.stop() }
+        let failures = OSAllocatedUnfairLock<[String]>(initialState: [])
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = try await Self.session(origin: service.origin, directory: directory, failures: failures, trusted: true)
+        let events = try await Self.dictate(["en-teen-note"], into: session)
+        var delivered: [String] = []
+        for try await event in events {
+            if case .committedTranscript(let text) = event { delivered.append(text) }
+            if case .finalizationCompleted = event { break }
+        }
+        #expect(delivered == [Self.everyone])
+        #expect(failures.withLock { $0 }.isEmpty)
+        #expect(service.received.withLock { $0 }.allSatisfy { $0.type != "voices" })
         await session.disconnect()
     }
 
@@ -153,12 +174,12 @@ struct VoiceSessionTests {
                                                    onAudioLimitReached: {})
     }
 
-    private static func dictateTwoVoices(into session: GrantedRealtimeTranscriptionSession)
+    private static func dictate(_ fixtures: [String], into session: GrantedRealtimeTranscriptionSession)
         async throws -> AsyncThrowingStream<RealtimeTranscriptionEvent, any Error>
     {
         let events = try await session.connectTranscription()
         var samples: [Float] = []
-        for name in ["en-teen-note", "en-landlord-email"] { samples += try SpeakerFixtures.speech(name) + SpeakerFixtures.silence }
+        for name in fixtures { samples += try SpeakerFixtures.speech(name) + SpeakerFixtures.silence }
         let pcm = SpeakerFixtures.pcm16(samples)
         for offset in stride(from: 0, to: pcm.count, by: 3_200) {
             try await session.sendAudioChunk(pcm.subdata(in: offset..<min(offset + 3_200, pcm.count)))
@@ -169,7 +190,13 @@ struct VoiceSessionTests {
 }
 
 nonisolated private final class ScriptedAccessService: Sendable {
+    struct Message: Sendable {
+        let type: String
+        let namesSpeakers: Bool
+    }
+
     let origin: URL
+    let received: OSAllocatedUnfairLock<[Message]>
     private let listener: NWListener
 
     enum PlainReplyTrigger: Sendable, Equatable {
@@ -183,9 +210,10 @@ nonisolated private final class ScriptedAccessService: Sendable {
         parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
         let listener = try NWListener(using: parameters)
         let queue = DispatchQueue(label: "scripted-access-service")
+        let received = OSAllocatedUnfairLock<[Message]>(initialState: [])
         listener.newConnectionHandler = { connection in
             connection.start(queue: queue)
-            Self.receive(on: connection, voicesReply: voicesReply, replyAfter: replyAfter)
+            Self.receive(on: connection, voicesReply: voicesReply, replyAfter: replyAfter, received: received)
         }
         let port = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt16, any Error>) in
             listener.stateUpdateHandler = { state in
@@ -203,30 +231,33 @@ nonisolated private final class ScriptedAccessService: Sendable {
             listener.start(queue: queue)
         }
         self.listener = listener
+        self.received = received
         origin = try #require(URL(string: "http://localhost:\(port)"))
     }
 
     func stop() { listener.cancel() }
 
-    private static func receive(on connection: NWConnection, voicesReply: String?, replyAfter: PlainReplyTrigger) {
+    private static func receive(on connection: NWConnection, voicesReply: String?, replyAfter: PlainReplyTrigger,
+                                received: OSAllocatedUnfairLock<[Message]>) {
         connection.receiveMessage { content, context, _, error in
             guard error == nil else { return connection.cancel() }
-            if let content {
-                let type = type(of: content, context: context)
-                if (type == "finish" && replyAfter == .finish) || (type == "voices" && replyAfter == .voices) {
+            if let content, let message = message(in: content, context: context) {
+                received.withLock { $0.append(message) }
+                if (message.type == "finish" && replyAfter == .finish) || (message.type == "voices" && replyAfter == .voices) {
                     send(#"{"type":"result","text":"Mine. Theirs.","id":"synthetic"}"#, on: connection)
                 }
-                if type == "voices", let voicesReply { send(voicesReply, on: connection) }
+                if message.type == "voices", let voicesReply { send(voicesReply, on: connection) }
             }
-            receive(on: connection, voicesReply: voicesReply, replyAfter: replyAfter)
+            receive(on: connection, voicesReply: voicesReply, replyAfter: replyAfter, received: received)
         }
     }
 
-    private static func type(of content: Data, context: NWConnection.ContentContext?) -> String? {
+    private static func message(in content: Data, context: NWConnection.ContentContext?) -> Message? {
         guard let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata,
               metadata.opcode == .text,
-              let message = try? JSONSerialization.jsonObject(with: content) as? [String: Any] else { return nil }
-        return message["type"] as? String
+              let json = try? JSONSerialization.jsonObject(with: content) as? [String: Any],
+              let type = json["type"] as? String else { return nil }
+        return Message(type: type, namesSpeakers: json["speakers"] != nil)
     }
 
     private static func send(_ text: String, on connection: NWConnection) {
