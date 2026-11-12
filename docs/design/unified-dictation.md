@@ -1,10 +1,11 @@
 # Unified dictation
 
-SpeechKit 0.2.2 owns the optional `DictationLibrary` product. Mumla edits the
+SpeechKit owns the optional `DictationLibrary` product. Mumla edits the
 shared personal profile and dictionary and browses recordings made by itself
 and by other speech apps that use the same library, such as RemoteCoder and
-AgenTTY. Each producer publishes directly while it is active; opening Mumla on
-the recording device is not required for publication.
+AgenTTY. Each producer publishes directly; opening Mumla on the recording
+device is not required for publication. Mumla continues finishing and publication
+through the iOS app's available background time.
 
 Each producer owns a private, account-bound capture store and durable outbox.
 The capture ID and recoverable PCM journal exist before recording starts.
@@ -36,7 +37,9 @@ until the store is at most half full. Held, unacknowledged and missing-cloud
 originals stay local. Free Uploaded Local Audio releases the rest on request.
 The optional macOS archive role retains a full
 replica and composes unified and confirmed legacy exports within a 64 GiB
-budget. Sealed manifests use Unix-epoch seconds and checksummed file lists. The
+budget. `CombinedArchiveExporter` seals them under
+`CombinedDictationExports/<account-hash>/<timestamp-UUID>`. Derived export snapshots keep the latest two. Sealed manifests use Unix-epoch
+seconds and checksummed file lists. The
 [backup CLI](dictation-library-backup.md) retains verified recovery points
 within its own 96 GiB budget. Cloud acknowledgment, a retained replica and an
 independently verified backup are separate states. Intentional cloud deletion
@@ -104,3 +107,37 @@ original finalizations even when no gateway targets remain.
 Normal History includes shared captures from other producers through
 account-bound SwiftData read models, with audio fetched only on request. See
 [agent library access](library-agent-tools.md) for the command contract.
+
+## Publication lifetime and diagnostics
+
+The library owns one coalesced producer task. Sealing enters its background
+work owner before `finish()` starts and admits publication before releasing
+that work. Result writes follow the same pattern, so overlapping operations
+share one UIKit background assertion until idle. Expiration cancels the pass
+and ends the assertion. Finishing a seal after expiration cannot start another
+pass in that expired work interval; durable originals and receipts let later
+admitted work resume.
+The Mac implementation needs no UIKit assertion.
+
+One helper calls `publishPending()` and records pending-before/after, held and
+failure counts, duration and outcome through the host diagnostics. At most three
+capture failures include only UUID, typed case, domain and numeric code via
+`DiagnosticError`; no descriptions, account identifiers or dictation content
+enter these records. Foreground refresh no longer runs recovery separately:
+SpeechKit's pass owns recovery before account verification, newest-first
+publication, chunk-before-capture-before-result ordering, retries and receipts.
+
+The Development-only synthetic CloudKit probe observes publication from a
+second reader and immediately verifies any visible capture's original. It
+resets local receipts and proves replay acknowledges every record without
+changing its server change tag. A different-hash capture conflict leaves only
+that capture pending while a healthy capture publishes. These checks run inside
+the probe's existing signature, absent-profile and temporary-directory isolation;
+cleanup targets only its synthetic Development records. Signed `--dictation-library list|search|audio` commands run before normal app
+initialization and return JSON with account, freshness and errors. They read
+through a separate temporary archive reader and never open a producer spool.
+`MUMLA_LIBRARY_PROBE=1` refuses a non-Development signature.
+The keyboard has no producer or CloudKit store.
+
+Apple references: [CloudKit request configuration](https://developer.apple.com/documentation/cloudkit/ckdatabase/configuredwith(configuration:group:body:)-637p1)
+and [extending background execution](https://developer.apple.com/documentation/uikit/extending-your-app-s-background-execution-time).

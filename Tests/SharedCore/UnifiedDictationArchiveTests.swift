@@ -14,12 +14,16 @@ struct UnifiedDictationArchiveTests {
         profile.archiveEnabled = true
         let plan = DictationPlan(unverifiedProfile: profile, context: .prose, capabilities: try UnifiedDictationLibrary.capabilities())
         let capture = try await library.beginCapture(plan: plan)
-        let writer = try OriginalAudioWriter(dictation: .init(id: capture.id, plan: plan, writer: capture))
+        let host = UnifiedDictationLibrary(store: library, rootDirectory: directory, background: TestDictationBackgroundExecution(), vocabulary: { [] },
+            onAccountChange: { _ in }, onExportRequested: { throw DictationLibraryError.profileUnavailable }, onArchiveRoleChanged: {})
+        let writer = try OriginalAudioWriter(dictation: .init(id: capture.id, plan: plan, writer: capture, library: host))
         let file = try AVAudioFile(forReading: SyntheticSpeechFixture.url)
         let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
         try file.read(into: buffer)
         writer.write(buffer)
         let original = try await writer.finishArchived()
+        do { _ = try await host.publish() }
+        catch DictationLibraryError.accountUnavailable {}
         let wav = try await OriginalAudio.providerWAV(from: original, fileType: .caf)
         #expect(PCM16WAVHeader.sampleCount(of: wav, sampleRate: AccessGrant.sampleRate) != nil)
         let text = "Synthetic transcript."

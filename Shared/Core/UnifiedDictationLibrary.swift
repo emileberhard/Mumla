@@ -73,6 +73,12 @@ final class UnifiedDictationLibrary {
             onArchiveRoleChanged()
         }
     }
+    @ObservationIgnored private var publicationRequested = false
+    @ObservationIgnored private var publicationTask: Task<DictationPublicationStatus, any Error>?
+    @ObservationIgnored private let background: any DictationBackgroundExecution
+    @ObservationIgnored private lazy var work = DictationLibraryWork(background: background) { [weak self] in
+        self?.publicationTask?.cancel()
+    }
     private var accountTask: Task<Void, Never>?
     private var reader: DictationArchive?
     private let vocabulary: @MainActor () -> [String]
@@ -89,10 +95,12 @@ final class UnifiedDictationLibrary {
 
     init(store: DictationLibraryStore,
          rootDirectory: URL,
+         background: any DictationBackgroundExecution,
          vocabulary: @escaping @MainActor () -> [String],
          onAccountChange: @escaping @MainActor (DictationAccountSession?) -> Void,
          onExportRequested: @escaping @MainActor () async throws -> URL,
          onArchiveRoleChanged: @escaping @MainActor () -> Void) {
+        self.background = background
         self.store = store
         self.rootDirectory = rootDirectory
         self.vocabulary = vocabulary
@@ -112,7 +120,6 @@ final class UnifiedDictationLibrary {
         isRefreshing = true
         defer { isRefreshing = false }
         do {
-            _ = try await store.recoverInterruptedCaptures()
             heldCaptures = try await store.heldCaptures().filter { $0.reason == .unverifiedPlan }
             let snapshot = try await store.refresh()
             let session = store.accountSession()
@@ -129,14 +136,13 @@ final class UnifiedDictationLibrary {
             for entry in try await store.entries() where plans[entry.id] == nil {
                 plans[entry.id] = (entry.capture.plan, session)
             }
-            try await store.publishPending()
-            publicationStatus = try await store.status()
+            publicationStatus = try await publish()
             heldCaptures = try await store.heldCaptures().filter { $0.reason == .unverifiedPlan }
             lastError = nil
         } catch {
             profileState = await store.profileState()
             publicationStatus = try? await store.status()
-            lastError = error.localizedDescription
+            if !(error is CancellationError) { lastError = error.localizedDescription }
         }
     }
 
@@ -219,8 +225,7 @@ final class UnifiedDictationLibrary {
     func reconcileHeldCapture(_ id: UUID, expectedAccount: DictationAccountSession) async throws {
         try await store.reconcileHeldCapture(id: id, session: expectedAccount)
         heldCaptures = try await store.heldCaptures().filter { $0.reason == .unverifiedPlan }
-        try await store.publishPending()
-        publicationStatus = try await store.status()
+        publicationStatus = try await publish()
         try await refreshArchive()
     }
 
@@ -232,10 +237,11 @@ final class UnifiedDictationLibrary {
         )
     }
 
-    struct PreparedCapture: Sendable {
+    nonisolated struct PreparedCapture: Sendable {
         let id: UUID
         let plan: DictationPlan
         let writer: DictationCaptureWriter?
+        let library: UnifiedDictationLibrary
     }
 
     func prepareCapture(context: DictationContext) async throws -> PreparedCapture? {
@@ -257,7 +263,7 @@ final class UnifiedDictationLibrary {
         let id = writer?.id ?? UUID()
         if let writer { captures[id] = writer }
         plans[id] = (plan, frozenSession)
-        return PreparedCapture(id: id, plan: plan, writer: writer)
+        return PreparedCapture(id: id, plan: plan, writer: writer, library: self)
     }
 
     private func currentPlan(context: DictationContext) async throws -> DictationPlan {
@@ -332,13 +338,91 @@ final class UnifiedDictationLibrary {
 
     func plan(for id: UUID) -> DictationPlan? { plans[id]?.plan }
 
-    func originalDidFinish() {
-        Task {
+    func finish(_ writer: DictationCaptureWriter) async throws {
+        try await work.perform {
             do {
-                try await store.publishPending()
-                publicationStatus = try await store.status()
-            } catch { lastError = error.localizedDescription }
+                _ = try await writer.finish()
+                requestPublication()
+            } catch DictationLibraryError.noAudio {
+                notice("Dictation ended without audio", metadata: ["capture_id": writer.id.uuidString])
+                throw DictationLibraryError.noAudio
+            }
         }
+    }
+
+    @discardableResult
+    private func requestPublication() -> Task<DictationPublicationStatus, any Error> {
+        publicationRequested = true
+        if let publicationTask { return publicationTask }
+        work.begin()
+        guard work.canPublish else {
+            publicationRequested = false
+            work.end()
+            return Task { throw CancellationError() }
+        }
+        let task = Task { [self] in
+            defer { publicationTask = nil; publicationRequested = false; work.end() }
+            do {
+                var status: DictationPublicationStatus
+                repeat {
+                    try Task.checkCancellation()
+                    publicationRequested = false
+                    status = try await performPublication()
+                } while publicationRequested
+                return status
+            } catch is CancellationError { throw CancellationError() }
+            catch { lastError = error.localizedDescription; throw error }
+        }
+        publicationTask = task
+        return task
+    }
+
+    @discardableResult
+    func publish() async throws -> DictationPublicationStatus {
+        try await requestPublication().value
+    }
+
+    private func performPublication() async throws -> DictationPublicationStatus {
+        let start = ContinuousClock.now
+        var before: DictationPublicationStatus?
+        do {
+            before = try await store.status()
+            let after = try await store.publishPending()
+            publicationStatus = after
+            logPublication(before: before, after: after, start: start, error: nil)
+            return after
+        } catch {
+            let after = try? await store.status()
+            publicationStatus = after
+            logPublication(before: before, after: after, start: start, error: error)
+            throw error
+        }
+    }
+
+    private func logPublication(before: DictationPublicationStatus?, after: DictationPublicationStatus?, start: ContinuousClock.Instant, error: (any Error)?) {
+        guard error != nil || (before?.pendingCaptureCount ?? 0) > 0 || (after?.pendingCaptureCount ?? 0) > 0
+            || !(after?.failures.isEmpty ?? before?.failures.isEmpty ?? true) else { return }
+        let elapsed = start.duration(to: .now)
+        var metadata = ["pending_before": before.map { String($0.pendingCaptureCount) } ?? "unknown",
+                        "pending_after": after.map { String($0.pendingCaptureCount) } ?? "unknown",
+                        "held_count": after.map { String($0.heldCaptureCount) } ?? "unknown",
+                        "outcome": error == nil ? ((after?.failures.isEmpty ?? true) ? "completed" : "capture_failures") : (error is CancellationError ? "cancelled" : "failed"),
+                        "failure_count": after.map { String($0.failures.count) } ?? "unknown",
+                        "duration_ms": String(elapsed.components.seconds * 1_000 + elapsed.components.attoseconds / 1_000_000_000_000_000)]
+        for (index, failure) in (after?.failures ?? before?.failures ?? []).prefix(3).enumerated() {
+            metadata["failure_\(index + 1)_capture_id"] = failure.captureID.uuidString
+            for (key, value) in DiagnosticError(failure.error).metadata { metadata["failure_\(index + 1)_\(key)"] = value }
+        }
+        if let error { metadata.merge(DiagnosticError(error).metadata) { _, new in new } }
+        notice("Dictation library publication pass", metadata: metadata)
+    }
+
+    private func notice(_ message: StaticString, metadata: [String: String]) {
+        #if os(iOS)
+        CrashReporting.breadcrumb(message, category: "dictation_library", metadata: metadata)
+        #else
+        AppDiagnostics.info(message, category: "dictation_library", metadata: metadata)
+        #endif
     }
 
     func releaseUploadedOriginals(session: DictationAccountSession) async throws {
@@ -359,22 +443,24 @@ final class UnifiedDictationLibrary {
             id: UUID(), captureID: captureID, createdAt: .now, kind: .providerOutput,
             text: text, model: model, contextWasUsed: false, parentResultID: nil, plan: plan
         )
+        work.begin()
+        defer { work.end() }
         switch destination {
         case .producer:
             try await store.addResult(result)
+            requestPublication()
         case .archive(let archive, let session):
             try await archive.addResult(result, session: session)
+            work.begin()
+            Task {
+                defer { work.end() }
+                do {
+                    try await archive.publishPendingResults(session: session)
+                    publicationStatus = try await store.status()
+                } catch { lastError = error.localizedDescription }
+            }
         }
         historyResults[captureID] = result
-        Task {
-            do {
-                switch destination {
-                case .producer: try await store.publishPending()
-                case .archive(let archive, let session): try await archive.publishPendingResults(session: session)
-                }
-                publicationStatus = try await store.status()
-            } catch { lastError = error.localizedDescription }
-        }
         return result
     }
 
@@ -439,7 +525,7 @@ final class UnifiedDictationLibrary {
             throw SpeechKitError.invalidRequest(String(localized: "Restoration is incomplete: \(report.missingOriginalCaptureIDs.count) original recordings are unavailable."))
         }
         try await profileWriter.restoreCachedProfile(account: session).value
-        try await store.publishPending()
+        publicationStatus = try await publish()
     }
 
     func exportArchive() async throws -> URL {

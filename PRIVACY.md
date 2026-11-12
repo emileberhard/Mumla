@@ -161,8 +161,9 @@ microphone and audio route, the network connection type, the model, your
 dictation languages, counts and durations, such as how many speakers a
 dictation had and how many were left out, the address, status and size of the
 app's recent requests to the access service, a random identifier of a
-dictation that the access service's log also has, and on iPhone the identifier of the app
-the keyboard is typing in. An error is reported as a fixed description of what
+dictation that the access service's log also has, the random identifiers of up
+to three recordings that could not be uploaded to your iCloud dictation library,
+and on iPhone the identifier of the app the keyboard is typing in. An error is reported as a fixed description of what
 failed plus the error's type, domain and numeric code, such as an HTTP status;
 the text of error messages, including any a provider returned, is left out.
 From iOS 27 and macOS 27, the apps also forward the system's own reports of

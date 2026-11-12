@@ -145,7 +145,7 @@ private struct DictationLibraryStatusSection: View {
                         .foregroundStyle(.orange)
                 }
                 ForEach(status.failures, id: \.captureID) { failure in
-                    Label(failure.message, systemImage: "exclamationmark.triangle")
+                    Label(failure.error.localizedDescription, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
                 }
                 ProgressView(value: Double(status.usedBytes), total: Double(status.capacityBytes)) {

@@ -119,20 +119,11 @@ wizard's style rules.
   and allowance requests retry 503 after jittered 0.5, 1 and 2 s.
 - The keyboard reads `KeyboardAccessState` from the App Group and holds no
   credential. Provider-specific request rules belong to the access service.
-- Only Mine (default) filters with a voice profile once trusted
-  ([design](docs/design/only-my-voice.md)). The profile never leaves its
-  device and learns once from local originals; failure or doubt keeps
-  everyone's text. SpeechKit's optional `SpeakerRecognition` product owns the
-  model, watcher, filter, learning, profile file store, history replay and
-  fail-open sequence. Mumla supplies the profile directory and decoder, maps
-  diagnostics, and retains the access protocol and transport wait budget.
-  Retire the old profile store before an account transition. The package watches
-  pieces and 2-second windows every second, requests labels on profile contrast,
-  and judges 1–2-second labels with stricter anchor and rejection bars. Its
-  standalone coherence gate always applies to learning; labelled replies can
-  only withhold it. Recognition stops at 600 seconds without truncating ordinary
-  capture. The access transport's added wait is `min(6 s, 4 s + 5 ms per second)`.
-  Changing the speaker model changes the package-owned model version.
+- Only Mine defaults on with device-only profiles; doubt or failure keeps
+  everyone's text. SpeechKit owns recognition and model versions; Mumla owns the
+  account partition, decoder, diagnostics and transport budget. Retire the old
+  profile store before an account transition. The [design](docs/design/only-my-voice.md)
+  owns recognition, learning, replay, duration limits and the added wait budget.
 
 ### Data sync
 
@@ -215,6 +206,9 @@ container `iCloud.emileberhard.WisprClone`.
   canonical cloud writer. SwiftData rows with `unified/` sources are local read
   models. Profile writes go through its `DictationProfileWriter`: one at a
   time, each changing only its own field of the latest profile.
+- One publication helper owns producer retries and typed diagnostics; SpeechKit
+  owns recovery. The iOS library holds background time through sealing, results
+  and publication; [unified dictation](docs/design/unified-dictation.md) owns the lifetime.
 - `SharedHistoryProjection` materializes shared result IDs and original
   metadata into the account's SwiftData read models with no cloud outboxes and
   no audio downloads. `HistoryEntry.isHidden` keeps this device's Delete or
@@ -228,22 +222,14 @@ container `iCloud.emileberhard.WisprClone`.
   CKSyncEngine schedules work but fetches no zones itself and never eagerly
   downloads audio assets. `ProjectedCloudTransportProbe` verifies this only in a
   Development-signed, isolated synthetic run.
-- The opt-in macOS archival role keeps old and shared originals outside
-  purgeable caches. `CombinedArchiveExporter` verifies and seals both under
-  `CombinedDictationExports/<account-hash>/<timestamp-UUID>`; its 64 GiB budget
-  stops catch-up when exhausted and never silently prunes originals. Derived
-  export snapshots keep the latest two. `scripts/dictation-library-backup`
-  copies sealed exports into independent recovery points
-  ([contract](docs/design/dictation-library-backup.md)).
-- The `mumla` CLI (installed by `just install-mac`) reads history and exports
-  originals through the running app, on the Mac or a trusted connected
-  iPhone (`--device <UDID>`). Private bounded request files authorize commands;
-  `mumla://agent/<UUID>` only wakes the exact app. Library ownership and sync
-  controls never belong in Transcripts or the composer.
-- The signed macOS binary answers `--dictation-library list|search|audio`
-  before normal app initialization, as JSON with account, freshness and errors.
-  `MUMLA_LIBRARY_PROBE=1` exercises the real library with synthetic data and
-  refuses any non-Development signature.
+- The opt-in Mac archival role retains originals outside purgeable caches and
+  seals combined exports within a 64 GiB budget, keeping the latest two snapshots.
+  Independent recovery points follow the [backup contract](docs/design/dictation-library-backup.md).
+- `mumla` requests run through the app's account lease; bounded private request
+  files authorize them, not the wake URL ([contract](docs/design/library-agent-tools.md)).
+  Ownership and sync controls never belong in Transcripts or the composer.
+- Signed `--dictation-library` commands run before app initialization; the
+  synthetic live probe requires Development signing ([design](docs/design/unified-dictation.md)).
 - Intentional CloudKit deletion pauses sync until explicit restoration.
   Encryption-reset recovery keeps a per-account restoration marker until
   metadata, results, profile and available originals are re-seeded; missing
@@ -382,8 +368,9 @@ container `iCloud.emileberhard.WisprClone`.
 - Diagnostic messages are `StaticString`. Errors reach every sink (Sentry
   events, logs and breadcrumbs, the system log, the Mac log file) only through
   `DiagnosticError` in `Shared/Diagnostics/`: reflected type, numeric code, the
-  Cocoa, URL, POSIX or OSStatus domain or else the type, and for `SpeechKitError`
-  its case and HTTP or WebSocket status (`Shared/Core/SpeechKitDiagnostics.swift`,
+  Cocoa, URL, POSIX or OSStatus domain or else the type. `SpeechKitError`
+  adds its case and HTTP or WebSocket status; `DictationLibraryError` adds its
+  case and underlying cloud or storage domain/code (`Shared/Core/SpeechKitDiagnostics.swift`,
   containing apps only; the keyboard links no SpeechKit). Never render an error's
   description, user info or provider text into a message or metadata.
 - Metadata holds state, fixed reason strings, IDs, counts and timing, never
