@@ -119,11 +119,10 @@ wizard's style rules.
   and allowance requests retry 503 after jittered 0.5, 1 and 2 s.
 - The keyboard reads `KeyboardAccessState` from the App Group and holds no
   credential. Provider-specific request rules belong to the access service.
-- Only Mine defaults on with device-only profiles; doubt or failure keeps
-  everyone's text. SpeechKit owns recognition and model versions; Mumla owns the
-  account partition, decoder, diagnostics and transport budget. Retire the old
-  profile store before an account transition. The [design](docs/design/only-my-voice.md)
-  owns recognition, learning, replay, duration limits and the added wait budget.
+- Only Mine defaults on; profiles stay on-device and doubt or failure keeps
+  everyone's text. SpeechKit owns recognition and model versions. Mumla owns
+  account fencing, decoding, diagnostics and the wait budget. Retire profiles
+  before account changes; the [design](docs/design/only-my-voice.md) owns the detail.
 
 ### Data sync
 
@@ -224,6 +223,7 @@ container `iCloud.emileberhard.WisprClone`.
   Development-signed, isolated synthetic run.
 - The opt-in Mac archival role retains originals outside purgeable caches and
   seals combined exports within a 64 GiB budget, keeping the latest two snapshots.
+  An exhausted budget stops catch-up and never prunes originals.
   Independent recovery points follow the [backup contract](docs/design/dictation-library-backup.md).
 - `mumla` requests run through the app's account lease; bounded private request
   files authorize them, not the wake URL ([contract](docs/design/library-agent-tools.md)).

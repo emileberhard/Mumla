@@ -38,7 +38,8 @@ originals stay local. Free Uploaded Local Audio releases the rest on request.
 The optional macOS archive role retains a full
 replica and composes unified and confirmed legacy exports within a 64 GiB
 budget. `CombinedArchiveExporter` seals them under
-`CombinedDictationExports/<account-hash>/<timestamp-UUID>`. Derived export snapshots keep the latest two. Sealed manifests use Unix-epoch
+`CombinedDictationExports/<account-hash>/<timestamp-UUID>`. An exhausted budget
+stops catch-up and never prunes originals. Derived export snapshots keep the latest two. Sealed manifests use Unix-epoch
 seconds and checksummed file lists. The
 [backup CLI](dictation-library-backup.md) retains verified recovery points
 within its own 96 GiB budget. Cloud acknowledgment, a retained replica and an
