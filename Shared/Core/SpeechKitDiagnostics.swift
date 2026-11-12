@@ -1,3 +1,4 @@
+import DictationLibrary
 import SpeechKit
 import SpeakerRecognition
 
@@ -32,6 +33,45 @@ extension VoiceFilterError: StructuredDiagnosticError {
         case .profileUnreadable: "profile_unreadable"
         case .deadlineExceeded: "deadline_exceeded"
         case .modelMissing: "model_missing"
+        }
+    }
+}
+
+extension DictationLibraryError: StructuredDiagnosticError {
+    nonisolated var diagnosticDomain: String? {
+        switch self {
+        case .cloudFailure(let domain, _), .storageFailure(let domain, _): domain
+        default: nil
+        }
+    }
+
+    nonisolated var diagnosticCode: Int? {
+        switch self {
+        case .cloudFailure(_, let code), .storageFailure(_, let code): code
+        default: nil
+        }
+    }
+
+    nonisolated var diagnosticKind: String {
+        switch self {
+        case .invalidConfiguration: "invalid_configuration"
+        case .accountUnavailable: "account_unavailable"
+        case .accountChanged: "account_changed"
+        case .profileUnavailable: "profile_unavailable"
+        case .archiveDisabled: "archive_disabled"
+        case .capacityExceeded: "capacity_exceeded"
+        case .invalidCapture: "invalid_capture"
+        case .contentConflict: "content_conflict"
+        case .invalidRecord: "invalid_record"
+        case .unsupportedVersion: "unsupported_version"
+        case .noAudio: "no_audio"
+        case .recordingFinished: "recording_finished"
+        case .cloudDeletedRequiresDecision: "cloud_deleted_requires_decision"
+        case .cloudOriginalMissing: "cloud_original_missing"
+        case .notConfigured: "not_configured"
+        case .cloudFailure: "cloud_failure"
+        case .storageFailure: "storage_failure"
+        case .heldCapture: "held_capture"
         }
     }
 }

@@ -82,7 +82,7 @@ struct UnifiedDictationVocabularyTests {
         preferences.archiveEnabled = true
         let cloud = UploadedVocabularyCloud(preferences: preferences, uploadedTerms: ["Synthetic Uploaded"])
         let store = try DictationLibraryStore(directory: root.appendingPathComponent("library"), source: "synthetic-vocabulary", capacityBytes: 16 * 1_024 * 1_024, cloud: cloud)
-        let library = UnifiedDictationLibrary(store: store, rootDirectory: root, vocabulary: { dataStore.vocabularyTerms },
+        let library = UnifiedDictationLibrary(store: store, rootDirectory: root, background: TestDictationBackgroundExecution(), vocabulary: { dataStore.vocabularyTerms },
             onAccountChange: { _ in }, onExportRequested: { throw DictationLibraryError.profileUnavailable }, onArchiveRoleChanged: {})
         await library.refresh()
         return Fixture(root: root, dataStore: dataStore, cloud: cloud, library: library)

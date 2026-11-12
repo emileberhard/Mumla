@@ -226,7 +226,7 @@ final class MumlaDataStore {
         initialContainer.mainContext.autosaveEnabled = false
         if accountPartitioningEnabled {
             do {
-                library = UnifiedDictationLibrary(store: try UnifiedDictationLibrary.makeStore(rootDirectory: root), rootDirectory: root,
+                library = UnifiedDictationLibrary(store: try UnifiedDictationLibrary.makeStore(rootDirectory: root), rootDirectory: root, background: AppDictationBackgroundExecution(),
                     vocabulary: { [weak self] in self?.vocabularyTerms ?? [] },
                     onAccountChange: { [weak self] session in
                         self?.accountLease?.invalidate()
@@ -699,7 +699,6 @@ final class MumlaDataStore {
         let providerRawValue = TranscriptionProviderType.dictation.rawValue
         let destination = originalDestinations.removeValue(forKey: url)
         if let id = library?.captureID(for: url), let target = captureContexts[id] {
-            library?.originalDidFinish()
             let bytes = try Data(contentsOf: url, options: .mappedIfSafe)
             let info = AudioRecordingInfo(
                 id: id, createdAt: .now, providerRawValue: providerRawValue,

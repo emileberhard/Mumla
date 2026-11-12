@@ -1,5 +1,6 @@
 import AVFAudio
-import DictationLibrary
+import CloudKit
+@testable import DictationLibrary
 import Foundation
 import SpeechKit
 import Testing
@@ -9,17 +10,21 @@ struct UnifiedDictationArchiveTests {
     @Test @MainActor func archivedJournalYieldsAMeasurableWAVAndMergesResultVersions() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("UnifiedAppIntegration-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let library = try DictationLibraryStore(directory: directory, source: "synthetic-app-integration", capacityBytes: 16 * 1_024 * 1_024, containerIdentifier: MumlaDataStore.cloudContainerIdentifier)
+        let library = try DictationLibraryStore(directory: directory, source: "synthetic-app-integration", capacityBytes: 16 * 1_024 * 1_024, cloud: ArchiveFixtureCloud())
+        _ = try await library.refresh()
         var profile = DictationProfile(languages: ["en", "sv"], dictionary: ["Mumla"])
         profile.archiveEnabled = true
         let plan = DictationPlan(unverifiedProfile: profile, context: .prose, capabilities: try UnifiedDictationLibrary.capabilities())
         let capture = try await library.beginCapture(plan: plan)
-        let writer = try OriginalAudioWriter(dictation: .init(id: capture.id, plan: plan, writer: capture))
+        let host = UnifiedDictationLibrary(store: library, rootDirectory: directory, background: TestDictationBackgroundExecution(), vocabulary: { [] },
+            onAccountChange: { _ in }, onExportRequested: { throw DictationLibraryError.profileUnavailable }, onArchiveRoleChanged: {})
+        let writer = try OriginalAudioWriter(dictation: .init(id: capture.id, plan: plan, writer: capture, library: host))
         let file = try AVAudioFile(forReading: SyntheticSpeechFixture.url)
         let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
         try file.read(into: buffer)
         writer.write(buffer)
         let original = try await writer.finishArchived()
+        _ = try await host.publish()
         let wav = try await OriginalAudio.providerWAV(from: original, fileType: .caf)
         #expect(PCM16WAVHeader.sampleCount(of: wav, sampleRate: AccessGrant.sampleRate) != nil)
         let text = "Synthetic transcript."
@@ -41,4 +46,14 @@ struct UnifiedDictationArchiveTests {
         #expect(merged.originalURL == original)
         #expect(merged.published)
     }
+}
+
+private actor ArchiveFixtureCloud: LibraryCloud {
+    func accountIdentifier() -> String? { "synthetic-account" }
+    func profile() -> DictationProfile? { nil }
+    func saveProfile(_ profile: DictationProfile) throws { throw DictationLibraryError.profileUnavailable }
+    func create(_ record: CKRecord) throws { throw DictationLibraryError.heldCapture(UUID()) }
+    func missing(_ ids: [CKRecord.ID]) -> Set<CKRecord.ID> { Set(ids) }
+    func changes(since token: Data?, desiredKeys: [String]) -> LibraryCloudPage { LibraryCloudPage(records: [], deletedCount: 0, token: Data(), moreComing: false) }
+    func originalChunk(_ id: CKRecord.ID) throws -> Data { throw DictationLibraryError.invalidRecord(id.recordName) }
 }

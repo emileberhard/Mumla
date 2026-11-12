@@ -143,8 +143,9 @@ nonisolated final class OriginalAudioWriter: Sendable {
 
     let url: URL
     private let state: OSAllocatedUnfairLock<State>
-    private let libraryCapture: DictationCaptureWriter?
-    let dictationPlan: DictationPlan?
+    private let dictation: UnifiedDictationLibrary.PreparedCapture?
+    private var libraryCapture: DictationCaptureWriter? { dictation?.writer }
+    var dictationPlan: DictationPlan? { dictation?.plan }
 
     private enum Phase { case open(ExtAudioFileRef), library, finished, discarded }
 
@@ -168,8 +169,7 @@ nonisolated final class OriginalAudioWriter: Sendable {
 
     init(dictation: UnifiedDictationLibrary.PreparedCapture? = nil) throws {
         let libraryCapture = dictation?.writer
-        self.libraryCapture = libraryCapture
-        dictationPlan = dictation?.plan
+        self.dictation = dictation
         if let libraryCapture {
             url = libraryCapture.originalURL
             state = OSAllocatedUnfairLock(uncheckedState: State(phase: .library))
@@ -236,12 +236,12 @@ nonisolated final class OriginalAudioWriter: Sendable {
     }
 
     func finishArchived() async throws -> URL {
-        if let libraryCapture {
+        if let dictation, let libraryCapture = dictation.writer {
             let failure = state.withLockUnchecked { state in
                 state.phase = .finished
                 return state.failure
             }
-            _ = try await libraryCapture.finish()
+            try await dictation.library.finish(libraryCapture)
             if let failure { throw failure }
             return url
         }

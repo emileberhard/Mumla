@@ -14,19 +14,22 @@ nonisolated struct DiagnosticError: Error, Sendable {
         }
         typeName = String(reflecting: type(of: error))
         let value = error as NSError
+        let safeDomain: String
         switch value.domain {
         case NSCocoaErrorDomain, NSURLErrorDomain, NSPOSIXErrorDomain, NSOSStatusErrorDomain:
-            domain = value.domain
+            safeDomain = value.domain
         default:
-            domain = typeName
+            safeDomain = typeName
         }
         if let structured = error as? any StructuredDiagnosticError {
+            domain = structured.diagnosticDomain ?? safeDomain
             code = structured.diagnosticCode ?? value.code
             kind = structured.diagnosticKind
             reference = structured.diagnosticReference
             return
         }
 
+        domain = safeDomain
         code = value.code
         kind = nil
         reference = nil
@@ -58,11 +61,13 @@ nonisolated struct DiagnosticEvent {
 }
 
 nonisolated protocol StructuredDiagnosticError: Error {
+    var diagnosticDomain: String? { get }
     var diagnosticCode: Int? { get }
     var diagnosticKind: String { get }
     var diagnosticReference: String? { get }
 }
 
 extension StructuredDiagnosticError {
+    nonisolated var diagnosticDomain: String? { nil }
     nonisolated var diagnosticReference: String? { nil }
 }
