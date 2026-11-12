@@ -1,6 +1,6 @@
 # App icon
 
-`Shared/AppIcon.icon` is the one Icon Composer bundle both apps compile (`ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`); the keyboard shows the containing app's icon. `distribution/mumla-mbag/icon.svg` is its flat copy for the download page.
+`Shared/AppIcon.icon` is the one Icon Composer bundle both apps compile (`ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`); the keyboard shows the containing app's icon. `distribution/mumla-mbag/icon.svg` is its flat copy for the download page, in sRGB because Ark renders it to PNG for link previews and its renderer turns `color(display-p3 …)` into black.
 
 The mark is a mumble balloon: comics draw half-heard speech as a squiggle in a balloon, and its three arcs also form a cursive m. The balloon's body is a superellipse rather than an ellipse, and its tail grows out of the left side, so it reads as Mumla's own shape rather than a Messages bubble or a letter P.
 
