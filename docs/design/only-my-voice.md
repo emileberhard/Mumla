@@ -3,14 +3,15 @@
 Mumla defaults to Only Mine and learns its voice profile on the device. The
 engine, its model, rules, calibration and profile persistence are owned by
 SpeechKit's optional `SpeakerRecognition` product; see the
-[speaker recognition design](https://github.com/emileberhard/SpeechKit/blob/0.6.0/docs/speaker-recognition.md).
+[speaker recognition design](https://github.com/emileberhard/SpeechKit/blob/0.8.0/docs/speaker-recognition.md).
 Mumla owns the setting, access protocol, account partition, synced forget date,
 status wording, diagnostics and where everyone's text is retained.
 
 `AccessStream` decodes the service's `[offsetMs, durationMs]` word pairs into
 `SpeechKit.SpeakerPhrase` with typed ranges from audio start. The live session
 feeds a `VoiceCheck`, sends `finish` to the service, then lets the check request
-labels. The callback receives the admitted PCM16; Mumla ignores that argument
+labels: at once when its watcher asks, otherwise after the plain result when
+that transcript marks another speaker. The callback receives the admitted PCM16; Mumla ignores that argument
 because the access service already holds the audio. It resolves the plain result
 with an added wait of 4 seconds plus 5 milliseconds per second of admitted audio,
 capped at 6 seconds. Batch transcription uses the same package's one-shot filter and does not relearn replayed audio. Cancellation
@@ -27,14 +28,23 @@ windows score below 0.20 against the profile. A coherent mismatch alone cannot
 request a check with no recognizable owner. If the watcher is still checking
 when the ordinary transcript arrives, everyone's text is delivered immediately.
 
+MAI-Transcribe-2 breaks the plain transcript's line where it hears another
+speaker, so Mumla tells the package that its lines are speaker turns. A second
+line with words requests labels even when the watcher heard nothing, which
+catches a remark too short for the watcher.
+
 A label's duration is the length of its merged word spans, including gaps of up
-to 150 milliseconds. Labels shorter than 1 second stay unjudged. A 1–2-second
+to 150 milliseconds. A label shorter than 1 second is never judged by its
+audio: it is dropped only when the plain transcript marked another speaker and
+the user is recognized in the same recording, and kept otherwise. A 1–2-second
 label can anchor only at 0.50 against the profile and can be dropped only below
 0.25 against both the profile and the recording's anchor. Labels of at least
 2 seconds retain the 0.35 anchor and rejection bars. Doubt, an empty labelled
 reply or no dropped label keeps the caller's original transcript.
 
-Learning requires at least 5 seconds of speech and always passes the standalone
+Learning requires a transcript with words that marks no other speaker and at
+least 5 seconds of speech. A silent recording once counted as a trust miss and
+switched filtering off. Learning also always passes the standalone
 coherence gate: the existing piece rule, or two supported windows below 0.05
 against each other, identifies mixed voices. Each supported window must match
 another window at 0.50. A labelled reply can only withhold learning: more than
@@ -59,7 +69,8 @@ modes:
   request on that audio, with `diarization: {enabled: true}` and
   `timestamps: "word"`. The service replies with today's `result`, then with
   `{"type": "voices", "text", "phrases"}`. The socket closes 5 s after `result`
-  if no `voices` message arrives.
+  if no `voices` message arrives, which leaves room for the app to ask once it
+  has read the result.
 - `"diarize"`, for Transcribe Again and batch recovery. The one Azure request
   is diarized and the reply is the `voices` form. No audio is kept.
 
@@ -149,14 +160,23 @@ Mumla maps the original error through `DiagnosticError`, with a
 public stage of `filter` or `learning`. The existing `voice_filter` values remain
 `not_heard`, `too_long`, `undecided`, `kept_everyone`, `filtered` and `failed`,
 with `voice_labels` and `voice_labels_dropped` counts. Every attempted live
-check also records `voice_labels_reply_ms`, including failures and timeouts.
+check also records `voice_labels_reply_ms`, including failures and timeouts,
+and `voice_labels_at_turn` when the transcript's line break, not the watcher,
+requested the labels.
 No diagnostic includes text, embeddings or similarity scores. A failure keeps
 everyone's text and does not teach the profile.
 
 The live gate (`just test-access-live`) streams a synthetic two-voice mix
 through the real session, package watcher, service and filter with a trusted
 synthetic profile, then diarizes the same mix in a batch request. Both must
-drop the second voice and retain the first. Wire decoding and lifecycle
+drop the second voice and retain the first, and the first stream's labels must
+be requested by the watcher. A third stream adds a 0.9-second remark by the
+second voice that the watcher does not hear: the plain result's line break, not
+the watcher, must request the labels and the remark must be dropped. The
+provider's line break is observed behaviour, not a contract, and a synthetic
+clip does not always get one (the probe's Opus round trip alone changed it for
+one clip), so that stream repeats, at most three times, only while the plain
+result has no line break; a result with one must pass. Wire decoding and lifecycle
 regressions stay in Mumla; model and policy tests live in SpeechKit.
 
 ### Calibrated delivery budget

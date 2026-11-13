@@ -22,6 +22,7 @@ nonisolated struct DictationTiming: Equatable, Sendable {
     var resultReceivedAt: ContinuousClock.Instant?
     var serviceDictationID: String?
     var labelledReplyTime: Duration?
+    var labelRequest: VoiceLabelRequest?
 
     static func isSlow(stoppedAt: ContinuousClock.Instant, handedOffAt: ContinuousClock.Instant) -> Bool {
         handedOffAt - stoppedAt > slowHandoff
@@ -39,6 +40,7 @@ nonisolated struct DictationTiming: Equatable, Sendable {
         }
         measurements["result_to_handoff_ms"] = timing.resultReceivedAt.map { milliseconds(from: $0, to: handedOffAt) }
         measurements["voice_labels_reply_ms"] = timing.labelledReplyTime.map { Int($0 / .milliseconds(1)) }
+        measurements["voice_labels_at_turn"] = timing.labelRequest == .transcript ? 1 : nil
         return measurements
     }
 

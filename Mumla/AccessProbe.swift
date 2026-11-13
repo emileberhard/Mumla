@@ -20,6 +20,7 @@ enum AccessProbe {
         var transcribeAgain: Transcription?
         var voicesOnRequest: Voices?
         var voicesDiarized: Voices?
+        var voicesAtSpeakerTurn: Voices?
         var pacedCompletion: Transcription?
         var concurrentGrants: Concurrency?
         var boundedCompletion: Transcription?
@@ -32,7 +33,8 @@ enum AccessProbe {
             if let proofLifetime { return health?.ready == true && proofLifetime.expired?.rejectedAsIdentity == true }
             return health?.ready == true && enrolledNatively && freshProof?.status == 201
                 && replayedProof != nil && forgedProof?.rejectedAsIdentity == true
-                && transcribeAgain?.passed == true && voicesOnRequest?.passed == true && voicesDiarized?.passed == true
+                && transcribeAgain?.passed == true && voicesOnRequest?.passed == true && voicesOnRequest?.request == "watcher"
+                && voicesDiarized?.passed == true && voicesAtSpeakerTurn?.passed == true && voicesAtSpeakerTurn?.request == "transcript"
                 && pacedCompletion?.passed == true && pacedCompletion?.reachedBound == false
                 && concurrentGrants?.passed == true
                 && boundedCompletion?.passed == true && boundedCompletion?.reachedBound == true && pacedCancellation?.passed == true
@@ -54,16 +56,19 @@ enum AccessProbe {
     private struct InFlight: Codable { let inFlightSeconds: Double; let reservedSeconds: Double }
     private struct Voices: Encodable {
         let path: String?; let labels: Int; let dropped: Int; let keptUser: Bool; let droppedOther: Bool; let keptEveryone: Bool; let failures: [String]
+        let request: String?; let brokeLine: Bool
         var passed: Bool { path == "filtered" && labels >= 2 && dropped >= 1 && keptUser && droppedOther && keptEveryone && failures.isEmpty }
 
-        init(text: String, outcome: VoiceFilterOutcome?, unfilteredText: String?, failures: [String]) {
+        init(text: String, outcome: VoiceFilterOutcome?, unfilteredText: String?, failures: [String], other: String, request: VoiceLabelRequest?) {
             let delivered = text.lowercased(), everyone = unfilteredText?.lowercased() ?? ""
+            self.request = request?.rawValue
+            brokeLine = (unfilteredText ?? text).contains(where: \.isNewline)
             path = outcome?.path.rawValue
             labels = outcome?.labelCount ?? 0
             dropped = outcome?.droppedCount ?? 0
             keptUser = ["coffee", "bakery"].allSatisfy(delivered.contains)
-            droppedOther = !delivered.contains("charger")
-            keptEveryone = everyone.contains("charger") && everyone.contains("coffee")
+            droppedOther = !delivered.contains(other)
+            keptEveryone = everyone.contains(other) && everyone.contains("coffee")
             self.failures = failures
         }
     }
@@ -72,6 +77,7 @@ enum AccessProbe {
     private static let languages = ["en", "sv"]
     private static let vocabulary = (1...57).map { "ProjectTerm\($0)" }
     private static let pacedSeconds = 150
+    private static let speakerTurnAttempts = 3
     private static let boundedGrantSeconds = 10
     private static let canceledAfterSeconds = 20
 
@@ -165,10 +171,21 @@ enum AccessProbe {
         twoVoices.append(Data(repeating: 0, count: AccessGrant.sampleRate * 2))
         twoVoices.append(try await providerPCM(of: fixtures.appending(path: "en-teen-note.wav")))
         twoVoices.append(Data(repeating: 0, count: AccessGrant.sampleRate * 2))
-        receipt.voicesOnRequest = try await streamVoices(twoVoices, access: access, voice: voice, failures: failures)
+        receipt.voicesOnRequest = try await streamVoices(twoVoices, access: access, voice: voice, failures: failures, other: "charger")
         let batch = try await AccessTranscriber(access: access, voice: { voice })
             .transcribe(wav: try RealtimePCM16WAVFile.data(pcmData: twoVoices, sampleRate: AccessGrant.sampleRate), languageHints: languages, customVocabulary: vocabulary)
-        receipt.voicesDiarized = Voices(text: batch.text, outcome: batch.voices, unfilteredText: batch.unfilteredText, failures: failures.withLock { $0 })
+        receipt.voicesDiarized = Voices(text: batch.text, outcome: batch.voices, unfilteredText: batch.unfilteredText,
+                                        failures: failures.withLock { $0 }, other: "charger", request: nil)
+        var shortRemark = try await providerPCM(of: fixtures.appending(path: "en-short-long-rushed.wav"))
+        shortRemark.append(Data(repeating: 0, count: AccessGrant.sampleRate / 10 * 2))
+        shortRemark.append(try await providerPCM(of: fixtures.appending(path: "en-teen-note.wav"))
+            .dropFirst(AccessGrant.sampleRate * 3 / 10 * 2).prefix(AccessGrant.sampleRate * 9 / 10 * 2))
+        shortRemark.append(Data(repeating: 0, count: AccessGrant.sampleRate * 2 * 2))
+        for _ in 0..<speakerTurnAttempts {
+            let voices = try await streamVoices(shortRemark, access: access, voice: voice, failures: failures, other: "okay")
+            receipt.voicesAtSpeakerTurn = voices
+            guard !voices.brokeLine else { break }
+        }
 
         let paced = pacedPCM(speech: wav.dropFirst(PCM16WAVHeader.byteCount))
         receipt.stage = "paced-completion"
@@ -215,7 +232,8 @@ enum AccessProbe {
         return OnlyMyVoice(profile: profile, store: store, startedAt: .now, onFailure: onFailure)
     }
 
-    private static func streamVoices(_ pcm: Data, access: MumlaAccess, voice: OnlyMyVoice, failures: OSAllocatedUnfairLock<[String]>) async throws -> Voices {
+    private static func streamVoices(_ pcm: Data, access: MumlaAccess, voice: OnlyMyVoice, failures: OSAllocatedUnfairLock<[String]>,
+                                     other: String) async throws -> Voices {
         let grant = Task { try await access.grant(maximumAudioSeconds: AccessGrant.maximumAudioSeconds) }
         let session = RealtimeDictationProviderConfiguration(
             grant: grant, customVocabulary: vocabulary, languageHints: languages, voice: voice, onAudioLimitReached: {}
@@ -230,7 +248,8 @@ enum AccessProbe {
         }
         let completion = await RealtimeDictationCompletion.finish(dictation)
         if let error = completion.error { throw error }
-        return Voices(text: completion.text ?? "", outcome: await session.voices, unfilteredText: await session.unfilteredText, failures: failures.withLock { $0 })
+        return Voices(text: completion.text ?? "", outcome: await session.voices, unfilteredText: await session.unfilteredText,
+                      failures: failures.withLock { $0 }, other: other, request: await session.timing.labelRequest)
     }
 
     private static func pacedPCM(speech: Data) -> Data {

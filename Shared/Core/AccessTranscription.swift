@@ -331,11 +331,13 @@ actor GrantedRealtimeTranscriptionSession: RealtimeTranscriptionSession {
         var text = reply.text
         if let voiceCheck {
             do {
-                let result = try await voiceCheck.resolve(everyone: reply.text, waitingUpTo: AccessVoiceCheck.waitBudget(forSamples: voiceSamples))
+                let result = try await voiceCheck.resolve(everyone: reply.text, linesAreSpeakerTurns: true,
+                                                         waitingUpTo: AccessVoiceCheck.waitBudget(forSamples: voiceSamples))
                 text = result.text
                 voices = voice?.speakers == nil ? nil : result.outcome
                 unfilteredText = result.outcome.path == .filtered ? result.everyone : nil
                 timing.labelledReplyTime = result.labelledReplyTime
+                timing.labelRequest = result.labelRequest
             } catch is CancellationError {
                 guard !isDisconnected else { return }
             } catch {
@@ -431,7 +433,7 @@ struct AccessTranscriber {
     }
 
     @concurrent nonisolated private static func filter(_ reply: AccessStreamReply, pcm: Data, voice: OnlyMyVoice) async -> AccessTranscript {
-        let result = await VoiceCheck.filter(pcm16: pcm, phrases: reply.phrases, everyone: reply.text, profile: voice.profile,
+        let result = await VoiceCheck.filter(pcm16: pcm, phrases: reply.phrases, everyone: reply.text, linesAreSpeakerTurns: true, profile: voice.profile,
                                              store: voice.store, startedAt: voice.startedAt) { stage, failure in
             voice.onFailure(stage, DiagnosticError(failure))
         }
